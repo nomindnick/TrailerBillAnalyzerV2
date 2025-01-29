@@ -68,9 +68,16 @@ def serve(path):
 @app.route('/api/analyze', methods=['POST'])
 def analyze_bill():
     try:
+        logger.info(f"Received request: {request.method} {request.path}")
+        logger.info(f"Request headers: {dict(request.headers)}")
+        logger.info(f"Request data: {request.get_data(as_text=True)}")
+        
         data = request.json
+        logger.info(f"Parsed JSON data: {data}")
+        
         bill_number = data.get('billNumber')
         if not bill_number:
+            logger.error("Bill number is missing from request")
             return jsonify({'error': 'Bill number is required'}), 400
 
         logger.info(f"Starting analysis for bill {bill_number}")
