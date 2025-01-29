@@ -21,11 +21,11 @@ class SectionMatcher:
         # Make sure the OpenAI API key is pulled from environment
 
         # We'll store a reference to the openai module so we can easily make calls.
-        self.client = openai.OpenAI()
+        self.client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
         # Use a currently supported model. You can switch to "gpt-4" if you have access.
-        self.model = "gpt-4o-2024-08-06"
-        
+        self.model = "gpt-4-turbo-preview"
+
         # Initialize rate limiter for 50 requests per minute
         self.rate_limiter = RateLimiter(requests_per_minute=50)
 

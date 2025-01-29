@@ -15,8 +15,8 @@ class ImpactAnalyzer:
     def __init__(self):
         """Initialize the analyzer with OpenAI client and logger."""
         self.logger = logging.getLogger(__name__)
-        self.client = OpenAI()
-        self.model = "gpt-4o-2024-08-06"
+        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self.model = "gpt-4-turbo-preview"
         self.practice_groups = PracticeGroups()
 
     async def analyze_changes(self, skeleton: Dict[str, Any]) -> Dict[str, Any]:
