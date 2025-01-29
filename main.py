@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, static_folder='frontend/dist', static_url_path='')
 CORS(app, resources={
     r"/api/*": {
-        "origins": "*",
+        "origins": ["http://0.0.0.0:3000", "https://0.0.0.0:3000"],
         "methods": ["GET", "POST", "OPTIONS"],
         "allow_headers": ["Content-Type"],
         "expose_headers": ["Content-Type"]
