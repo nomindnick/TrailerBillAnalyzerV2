@@ -80,7 +80,8 @@ const BillAnalyzer = () => {
     setReportUrl(null);
 
     try {
-      const response = await fetch('http://localhost:8080/api/analyze', {
+      console.log('Sending request to analyze bill:', billNumber);
+      const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -88,12 +89,19 @@ const BillAnalyzer = () => {
         body: JSON.stringify({ billNumber })
       });
 
+      console.log('Response status:', response.status);
+
       if (!response.ok) {
         const data = await response.json();
+        console.error('Error response:', data);
         throw new Error(data.error || 'Failed to start analysis');
       }
+
+      const data = await response.json();
+      console.log('Success response:', data);
     } catch (err) {
-      setError(err.message);
+      console.error('Error details:', err);
+      setError(err.message || 'Failed to connect to server');
       setIsProcessing(false);
     }
   };

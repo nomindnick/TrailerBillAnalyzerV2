@@ -5,6 +5,7 @@ from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 import os
 import logging
+import asyncio
 from src.services.bill_scraper import BillScraper
 from src.services.base_parser import BaseParser
 from src.services.json_builder import JsonBuilder
@@ -22,9 +23,15 @@ CORS(app, resources={
     r"/api/*": {
         "origins": "*",
         "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type"]
+        "allow_headers": ["Content-Type"],
+        "expose_headers": ["Content-Type"]
     }
-})
+}, supports_credentials=True)
+
+@app.after_request
+def after_request(response):
+    logger.info(f"Response headers: {dict(response.headers)}")
+    return response
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 class AnalysisProgressHandler:
@@ -49,6 +56,7 @@ class AnalysisProgressHandler:
             'total_substeps': self.total_substeps
         })
 
+# Frontend routes
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve(path):
@@ -56,6 +64,7 @@ def serve(path):
         return send_from_directory(app.static_folder, path)
     return send_from_directory(app.static_folder, 'index.html')
 
+# API routes
 @app.route('/api/analyze', methods=['POST'])
 def analyze_bill():
     try:
@@ -80,6 +89,21 @@ def analyze_bill():
         logger.error(f"Error in analyze_bill: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/reports/<filename>')
+def serve_report(filename):
+    reports_dir = os.path.join(app.root_path, 'reports')
+    return send_from_directory(reports_dir, filename)
+
+# Error handlers
+@app.errorhandler(404)
+def not_found_error(error):
+    return jsonify({'error': 'Not found'}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({'error': 'Internal server error'}), 500
+
+# Analysis process
 async def process_bill_analysis(bill_number):
     progress = AnalysisProgressHandler(socketio)
     try:
@@ -143,26 +167,18 @@ async def process_bill_analysis(bill_number):
             'billNumber': bill_number
         })
 
-@app.route('/api/reports/<filename>')
-def serve_report(filename):
-    reports_dir = os.path.join(app.root_path, 'reports')
-    return send_from_directory(reports_dir, filename)
-
-# Error handlers
-@app.errorhandler(404)
-def not_found_error(error):
-    return jsonify({'error': 'Not found'}), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    return jsonify({'error': 'Internal server error'}), 500
-
 if __name__ == '__main__':
     # Ensure reports directory exists
     os.makedirs('reports', exist_ok=True)
 
+    # Build the frontend if it doesn't exist
+    if not os.path.exists('frontend/dist'):
+        logger.info("Building frontend...")
+        os.system('cd frontend && npm install && npm run build')
+
+    # Get the port from environment variable
+    port = int(os.environ.get('PORT', 8080))
+
     # Start the server
-    logger.info("Starting server...")
-    import eventlet
-    eventlet.monkey_patch()
-    socketio.run(app, host='0.0.0.0', port=8080, debug=True)
+    logger.info(f"Starting server on port {port}...")
+    socketio.run(app, host='0.0.0.0', port=port, debug=True)
