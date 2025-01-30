@@ -111,14 +111,10 @@ class BillScraper:
 
             self.logger.info(f"Attempting to fetch bill from {url}")
 
-            connector = TCPConnector(
-                ssl=False,
-                limit=1
-            )
-
             async with aiohttp.ClientSession(
+                headers=self.headers,
                 timeout=self.timeout,
-                headers=self.headers
+                connector=aiohttp.TCPConnector(ssl=False)
             ) as session:
                 async with session.get(url) as response:
                     self.logger.debug(f"Response status: {response.status}")
