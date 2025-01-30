@@ -41,14 +41,14 @@ const DownloadMenu = ({ reportUrl }) => {
   };
 
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={true}>
       <DropdownMenuTrigger asChild>
         <Button className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white">
           <Download size={20} />
           Download Report
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-48">
+      <DropdownMenuContent className="w-48 z-[100]" sideOffset={5}>
         <DropdownMenuItem onClick={handleViewHtml} className="cursor-pointer flex items-center">
           <FileText className="mr-2 h-4 w-4" />
           <span>View HTML</span>
