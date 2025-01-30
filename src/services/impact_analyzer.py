@@ -8,23 +8,26 @@ from src.models.practice_groups import PracticeGroups, PracticeGroupRelevance
 from src.logging_config import get_module_logger
 
 class ImpactAnalyzer:
-    """
-    Analyzes each change in the trailer bill for its impact on public agencies
-    and determines relevant practice groups.
-    """
-
     def __init__(self):
         """Initialize the analyzer with OpenAI client and logger."""
         self.logger = logging.getLogger(__name__)
 
-        # Initialize OpenAI client with minimal configuration
+        # Get API key with explicit error handling
         api_key = os.getenv('OPENAI_API_KEY')
         if not api_key:
+            self.logger.error("OPENAI_API_KEY environment variable is not set")
             raise ValueError("OPENAI_API_KEY environment variable is not set")
 
-        self.client = OpenAI()  # It will automatically use OPENAI_API_KEY from environment
+        try:
+            self.client = openai.OpenAI(api_key=api_key)
+            # Test the client connection
+            self.client.models.list()
+            self.logger.info("Successfully initialized OpenAI client")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize OpenAI client: {str(e)}")
+            raise
+
         self.model = "gpt-4o-2024-08-06"  # Using the latest available model
-        self.logger = logging.getLogger(__name__)
         self.practice_groups = PracticeGroups()
 
     async def analyze_changes(self, skeleton: Dict[str, Any]) -> Dict[str, Any]:

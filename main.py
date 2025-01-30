@@ -6,6 +6,7 @@ from flask import Flask, send_from_directory, request, jsonify
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 import os
+from dotenv import load_dotenv
 import logging
 import asyncio
 from src.services.bill_scraper import BillScraper
@@ -15,9 +16,17 @@ from src.services.section_matcher import SectionMatcher
 from src.services.impact_analyzer import ImpactAnalyzer
 from src.services.report_generator import ReportGenerator
 
+# Load environment variables
+load_dotenv()
+
+# Verify critical environment variables
+if not os.getenv('OPENAI_API_KEY'):
+    raise ValueError("OPENAI_API_KEY environment variable is not set")
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+logger.info("Environment variables loaded")
 
 # Initialize Flask app and extensions
 app = Flask(__name__, static_folder='frontend/dist', static_url_path='')
