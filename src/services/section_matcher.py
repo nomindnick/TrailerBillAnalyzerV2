@@ -24,7 +24,7 @@ class SectionMatcher:
         self.client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
         # Use a currently supported model. You can switch to "gpt-4" if you have access.
-        self.model = "gpt-4-turbo-preview"
+        self.model = "gpt-4o-2024-08-06"
 
         # Initialize rate limiter for 50 requests per minute
         self.rate_limiter = RateLimiter(requests_per_minute=50)
