@@ -80,7 +80,7 @@ class BillScraper:
         self.base_url = "https://leginfo.legislature.ca.gov/faces"
         self.bill_url = f"{self.base_url}/billTextClient.xhtml"
         self.max_retries = max_retries
-        self.timeout = ClientTimeout(total=timeout)
+        self.timeout = timeout
 
         # Common browser headers
         self.headers = {
@@ -111,11 +111,8 @@ class BillScraper:
 
             self.logger.info(f"Attempting to fetch bill from {url}")
 
-            async with aiohttp.ClientSession(
-                headers=self.headers,
-                timeout=self.timeout,
-                connector=aiohttp.TCPConnector(ssl=False)
-            ) as session:
+            timeout = aiohttp.ClientTimeout(total=self.timeout)
+            async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
                 async with session.get(url) as response:
                     self.logger.debug(f"Response status: {response.status}")
 
