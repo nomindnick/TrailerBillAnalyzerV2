@@ -104,33 +104,39 @@ class BillScraper:
 
     async def get_bill_text(self, bill_number: str, year: int) -> Dict[str, Any]:
         """Retrieves the full text for the specified bill with retry logic."""
-        try:
-            bill_number = bill_number.replace(" ", "").upper()
-            session_str = self.get_session_year_range(year)
-            url = f"{self.bill_url}?bill_id={session_str}0{bill_number}"
+        for attempt in range(self.max_retries):
+            try:
+                bill_number = bill_number.replace(" ", "").upper()
+                session_str = self.get_session_year_range(year)
+                url = f"{self.bill_url}?bill_id={session_str}0{bill_number}"
 
-            self.logger.info(f"Attempting to fetch bill from {url}")
+                self.logger.info(f"Attempt {attempt + 1}/{self.max_retries}: Fetching bill from {url}")
 
-            async with aiohttp.ClientSession(trust_env=True) as session:
-                async with session.get(url, headers=self.headers, timeout=self.timeout) as response:
-                    self.logger.debug(f"Response status: {response.status}")
+                timeout = aiohttp.ClientTimeout(total=self.timeout)
+                connector = aiohttp.TCPConnector(ssl=False, force_close=True)
+                
+                async with aiohttp.ClientSession(connector=connector) as session:
+                    async with session.get(url, headers=self.headers, timeout=timeout, allow_redirects=True) as response:
+                        self.logger.debug(f"Response status: {response.status}")
+                        
+                        if response.status == 200:
+                            html_content = await response.text()
+                            self.logger.debug(f"Response content length: {len(html_content)}")
+                            
+                            if not html_content:
+                                raise ValueError("Empty response received")
+                                
+                            result = self._parse_bill_page(html_content)
+                            self.logger.info(f"Successfully parsed bill text of length {len(result.get('full_text', ''))}")
+                            return result
+                            
+                        response.raise_for_status()
 
-                    if response.status == 200:
-                        html_content = await response.text()
-                        self.logger.debug(f"Response content length: {len(html_content)}")
-
-                        if not html_content:
-                            raise ValueError("Empty response received")
-
-                        result = self._parse_bill_page(html_content)
-                        self.logger.info(f"Successfully parsed bill text of length {len(result.get('full_text', ''))}")
-                        return result
-
-                    response.raise_for_status()
-
-        except Exception as e:
-            self.logger.error(f"Error fetching bill: {str(e)}")
-            raise
+            except Exception as e:
+                self.logger.error(f"Attempt {attempt + 1} failed: {str(e)}")
+                if attempt == self.max_retries - 1:
+                    raise RuntimeError(f"Failed to fetch bill after {self.max_retries} attempts: {str(e)}")
+                await asyncio.sleep(1)  # Wait before retrying
 
     def _parse_bill_page(self, html_content: str) -> Dict[str, Any]:
         """Parse the HTML content from the Legislature site."""
