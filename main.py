@@ -1,5 +1,7 @@
 import eventlet
+
 eventlet.monkey_patch()
+
 from flask import Flask, send_from_directory, request, jsonify
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
@@ -29,9 +31,12 @@ CORS(app, resources={
 }, supports_credentials=True)
 
 @app.after_request
+
 def after_request(response):
     logger.info(f"Response headers: {dict(response.headers)}")
     return response
+
+
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 class AnalysisProgressHandler:

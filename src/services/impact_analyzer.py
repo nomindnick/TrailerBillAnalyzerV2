@@ -1,6 +1,7 @@
 from typing import Dict, List, Any, Optional
 import logging
 import json
+import os
 from openai import OpenAI
 from src.models.practice_groups import PracticeGroups, PracticeGroupRelevance
 
@@ -15,8 +16,15 @@ class ImpactAnalyzer:
     def __init__(self):
         """Initialize the analyzer with OpenAI client and logger."""
         self.logger = logging.getLogger(__name__)
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.model = "gpt-4o-2024-08-06"
+
+        # Initialize OpenAI client with minimal configuration
+        api_key = os.getenv('OPENAI_API_KEY')
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable is not set")
+
+        self.client = OpenAI()  # It will automatically use OPENAI_API_KEY from environment
+        self.model = "gpt-4o-2024-08-06"  # Using the latest available model
+        self.logger = logging.getLogger(__name__)
         self.practice_groups = PracticeGroups()
 
     async def analyze_changes(self, skeleton: Dict[str, Any]) -> Dict[str, Any]:

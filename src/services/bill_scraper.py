@@ -77,24 +77,27 @@ class BillScraper:
             timeout: Timeout in seconds for each request
         """
         self.logger = logging.getLogger(__name__)
-        self.base_url = "https://leginfo.legislature.ca.gov/faces"
-        self.bill_url = f"{self.base_url}/billTextClient.xhtml"
+        self.base_url = "https://leginfo.legislature.ca.gov"
+        self.bill_url = f"{self.base_url}/faces/billNavClient.xhtml"  # Updated URL
         self.max_retries = max_retries
-        self.timeout = timeout
+        self.timeout = ClientTimeout(total=timeout)
 
         # Common browser headers
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
             "Accept-Encoding": "gzip, deflate, br",
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+            "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
             "Sec-Fetch-Dest": "document",
             "Sec-Fetch-Mode": "navigate",
             "Sec-Fetch-Site": "none",
             "Sec-Fetch-User": "?1",
-            "DNT": "1"
+            "Upgrade-Insecure-Requests": "1"
         }
 
     def get_session_year_range(self, year: int) -> str:
@@ -104,36 +107,56 @@ class BillScraper:
 
     async def get_bill_text(self, bill_number: str, year: int) -> Dict[str, Any]:
         """Retrieves the full text for the specified bill with retry logic."""
-        for attempt in range(self.max_retries):
-            try:
-                bill_number = bill_number.replace(" ", "").upper()
-                session_str = self.get_session_year_range(year)
-                url = f"{self.bill_url}?bill_id={session_str}0{bill_number}"
+        try:
+            bill_number = bill_number.replace(" ", "").upper()
+            session_str = self.get_session_year_range(year)
+            url = f"{self.bill_url}?bill_id={session_str}0{bill_number}"
 
-                self.logger.info(f"Attempt {attempt + 1}/{self.max_retries}: Fetching bill from {url}")
+            self.logger.info(f"Attempting to fetch bill from {url}")
+            self.logger.info(f"Session string: {session_str}")
+            self.logger.info(f"Full bill ID: {session_str}0{bill_number}")
 
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(url) as response:
-                        self.logger.debug(f"Response status: {response.status}")
-                        
-                        if response.status == 200:
-                            html_content = await response.text()
-                            self.logger.debug(f"Response content length: {len(html_content)}")
-                            
-                            if not html_content:
-                                raise ValueError("Empty response received")
-                                
-                            result = self._parse_bill_page(html_content)
-                            self.logger.info(f"Successfully parsed bill text of length {len(result.get('full_text', ''))}")
-                            return result
-                            
-                        response.raise_for_status()
+            connector = TCPConnector(
+                ssl=False,
+                limit=1,
+                force_close=True
+            )
 
-            except Exception as e:
-                self.logger.error(f"Attempt {attempt + 1} failed: {str(e)}")
-                if attempt == self.max_retries - 1:
-                    raise RuntimeError(f"Failed to fetch bill after {self.max_retries} attempts: {str(e)}")
-                await asyncio.sleep(1)  # Wait before retrying
+            async with aiohttp.ClientSession(
+                connector=connector,
+                timeout=self.timeout,
+                headers=self.headers
+            ) as session:
+                self.logger.info("Making request with headers:")
+                self.logger.info(self.headers)
+
+                async with session.get(url) as response:
+                    self.logger.info(f"Response status: {response.status}")
+                    self.logger.info(f"Response headers: {response.headers}")
+
+                    if response.status == 200:
+                        html_content = await response.text()
+                        self.logger.debug(f"First 500 chars of response: {html_content[:500]}")
+
+                        if not html_content:
+                            raise ValueError("Empty response received")
+
+                        # Log some basic stats about the HTML
+                        self.logger.info(f"Response content length: {len(html_content)}")
+                        self.logger.info(f"Contains 'Bill Text' tag: {'Bill Text' in html_content}")
+                        self.logger.info(f"Contains 'Content not found': {'Content not found' in html_content}")
+
+                        result = self._parse_bill_page(html_content)
+                        self.logger.info(f"Successfully parsed bill text of length {len(result.get('full_text', ''))}")
+                        return result
+
+                    self.logger.error(f"Failed with status {response.status}")
+                    response.raise_for_status()
+
+        except Exception as e:
+            self.logger.error(f"Error fetching bill: {str(e)}")
+            self.logger.exception(e)  # This will log the full traceback
+            raise
 
     def _parse_bill_page(self, html_content: str) -> Dict[str, Any]:
         """Parse the HTML content from the Legislature site."""
