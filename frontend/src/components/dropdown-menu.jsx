@@ -47,12 +47,12 @@ const DownloadMenu = ({ reportUrl }) => {
           Download Report
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent>
-        <DropdownMenuItem onSelect={handleViewHtml}>
+      <DropdownMenuContent className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg">
+        <DropdownMenuItem onSelect={handleViewHtml} className="flex items-center px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
           <FileText className="mr-2 h-4 w-4" />
           <span>View HTML</span>
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={handleDownloadPdf}>
+        <DropdownMenuItem onSelect={handleDownloadPdf} className="flex items-center px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
           <FilePdf className="mr-2 h-4 w-4" />
           <span>Download PDF</span>
         </DropdownMenuItem>
