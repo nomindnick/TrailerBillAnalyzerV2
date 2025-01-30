@@ -1,18 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, createContext, useContext } from 'react';
 import { Socket, io } from 'socket.io-client';
 import { Sun, Moon, Download, AlertTriangle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import DownloadMenu from './dropdown-menu.jsx'; 
+
+// Create ThemeContext
+const ThemeContext = createContext('light');
 
 const BillAnalyzer = () => {
   const [billNumber, setBillNumber] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
-  const [isDarkMode, setIsDarkMode] = useState(false);
   const [error, setError] = useState(null);
   const [reportUrl, setReportUrl] = useState(null);
   const [socket, setSocket] = useState(null);
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light'); // Added theme state
 
   const steps = [
     { id: 1, name: 'Fetching Bill Text', description: 'Retrieving bill content from legislature website' },
@@ -114,20 +117,23 @@ const BillAnalyzer = () => {
   };
 
   const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
+    const newTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(newTheme);
+    localStorage.setItem('theme', newTheme);
     document.documentElement.classList.toggle('dark');
   };
 
   return (
-    <div className={`min-h-screen p-8 ${isDarkMode ? 'dark' : ''}`}>
+    <ThemeContext.Provider value={theme}> {/* Added ThemeContext Provider */}
+    <div className={`min-h-screen p-8 ${theme === 'dark' ? 'dark' : ''}`}>
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">Trailer Bill Analyzer</h1>
           <button
             onClick={toggleTheme}
-            className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
+            className={`p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}
           >
-            {isDarkMode ? <Sun size={24} /> : <Moon size={24} />}
+            {theme === 'dark' ? <Sun size={24} /> : <Moon size={24} />}
           </button>
         </div>
 
@@ -212,6 +218,7 @@ const BillAnalyzer = () => {
         )}
       </div>
     </div>
+    </ThemeContext.Provider>
   );
 };
 
