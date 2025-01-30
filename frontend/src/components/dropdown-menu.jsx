@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { 
   DropdownMenu,
@@ -18,7 +19,7 @@ const DownloadMenu = ({ reportUrl }) => {
       // Convert HTML URL to PDF URL
       const pdfUrl = reportUrl.replace('.html', '.pdf');
       const response = await fetch(pdfUrl);
-
+      
       if (!response.ok) {
         throw new Error('Failed to download PDF');
       }
@@ -27,7 +28,7 @@ const DownloadMenu = ({ reportUrl }) => {
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
-      link.download = `bill_analysis.pdf`;
+      link.download = 'bill_analysis.pdf';
       document.body.appendChild(link);
       link.click();
       link.remove();
