@@ -112,11 +112,8 @@ class BillScraper:
 
                 self.logger.info(f"Attempt {attempt + 1}/{self.max_retries}: Fetching bill from {url}")
 
-                timeout = aiohttp.ClientTimeout(total=self.timeout)
-                connector = aiohttp.TCPConnector(ssl=False, force_close=True)
-                
-                async with aiohttp.ClientSession(connector=connector) as session:
-                    async with session.get(url, headers=self.headers, timeout=timeout, allow_redirects=True) as response:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url) as response:
                         self.logger.debug(f"Response status: {response.status}")
                         
                         if response.status == 200:
