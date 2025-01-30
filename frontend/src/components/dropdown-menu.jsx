@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { 
   DropdownMenu,
@@ -21,7 +20,7 @@ const DownloadMenu = ({ reportUrl }) => {
     try {
       const pdfUrl = `${reportUrl.split('.').slice(0, -1).join('.')}.pdf`;
       const response = await fetch(pdfUrl);
-      
+
       if (!response.ok) {
         throw new Error('Failed to download PDF');
       }
@@ -50,11 +49,11 @@ const DownloadMenu = ({ reportUrl }) => {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-48">
-        <DropdownMenuItem onSelect={handleViewHtml} className="cursor-pointer">
+        <DropdownMenuItem onClick={handleViewHtml} className="cursor-pointer flex items-center">
           <FileText className="mr-2 h-4 w-4" />
           <span>View HTML</span>
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={handleDownloadPdf} className="cursor-pointer">
+        <DropdownMenuItem onClick={handleDownloadPdf} className="cursor-pointer flex items-center">
           <FilePdf className="mr-2 h-4 w-4" />
           <span>Download PDF</span>
         </DropdownMenuItem>
