@@ -111,10 +111,8 @@ class BillScraper:
 
             self.logger.info(f"Attempting to fetch bill from {url}")
 
-            timeout = aiohttp.ClientTimeout(total=self.timeout)
-            session = aiohttp.ClientSession(headers=self.headers, timeout=timeout)
-            try:
-                async with session.get(url) as response:
+            async with aiohttp.ClientSession(trust_env=True) as session:
+                async with session.get(url, headers=self.headers, timeout=self.timeout) as response:
                     self.logger.debug(f"Response status: {response.status}")
 
                     if response.status == 200:
@@ -125,15 +123,10 @@ class BillScraper:
                             raise ValueError("Empty response received")
 
                         result = self._parse_bill_page(html_content)
-
-                        # Log the parsed result size
                         self.logger.info(f"Successfully parsed bill text of length {len(result.get('full_text', ''))}")
-
                         return result
 
                     response.raise_for_status()
-            finally:
-                await session.close()
 
         except Exception as e:
             self.logger.error(f"Error fetching bill: {str(e)}")
