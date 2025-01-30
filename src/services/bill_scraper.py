@@ -113,12 +113,10 @@ class BillScraper:
 
             connector = TCPConnector(
                 ssl=False,
-                limit=1,
-                force_close=True
+                limit=1
             )
 
             async with aiohttp.ClientSession(
-                connector=connector,
                 timeout=self.timeout,
                 headers=self.headers
             ) as session:
