@@ -116,7 +116,7 @@ async def process_bill_analysis(bill_number):
     try:
         # Step 1: Fetch bill text
         progress.update_progress(1, "Fetching bill text")
-        bill_scraper = BillScraper()
+        bill_scraper = BillScraper(max_retries=3, timeout=30)
         bill_text = await bill_scraper.get_bill_text(bill_number, 2024)
 
         # Step 2: Initial parsing

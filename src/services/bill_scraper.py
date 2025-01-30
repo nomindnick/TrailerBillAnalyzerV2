@@ -112,7 +112,7 @@ class BillScraper:
             self.logger.info(f"Attempting to fetch bill from {url}")
 
             timeout = aiohttp.ClientTimeout(total=self.timeout)
-            async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
+            async with aiohttp.ClientSession(headers=self.headers) as session:
                 async with session.get(url) as response:
                     self.logger.debug(f"Response status: {response.status}")
 
