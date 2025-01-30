@@ -112,7 +112,8 @@ class BillScraper:
             self.logger.info(f"Attempting to fetch bill from {url}")
 
             timeout = aiohttp.ClientTimeout(total=self.timeout)
-            async with aiohttp.ClientSession(headers=self.headers) as session:
+            session = aiohttp.ClientSession(headers=self.headers, timeout=timeout)
+            try:
                 async with session.get(url) as response:
                     self.logger.debug(f"Response status: {response.status}")
 
@@ -131,6 +132,8 @@ class BillScraper:
                         return result
 
                     response.raise_for_status()
+            finally:
+                await session.close()
 
         except Exception as e:
             self.logger.error(f"Error fetching bill: {str(e)}")
