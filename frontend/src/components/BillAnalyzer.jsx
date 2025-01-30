@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Socket, io } from 'socket.io-client';
 import { Sun, Moon, Download, AlertTriangle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import DownloadMenu from './DownloadMenu'; 
 
 const BillAnalyzer = () => {
   const [billNumber, setBillNumber] = useState('');
@@ -206,13 +207,7 @@ const BillAnalyzer = () => {
 
         {reportUrl && (
           <div className="flex justify-center mt-6">
-            <button
-              onClick={handleDownload}
-              className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700"
-            >
-              <Download size={20} />
-              Download Report
-            </button>
+            <DownloadMenu reportUrl={reportUrl} />
           </div>
         )}
       </div>

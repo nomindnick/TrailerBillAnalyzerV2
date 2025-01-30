@@ -9,6 +9,7 @@ import os
 from dotenv import load_dotenv
 import logging
 import asyncio
+from weasyprint import HTML
 from src.services.bill_scraper import BillScraper
 from src.services.base_parser import BaseParser
 from src.services.json_builder import JsonBuilder
@@ -187,7 +188,27 @@ async def process_bill_analysis(bill_number):
             'error': str(e),
             'billNumber': bill_number
         })
+        
+@app.route('/api/reports/<filename>.pdf')
+def serve_pdf_report(filename):
+    try:
+        # Get the HTML file path
+        html_path = os.path.join(app.root_path, 'reports', f'{filename}.html')
+        if not os.path.exists(html_path):
+            return jsonify({'error': 'Report not found'}), 404
 
+        # Generate PDF using WeasyPrint
+        pdf_path = os.path.join(app.root_path, 'reports', f'{filename}.pdf')
+        HTML(filename=html_path).write_pdf(pdf_path)
+
+        return send_from_directory(os.path.dirname(pdf_path), 
+                                 os.path.basename(pdf_path),
+                                 as_attachment=True,
+                                 mimetype='application/pdf')
+    except Exception as e:
+        logger.error(f"Error generating PDF: {str(e)}")
+        return jsonify({'error': 'Failed to generate PDF'}), 500
+        
 if __name__ == '__main__':
     # Ensure reports directory exists
     os.makedirs('reports', exist_ok=True)
