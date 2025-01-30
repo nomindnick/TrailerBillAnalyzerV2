@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Socket, io } from 'socket.io-client';
 import { Sun, Moon, Download, AlertTriangle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import DownloadMenu from './dropdown-menu'; 
+import DownloadMenu from './dropdown-menu.jsx'; 
 
 const BillAnalyzer = () => {
   const [billNumber, setBillNumber] = useState('');

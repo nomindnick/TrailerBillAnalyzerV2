@@ -42,17 +42,17 @@ const DownloadMenu = ({ reportUrl }) => {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button className="flex items-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg">
+        <Button variant="primary" className="flex items-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg">
           <Download size={20} />
           Download Report
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={handleViewHtml} className="cursor-pointer">
+      <DropdownMenuContent>
+        <DropdownMenuItem onSelect={handleViewHtml}>
           <FileText className="mr-2 h-4 w-4" />
           <span>View HTML</span>
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={handleDownloadPdf} className="cursor-pointer">
+        <DropdownMenuItem onSelect={handleDownloadPdf}>
           <FilePdf className="mr-2 h-4 w-4" />
           <span>Download PDF</span>
         </DropdownMenuItem>
