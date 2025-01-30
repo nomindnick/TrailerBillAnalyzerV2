@@ -27,7 +27,7 @@ class ImpactAnalyzer:
             self.logger.error(f"Failed to initialize OpenAI client: {str(e)}")
             raise
 
-        self.model = "gpt-4o-2024-08-06"  # Using the latest available model
+        self.model = "gpt-4o-mini-2024-07-18"  # Using the latest available model
         self.practice_groups = PracticeGroups()
 
     async def analyze_changes(self, skeleton: Dict[str, Any]) -> Dict[str, Any]:
