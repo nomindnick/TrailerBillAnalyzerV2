@@ -60,7 +60,17 @@ const DownloadMenu = ({ reportUrl }) => {
       // Convert "…/filename.html" => "…/filename.pdf"
       const pdfUrl = `${reportUrl.split('.').slice(0, -1).join('.')}.pdf`;
       const response = await fetch(pdfUrl);
-      if (!response.ok) throw new Error('Failed to download PDF');
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to download PDF: ${errorText}`);
+      }
+      
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/pdf')) {
+        throw new Error('Invalid PDF response from server');
+      }
+      
       const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -72,7 +82,7 @@ const DownloadMenu = ({ reportUrl }) => {
       window.URL.revokeObjectURL(downloadUrl);
     } catch (error) {
       console.error('Error downloading PDF:', error);
-      alert('Failed to download PDF. Please try again.');
+      alert(`Failed to download PDF: ${error.message}`);
     }
   };
 
