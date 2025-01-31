@@ -200,17 +200,22 @@ def serve_pdf_report(filename):
         # Generate PDF using WeasyPrint
         pdf_path = os.path.join(app.root_path, 'reports', f'{filename}.pdf')
         
-        # Read HTML file content
+        # Read HTML file content and include base URL for resources
         with open(html_path, 'r') as f:
             html_content = f.read()
             
-        # Generate PDF from HTML content
-        HTML(string=html_content).write_pdf(pdf_path)
+        # Create PDF with proper base URL
+        base_url = os.path.dirname(html_path)
+        HTML(string=html_content, base_url=base_url).write_pdf(pdf_path)
 
-        return send_from_directory(os.path.dirname(pdf_path), 
-                                 os.path.basename(pdf_path),
-                                 as_attachment=True,
-                                 mimetype='application/pdf')
+        # Send the file with correct headers
+        response = send_from_directory(
+            os.path.dirname(pdf_path),
+            os.path.basename(pdf_path),
+            as_attachment=True
+        )
+        response.headers['Content-Type'] = 'application/pdf'
+        return response
     except Exception as e:
         logger.error(f"Error generating PDF: {str(e)}")
         return jsonify({'error': 'Failed to generate PDF'}), 500
