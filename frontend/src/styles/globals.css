@@ -1,35 +1,23 @@
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
- 
-@layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --border: 214.3 31.8% 91.4%;
-  }
- 
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-  }
-}
 
 @layer base {
-  * {
-    @apply border-border;
+  :root {
+    /* Light mode vars: (white background, dark text) */
+    --background: 0 0% 100%;       /* hsl(0,0%,100%) => white */
+    --foreground: 222.2 84% 4.9%;  /* a dark hue for text */
   }
+
+  /* When .dark is on <html>, use these instead: */
+  .dark {
+    --background: 222.2 84% 4.9%;   /* a near-black/dark navy color */
+    --foreground: 210 40% 98%;      /* very light text color */
+  }
+
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground; /* Pulls from --background & --foreground */
+    margin: 0; /* Ensure no default margin */
+    padding: 0;
   }
 }

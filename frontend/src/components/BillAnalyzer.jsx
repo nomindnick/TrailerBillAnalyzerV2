@@ -1,11 +1,11 @@
-import React, { useState, useEffect, createContext, useContext } from 'react';
-import { Socket, io } from 'socket.io-client';
-import { Sun, Moon, Download, AlertTriangle } from 'lucide-react';
+// src/components/BillAnalyzer.jsx
+
+import React, { useState, useEffect } from 'react';
+import { io } from 'socket.io-client';
+import { Sun, Moon, AlertTriangle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import DownloadMenu from './dropdown-menu.jsx'; 
-
-// Create ThemeContext
-const ThemeContext = createContext('light');
+import { useTheme } from '../lib/ThemeProvider';
 
 const BillAnalyzer = () => {
   const [billNumber, setBillNumber] = useState('');
@@ -15,7 +15,9 @@ const BillAnalyzer = () => {
   const [error, setError] = useState(null);
   const [reportUrl, setReportUrl] = useState(null);
   const [socket, setSocket] = useState(null);
-  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light'); // Added theme state
+
+  // Use the global theme from ThemeProvider
+  const { theme, toggleTheme } = useTheme();
 
   const steps = [
     { id: 1, name: 'Fetching Bill Text', description: 'Retrieving bill content from legislature website' },
@@ -101,8 +103,8 @@ const BillAnalyzer = () => {
         throw new Error(data.error || 'Failed to start analysis');
       }
 
-      const data = await response.json();
-      console.log('Success response:', data);
+      // If successful, the server will do the analysis in background
+      await response.json(); // not used, but we can read to complete
     } catch (err) {
       console.error('Error details:', err);
       setError(err.message || 'Failed to connect to server');
@@ -110,33 +112,25 @@ const BillAnalyzer = () => {
     }
   };
 
-  const handleDownload = async () => {
-    if (reportUrl) {
-      window.open(reportUrl, '_blank');
-    }
-  };
-
-  const toggleTheme = () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(newTheme);
-    localStorage.setItem('theme', newTheme);
-    document.documentElement.classList.toggle('dark');
-  };
-
   return (
-    <ThemeContext.Provider value={theme}> {/* Added ThemeContext Provider */}
-    <div className={`min-h-screen p-8 relative ${theme === 'dark' ? 'dark' : ''}`}>
+    // We do NOT forcibly add "dark" class here. The <html> element is toggled in ThemeProvider.
+    <div className="min-h-screen p-8 bg-background text-foreground transition-colors duration-200">
       <div className="max-w-4xl mx-auto">
+
+        {/* Header with theme toggle button */}
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">Trailer Bill Analyzer</h1>
           <button
             onClick={toggleTheme}
-            className={`p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}
+            className={`p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 ${
+              theme === 'dark' ? 'text-gray-200' : 'text-gray-700'
+            }`}
           >
             {theme === 'dark' ? <Sun size={24} /> : <Moon size={24} />}
           </button>
         </div>
 
+        {/* Error alert */}
         {error && (
           <Alert variant="destructive" className="mb-6">
             <AlertTriangle className="h-4 w-4" />
@@ -144,6 +138,7 @@ const BillAnalyzer = () => {
           </Alert>
         )}
 
+        {/* Input form */}
         <form onSubmit={handleSubmit} className="mb-8">
           <div className="flex gap-4">
             <input
@@ -164,11 +159,12 @@ const BillAnalyzer = () => {
           </div>
         </form>
 
+        {/* Progress steps */}
         {isProcessing && (
           <div className="space-y-6">
             <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg">
               <ol className="relative border-l border-gray-300 dark:border-gray-700 ml-3">
-                {steps.map((step, index) => {
+                {steps.map((step) => {
                   const isActive = currentStep === step.id;
                   const isComplete = currentStep > step.id;
                   return (
@@ -176,17 +172,23 @@ const BillAnalyzer = () => {
                       <div className="absolute w-3 h-3 rounded-full mt-1.5 -left-1.5 border border-gray-300 dark:border-gray-700">
                         <div
                           className={`w-full h-full rounded-full ${
-                            isComplete ? 'bg-green-500' :
-                            isActive ? 'bg-blue-500 animate-pulse' :
-                            'bg-gray-300 dark:bg-gray-700'
+                            isComplete
+                              ? 'bg-green-500'
+                              : isActive
+                              ? 'bg-blue-500 animate-pulse'
+                              : 'bg-gray-300 dark:bg-gray-700'
                           }`}
                         />
                       </div>
-                      <div className={`${
-                        isActive ? 'text-blue-600 dark:text-blue-400' :
-                        isComplete ? 'text-green-600 dark:text-green-400' :
-                        'text-gray-500 dark:text-gray-400'
-                      }`}>
+                      <div
+                        className={`${
+                          isActive
+                            ? 'text-blue-600 dark:text-blue-400'
+                            : isComplete
+                            ? 'text-green-600 dark:text-green-400'
+                            : 'text-gray-500 dark:text-gray-400'
+                        }`}
+                      >
                         <h3 className="font-semibold">{step.name}</h3>
                         <p className="text-sm">{step.description}</p>
                         {isActive && step.id === 4 && progress.total > 0 && (
@@ -197,7 +199,9 @@ const BillAnalyzer = () => {
                             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
                               <div
                                 className="bg-blue-600 h-2.5 rounded-full transition-all duration-500"
-                                style={{ width: `${(progress.current / progress.total) * 100}%` }}
+                                style={{
+                                  width: `${(progress.current / progress.total) * 100}%`,
+                                }}
                               />
                             </div>
                           </div>
@@ -211,6 +215,7 @@ const BillAnalyzer = () => {
           </div>
         )}
 
+        {/* Report download dropdown when analysis completes */}
         {reportUrl && (
           <div className="flex justify-center mt-6">
             <DownloadMenu reportUrl={reportUrl} />
@@ -218,7 +223,6 @@ const BillAnalyzer = () => {
         )}
       </div>
     </div>
-    </ThemeContext.Provider>
   );
 };
 

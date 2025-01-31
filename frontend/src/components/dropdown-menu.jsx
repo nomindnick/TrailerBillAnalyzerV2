@@ -1,41 +1,54 @@
+// src/components/dropdown-menu.jsx
 
 import React from 'react';
-import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { cn } from "@/lib/utils";
+import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
+import { cn } from '@/lib/utils';
 import { Download, FileText, FilePdf } from 'lucide-react';
-import { Button } from "@/components/ui/button";
+import { Button } from '@/components/ui/button';
 import { useTheme } from '../lib/ThemeProvider';
 
 const DropdownMenu = DropdownMenuPrimitive.Root;
 const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
-const DropdownMenuContent = React.forwardRef(({ className, sideOffset = 4, ...props }, ref) => (
-  <DropdownMenuPrimitive.Portal>
-    <DropdownMenuPrimitive.Content
-      ref={ref}
-      sideOffset={sideOffset}
-      className={cn(
-        "z-50 min-w-[8rem] overflow-hidden rounded-md border bg-white p-1 text-gray-950 shadow-md animate-in data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 dark:bg-gray-950 dark:text-gray-50",
-        className
-      )}
-      {...props}
-    />
-  </DropdownMenuPrimitive.Portal>
-));
-DropdownMenuContent.displayName = "DropdownMenuContent";
+
+const DropdownMenuContent = React.forwardRef(
+  ({ className, sideOffset = 4, ...props }, ref) => (
+    <DropdownMenuPrimitive.Portal>
+      <DropdownMenuPrimitive.Content
+        ref={ref}
+        sideOffset={sideOffset}
+        className={cn(
+          'z-50 min-w-[8rem] overflow-hidden rounded-md border bg-white p-1 text-gray-950 shadow-md animate-in ' +
+            'data-[side=bottom]:slide-in-from-top-2 ' +
+            'data-[side=left]:slide-in-from-right-2 ' +
+            'data-[side=right]:slide-in-from-left-2 ' +
+            'data-[side=top]:slide-in-from-bottom-2 ' +
+            'dark:bg-gray-950 dark:text-gray-50',
+          className
+        )}
+        {...props}
+      />
+    </DropdownMenuPrimitive.Portal>
+  )
+);
+DropdownMenuContent.displayName = 'DropdownMenuContent';
 
 const DropdownMenuItem = React.forwardRef(({ className, ...props }, ref) => (
   <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-gray-100 focus:text-gray-900 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 dark:focus:bg-gray-800 dark:focus:text-gray-50",
+      'relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none ' +
+        'focus:bg-gray-100 focus:text-gray-900 ' +
+        'data-[disabled]:pointer-events-none data-[disabled]:opacity-50 ' +
+        'dark:focus:bg-gray-800 dark:focus:text-gray-50',
       className
     )}
     {...props}
   />
 ));
-DropdownMenuItem.displayName = "DropdownMenuItem";
+DropdownMenuItem.displayName = 'DropdownMenuItem';
 
 const DownloadMenu = ({ reportUrl }) => {
+  // If you need the theme (e.g. for dynamic styles), you can do so:
   const { theme } = useTheme();
 
   const handleViewHtml = () => {
@@ -44,6 +57,7 @@ const DownloadMenu = ({ reportUrl }) => {
 
   const handleDownloadPdf = async () => {
     try {
+      // Convert "…/filename.html" => "…/filename.pdf"
       const pdfUrl = `${reportUrl.split('.').slice(0, -1).join('.')}.pdf`;
       const response = await fetch(pdfUrl);
       if (!response.ok) throw new Error('Failed to download PDF');
