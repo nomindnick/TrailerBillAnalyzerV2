@@ -4,7 +4,7 @@ import React from 'react';
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
 import { cn } from '@/lib/utils';
 import { Download, FileText, FilePdf } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button } from '../../components/ui/button';
 import { useTheme } from '../lib/ThemeProvider';
 
 const DropdownMenu = DropdownMenuPrimitive.Root;
