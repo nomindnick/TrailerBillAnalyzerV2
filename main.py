@@ -199,7 +199,13 @@ def serve_pdf_report(filename):
 
         # Generate PDF using WeasyPrint
         pdf_path = os.path.join(app.root_path, 'reports', f'{filename}.pdf')
-        HTML(filename=html_path).write_pdf(pdf_path)
+        
+        # Read HTML file content
+        with open(html_path, 'r') as f:
+            html_content = f.read()
+            
+        # Generate PDF from HTML content
+        HTML(string=html_content).write_pdf(pdf_path)
 
         return send_from_directory(os.path.dirname(pdf_path), 
                                  os.path.basename(pdf_path),
