@@ -3,7 +3,7 @@
 import React from 'react';
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
 import { cn } from '@/lib/utils';
-import { Download, FileText, FilePdf } from 'lucide-react';
+import { Download, FileText, File } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { useTheme } from '../lib/ThemeProvider';
 
@@ -90,7 +90,7 @@ const DownloadMenu = ({ reportUrl }) => {
           <span>View HTML</span>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={handleDownloadPdf}>
-          <FilePdf className="mr-2 h-4 w-4" />
+          <File className="mr-2 h-4 w-4" />
           <span>Download PDF</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
