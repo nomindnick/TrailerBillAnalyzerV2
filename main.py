@@ -2,14 +2,14 @@ import eventlet
 
 eventlet.monkey_patch()
 
-from flask import Flask, send_from_directory, request, jsonify
+from flask import Flask, send_from_directory, request, jsonify, make_response
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 import os
 from dotenv import load_dotenv
 import logging
 import asyncio
-from weasyprint import HTML
+from weasyprint import HTML, CSS
 from src.services.bill_scraper import BillScraper
 from src.services.base_parser import BaseParser
 from src.services.json_builder import JsonBuilder
@@ -41,7 +41,6 @@ CORS(app, resources={
 }, supports_credentials=True)
 
 @app.after_request
-
 def after_request(response):
     logger.info(f"Response headers: {dict(response.headers)}")
     return response
@@ -86,10 +85,10 @@ def analyze_bill():
         logger.info(f"Received request: {request.method} {request.path}")
         logger.info(f"Request headers: {dict(request.headers)}")
         logger.info(f"Request data: {request.get_data(as_text=True)}")
-        
+
         data = request.json
         logger.info(f"Parsed JSON data: {data}")
-        
+
         bill_number = data.get('billNumber')
         if not bill_number:
             logger.error("Bill number is missing from request")
@@ -188,38 +187,44 @@ async def process_bill_analysis(bill_number):
             'error': str(e),
             'billNumber': bill_number
         })
-        
+
 @app.route('/api/reports/<filename>.pdf')
 def serve_pdf_report(filename):
     try:
         # Get the HTML file path
         html_path = os.path.join(app.root_path, 'reports', f'{filename}.html')
         if not os.path.exists(html_path):
+            logger.error(f"Report file not found: {html_path}")
             return jsonify({'error': 'Report not found'}), 404
 
-        # Generate PDF using WeasyPrint
-        pdf_path = os.path.join(app.root_path, 'reports', f'{filename}.pdf')
-        
-        # Read HTML file content and include base URL for resources
-        with open(html_path, 'r') as f:
+        # Read HTML content
+        with open(html_path, 'r', encoding='utf-8') as f:
             html_content = f.read()
-            
-        # Create PDF with proper base URL
-        base_url = os.path.dirname(html_path)
-        HTML(string=html_content, base_url=base_url).write_pdf(pdf_path)
 
-        # Send the file with correct headers
-        response = send_from_directory(
-            os.path.dirname(pdf_path),
-            os.path.basename(pdf_path),
-            as_attachment=True
-        )
-        response.headers['Content-Type'] = 'application/pdf'
+        # Generate PDF
+        report_gen = ReportGenerator()
+        try:
+            # Pass the stylesheet so that it matches the same CSS used in our ReportGenerator
+            pdf_content = HTML(string=html_content).write_pdf(
+                stylesheets=[CSS(string=report_gen.css_styles)]
+            )
+        except Exception as e:
+            logger.error(f"PDF generation error: {str(e)}")
+            logger.exception("Full traceback:")
+            return jsonify({'error': 'Failed to generate PDF'}), 500
+
+        # Create response with proper headers
+        response = make_response(pdf_content)
+        response.headers.set('Content-Type', 'application/pdf')
+        response.headers.set('Content-Disposition', 'attachment', filename=f'{filename}.pdf')
+
         return response
+
     except Exception as e:
-        logger.error(f"Error generating PDF: {str(e)}")
+        logger.error(f"Error in PDF endpoint: {str(e)}")
+        logger.exception("Full traceback:")
         return jsonify({'error': 'Failed to generate PDF'}), 500
-        
+
 if __name__ == '__main__':
     # Ensure reports directory exists
     os.makedirs('reports', exist_ok=True)
