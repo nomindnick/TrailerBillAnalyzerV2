@@ -486,14 +486,12 @@ class ReportGenerator:
         @page {
             margin: 1in;
             @top-center {
-                /* Use double quotes or single quotes consistently */
-                content: "Bill Analysis Report";
+                content: 'Bill Analysis Report';
                 font-family: Arial, sans-serif;
                 font-size: 10pt;
             }
             @bottom-right {
-                /* Example of including text + page counter */
-                content: "Page " counter(page);
+                content: 'Page ' counter(page);
                 font-family: Arial, sans-serif;
                 font-size: 10pt;
             }

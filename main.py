@@ -205,9 +205,9 @@ def serve_pdf_report(filename):
         report_gen = ReportGenerator()
         try:
             # Pass the stylesheet so that it matches the same CSS used in our ReportGenerator
-            pdf_content = HTML(string=html_content).write_pdf(
-                stylesheets=[CSS(string=report_gen.css_styles)]
-            )
+            html = HTML(string=html_content)
+            css = CSS(string=report_gen.css_styles)
+            pdf_content = html.write_pdf(stylesheets=[css])
         except Exception as e:
             logger.error(f"PDF generation error: {str(e)}")
             logger.exception("Full traceback:")
