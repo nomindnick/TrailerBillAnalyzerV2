@@ -19,7 +19,9 @@ class ImpactAnalyzer:
             raise ValueError("OPENAI_API_KEY environment variable is not set")
 
         try:
-            self.client = OpenAI()
+            self.client = OpenAI(
+                api_key=api_key
+            )
             # Test the client connection
             self.client.models.list()
             self.logger.info("Successfully initialized OpenAI client")
