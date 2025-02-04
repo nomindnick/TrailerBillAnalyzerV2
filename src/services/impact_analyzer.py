@@ -19,17 +19,15 @@ class ImpactAnalyzer:
             raise ValueError("OPENAI_API_KEY environment variable is not set")
 
         try:
-            self.client = OpenAI(
-                api_key=api_key
-            )
-            # Test the client connection
-            self.client.models.list()
+            # Initialize with just the required api_key
+            self.client = OpenAI(api_key=api_key)
             self.logger.info("Successfully initialized OpenAI client")
         except Exception as e:
             self.logger.error(f"Failed to initialize OpenAI client: {str(e)}")
             raise
 
-        self.model = "gpt-4o-mini-2024-07-18"  # Using the latest available model
+        # Specify model
+        self.model = "gpt-4-1106-preview"  # Updated to a current model
         self.practice_groups = PracticeGroups()
 
     async def analyze_changes(self, skeleton: Dict[str, Any]) -> Dict[str, Any]:
