@@ -16,7 +16,7 @@ class MatchResult:
 class SectionMatcher:
     """Enhanced matcher using multiple strategies to link digest items to bill sections"""
 
-    def __init__(self, openai_client, model="gpt-4"):
+    def __init__(self, openai_client, model="gpt-4o-2024-08-06"):
         self.logger = logging.getLogger(__name__)
         self.client = openai_client
         self.model = model

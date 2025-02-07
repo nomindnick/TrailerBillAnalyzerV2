@@ -83,7 +83,7 @@ class ImpactAnalyzer:
 
         # Get AI analysis
         response = await self.client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o-2024-08-06",
             messages=[
                 {
                     "role": "system",
