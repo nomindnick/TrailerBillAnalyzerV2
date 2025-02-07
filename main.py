@@ -4,6 +4,7 @@ eventlet.monkey_patch()
 
 from flask import Flask, send_from_directory, request, jsonify, make_response
 from flask_socketio import SocketIO, emit
+from openai import OpenAI
 from flask_cors import CORS
 import os
 from dotenv import load_dotenv
@@ -146,7 +147,8 @@ async def process_bill_analysis(bill_number):
 
         # Step 4: AI Analysis with substeps
         progress.update_progress(4, "Starting AI analysis", 0, len(parsed_bill.digest_sections))
-        matcher = SectionMatcher()
+        client = OpenAI()
+        matcher = SectionMatcher(openai_client=client)
         analyzer = ImpactAnalyzer()
 
         for i, section in enumerate(parsed_bill.bill_sections, 1):
