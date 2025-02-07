@@ -38,9 +38,10 @@ class JsonBuilder:
                 # Determine preliminary action type from the text
                 action_type = self._determine_action_type(section.proposed_changes)
 
-                # Create the change object
+                # Include the digest section number for reference
                 change = {
                     "id": change_id,
+                    "digest_number": section.number,  # helps keep track of the "item #"
                     "digest_text": section.text,
                     "existing_law": section.existing_law,
                     "proposed_change": section.proposed_changes,
@@ -48,8 +49,13 @@ class JsonBuilder:
                     "action_type": action_type,
                     "bill_sections": [],  # Will be filled in by section matcher
                     "impacts_public_agencies": None,  # Will be filled in by impact analyzer
-                    "impact_analysis": None,  # Will be filled in by impact analyzer
-                    "practice_groups": []  # Will be filled in by impact analyzer
+                    "impact_analysis": None,  # Will be refined in the impact analyzer
+                    "practice_groups": [],
+                    "substantive_change": "",  # We'll fill in a concise summary
+                    "local_agency_impact": "",
+                    "analysis": "",
+                    "key_action_items": [],
+                    "impacted_agencies": []
                 }
 
                 changes.append(change)
@@ -59,8 +65,8 @@ class JsonBuilder:
                 "changes": changes,
                 "metadata": {
                     "total_changes": len(changes),
-                    "has_agency_impacts": False,  # Will be updated during analysis
-                    "practice_groups_affected": []  # Will be updated during analysis
+                    "has_agency_impacts": False,
+                    "practice_groups_affected": []
                 }
             }
 
@@ -77,7 +83,7 @@ class JsonBuilder:
             proposed_change: The text describing the proposed change
 
         Returns:
-            String indicating the action type (ADD, AMEND, or REPEAL)
+            String indicating the action type (ADD, AMEND, REPEAL, etc.)
         """
         text = proposed_change.lower()
 
@@ -115,7 +121,9 @@ class JsonBuilder:
             required_fields = {
                 "id", "digest_text", "existing_law", "proposed_change",
                 "code_sections", "action_type", "bill_sections",
-                "impacts_public_agencies", "impact_analysis", "practice_groups"
+                "impacts_public_agencies", "impact_analysis", "practice_groups",
+                "substantive_change", "local_agency_impact", "analysis",
+                "key_action_items", "impacted_agencies"
             }
 
             for change in skeleton["changes"]:
@@ -144,7 +152,6 @@ class JsonBuilder:
         try:
             changes = skeleton["changes"]
 
-            # Update the metadata
             skeleton["metadata"].update({
                 "total_changes": len(changes),
                 "has_agency_impacts": any(

@@ -19,12 +19,16 @@ class SectionMatcher:
         self.logger = logging.getLogger(__name__)
 
         # Make sure the OpenAI API key is pulled from environment
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            self.logger.error("OPENAI_API_KEY is not set")
+            raise ValueError("OPENAI_API_KEY is not set")
 
         # We'll store a reference to the openai module so we can easily make calls.
-        self.client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        openai.api_key = api_key
 
-        # Use a currently supported model. You can switch to "gpt-4" if you have access.
-        self.model = "gpt-4o-2024-08-06"
+        # Use a currently supported model. Adjust if you have GPT-4 access.
+        self.model = "gpt-4"
 
         # Initialize rate limiter for 50 requests per minute
         self.rate_limiter = RateLimiter(requests_per_minute=50)
@@ -62,15 +66,12 @@ class SectionMatcher:
             List of change IDs that match
         """
         matches = []
-
-        # Extract code references from section text using regex
         section_refs = self._extract_code_references(section_text)
 
-        # Look for matching references in changes
         for change in skeleton["changes"]:
             change_refs = set(change["code_sections"])
             # If there's any overlap between section_refs and code_sections, it's a match
-            if change_refs & section_refs:  
+            if change_refs & section_refs:
                 matches.append(change["id"])
 
         return matches
@@ -78,42 +79,43 @@ class SectionMatcher:
     async def _ai_assisted_match(self, skeleton: Dict[str, Any], section_text: str) -> List[str]:
         """Use AI to match the section to appropriate changes when exact matching fails."""
         try:
+            # We prompt the model for a JSON list of matching IDs
             messages = [
                 {
                     "role": "system",
                     "content": (
                         "You are analyzing a California trailer bill section to determine which "
                         "substantive change(s) from the Legislative Counsel's Digest it implements. "
-                        "You should return only the IDs of the matching changes. Consider both the "
-                        "specific legal changes being made and the broader context."
+                        "You should return only the IDs of the matching changes, in JSON."
                     )
                 },
                 {
                     "role": "user",
-                    "content": (
-                        f"Here are the substantive changes identified in the digest:\n\n"
-                        f"{json.dumps(skeleton['changes'], indent=2)}\n\n"
-                        f"Here is the bill section text to match:\n\n"
-                        f"{section_text}\n\n"
-                        "Which change(s) does this section implement? Return ONLY a JSON object "
-                        "with a 'matching_changes' array containing the IDs of the matching changes."
-                    )
+                    "content": json.dumps({
+                        "changes": skeleton["changes"],
+                        "section_text": section_text
+                    }, indent=2)
                 }
             ]
 
-            # Use rate limiter for API call
             async def make_api_call():
-                return self.client.chat.completions.create(
+                return openai.ChatCompletion.create(
                     model=self.model,
                     messages=messages,
-                    temperature=0,
-                    response_format={"type": "json_object"}
+                    temperature=0
                 )
 
             response = await self.rate_limiter.execute(make_api_call)
+            content = response["choices"][0]["message"]["content"]
 
-            result = json.loads(response.choices[0].message.content)
-            return result.get("matching_changes", [])
+            # Expecting a JSON with "matching_changes": ["change_1", "change_2", ...]
+            # Attempt to parse
+            try:
+                result = json.loads(content)
+                return result.get("matching_changes", [])
+            except json.JSONDecodeError:
+                self.logger.warning("AI output could not be parsed as JSON.")
+                return []
 
         except Exception as e:
             self.logger.error(f"Error in AI-assisted matching: {str(e)}")
@@ -133,7 +135,6 @@ class SectionMatcher:
             Updated JSON skeleton
         """
         try:
-            # Add section number to each matched change
             for change in skeleton["changes"]:
                 if change["id"] in matched_changes:
                     if section_number not in change["bill_sections"]:
@@ -149,38 +150,50 @@ class SectionMatcher:
         """
         Extract code references from text for exact matching.
 
-        Args:
-            text: Text to extract references from
-
-        Returns:
-            A set of code references in the format used in the JSON (e.g., "Education Code Section 1234").
+        Return them in the same string format used in the JSON skeleton ("Government Code Section 8594.14", etc.)
         """
         references = set()
 
-        # Regex pattern for "Section X of the Y Code"
-        pattern = r'Section[s]?\s+([0-9\.\,\-\s&and]+)\s+(?:of\s+(?:the\s+)?)?([A-Za-z\s]+Code)'
-        matches = re.finditer(pattern, text, re.IGNORECASE)
+        # Pattern for "Section(s) 123, 456 of the Government Code"
+        pattern_of_code = re.compile(
+            r'(?:Sections?\s+([\d\.\,\-\s&and]+)\s+of\s+the\s+([A-Za-z\s]+Code))',
+            flags=re.IGNORECASE
+        )
 
-        for match in matches:
-            sections = match.group(1).split(',')
-            code_name = match.group(2).strip()
+        # Pattern for "Government Code Section(s) 123, 456"
+        pattern_code_section = re.compile(
+            r'([A-Za-z\s]+Code)\s+Sections?\s+([\d\.\,\-\s&and]+)',
+            flags=re.IGNORECASE
+        )
 
-            for section in sections:
-                section = section.strip()
-                if section:
-                    references.add(f"{code_name} Section {section}")
+        # Grab references from pattern_of_code
+        for m in pattern_of_code.finditer(text):
+            raw_secs = m.group(1)
+            code_name = m.group(2).strip().title() + " Code"
+            # Split by comma or "and"
+            splitted = re.split(r'[,\s]+(?:and\s+|\s+and\s+)?', raw_secs)
+            splitted = [s for s in splitted if s.strip()]
+            for sec in splitted:
+                sec = sec.strip().replace(".", "")
+                if sec and re.match(r'^\d+', sec):
+                    references.add(f"{code_name} Section {sec}")
+
+        # Grab references from pattern_code_section
+        for m in pattern_code_section.finditer(text):
+            code_name = m.group(1).strip().title() + " Code"
+            raw_secs = m.group(2)
+            splitted = re.split(r'[,\s]+(?:and\s+|\s+and\s+)?', raw_secs)
+            splitted = [s for s in splitted if s.strip()]
+            for sec in splitted:
+                sec = sec.strip().replace(".", "")
+                if sec and re.match(r'^\d+', sec):
+                    references.add(f"{code_name} Section {sec}")
 
         return references
 
     def validate_matches(self, skeleton: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Validate the matches in the skeleton and return any issues found.
-
-        Args:
-            skeleton: JSON skeleton to validate
-
-        Returns:
-            List of dictionaries describing validation issues (if any).
         """
         issues = []
 
@@ -206,12 +219,6 @@ class SectionMatcher:
     def get_matching_stats(self, skeleton: Dict[str, Any]) -> Dict[str, Any]:
         """
         Get statistics about the matching results.
-
-        Args:
-            skeleton: JSON skeleton to analyze
-
-        Returns:
-            Dictionary of matching statistics.
         """
         total_changes = len(skeleton["changes"])
         matched_changes = len([c for c in skeleton["changes"] if c["bill_sections"]])

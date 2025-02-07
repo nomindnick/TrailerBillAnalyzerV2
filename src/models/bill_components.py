@@ -30,6 +30,7 @@ class SectionType(Enum):
     # REPEAL = "repeal"
     # ...
 
+
 @dataclass
 class CodeReference:
     """
@@ -43,13 +44,15 @@ class CodeReference:
 @dataclass
 class BillSection:
     """
-    Represents an actual 'SEC. 1.' style section from the bill (or a fallback section)
-    with text, code references, etc.
+    Represents a 'SEC. 1.' style section from the bill with:
+    - Text
+    - Code references
+    - Potential links to multiple digest items
     """
     number: str
     text: str
     code_references: List[CodeReference] = field(default_factory=list)
-    digest_reference: Optional[str] = None
+    digest_references: List[str] = field(default_factory=list)  # <-- Changed from single "digest_reference"
     section_type: Optional[SectionType] = None
     relationship_type: Optional[str] = None
 
@@ -58,7 +61,10 @@ class BillSection:
 class DigestSection:
     """
     Represents a single numbered entry in the Legislative Counsel's Digest,
-    including the snippet for existing law vs. proposed changes, plus references.
+    including:
+    - The snippet for existing law vs. proposed changes
+    - Code references
+    - Linked bill sections
     """
     number: str
     text: str
@@ -71,8 +77,8 @@ class DigestSection:
 @dataclass
 class TrailerBill:
     """
-    Represents the entire trailer bill, including metadata, the raw text,
-    digest sections, and parsed 'bill sections'.
+    Represents the entire trailer bill, including metadata, raw text,
+    digest sections, and parsed 'bill sections.'
     """
     bill_number: str
     title: str

@@ -62,7 +62,8 @@ class BaseParser:
         )
 
         # Pattern for numbered digest sections (e.g., "(1) Some text (2) More text")
-        self.digest_section_pattern = r'\((\d+)\)\s+([^(]+)(?=\(\d+\)|$)'
+        # Updated to capture multi-line text
+        self.digest_section_pattern = r'\((\d+)\)\s+([\s\S]*?)(?=\(\d+\)|$)'
 
         # Pattern for bill sections (SEC. 1. or SECTION 1.)
         self.bill_section_pattern = (
@@ -107,7 +108,7 @@ class BaseParser:
         bill.digest_sections = self._parse_digest_sections(digest_text)
         bill.bill_sections = self._parse_bill_sections(bill_portion)
 
-        # Match digest sections to bill sections based on code references
+        # Match digest sections to bill sections based on code references + context
         self._match_sections(bill)
 
         return bill
@@ -217,11 +218,18 @@ class BaseParser:
         Returns:
             Tuple[str, str]: (existing_law, proposed_changes)
         """
-        if "Existing law" in text and "This bill would" in text:
-            parts = text.split("This bill would", 1)
-            existing = parts[0].replace("Existing law", "", 1).strip()
-            changes = "This bill would" + parts[1].strip()
-            return existing, changes
+        # Basic approach looking for typical phrasing
+        existing_split_keyword = "Existing law"
+        changes_split_keyword = "This bill would"
+
+        lower = text.lower()
+        if existing_split_keyword.lower() in lower and changes_split_keyword.lower() in lower:
+            # Attempt a split near "Existing law" and "This bill would"
+            # to get an approximate existing vs. changes breakdown
+            parts = re.split(changes_split_keyword, text, 1, flags=re.IGNORECASE)
+            existing_part = parts[0].replace(existing_split_keyword, "", 1).strip()
+            changes_part = (changes_split_keyword + parts[1].strip()) if len(parts) > 1 else ""
+            return existing_part, changes_part
         return "", text
 
     def _parse_bill_sections(self, bill_portion: str) -> List[BillSection]:
@@ -245,12 +253,16 @@ class BaseParser:
             for match in matches:
                 section_num = match.group(1).strip()
                 section_body = match.group(2).strip()
-                code_refs, action = self._parse_section_header(section_body)
+
+                # Extract code references from entire text
+                code_refs = self._extract_code_references(section_body)
+                action = self._determine_action(section_body)
 
                 section = BillSection(
                     number=section_num,
                     text=section_body,
                     code_references=code_refs,
+                    digest_references=[],
                     section_type=SectionType.UNKNOWN
                 )
                 sections.append(section)
@@ -266,7 +278,9 @@ class BaseParser:
                         BillSection(
                             number=str(i),
                             text=f"Reference to {ref.code_name} section {ref.section}.",
-                            code_references=[ref]
+                            code_references=[ref],
+                            digest_references=[],
+                            section_type=SectionType.UNKNOWN
                         )
                     )
             elif bill_portion.strip():
@@ -275,33 +289,20 @@ class BaseParser:
                     BillSection(
                         number="1",
                         text=bill_portion.strip(),
-                        code_references=[]
+                        code_references=[],
+                        digest_references=[],
+                        section_type=SectionType.UNKNOWN
                     )
                 )
 
         return sections
-
-    def _parse_section_header(self, text: str) -> Tuple[List[CodeReference], Optional[CodeAction]]:
-        """
-        Parse the header line of a bill section for code references and action type.
-
-        Args:
-            text (str): Full text of a bill section
-
-        Returns:
-            Tuple[List[CodeReference], Optional[CodeAction]]: (references, action)
-        """
-        first_line = text.split('\n', 1)[0]
-        action = self._determine_action(first_line)
-        refs = self._extract_code_references(first_line)
-        return refs, action
 
     def _determine_action(self, text: str) -> CodeAction:
         """
         Determine the action type (add/amend/repeal) from section text.
 
         Args:
-            text (str): Text to analyze (typically first line of section)
+            text (str): Full text of a bill section
 
         Returns:
             CodeAction: The determined action type
@@ -322,63 +323,75 @@ class BaseParser:
     def _extract_code_references(self, text: str) -> List[CodeReference]:
         """
         Extract references to California Code sections from text.
-        Handles various formats and patterns of code references.
+        Handles various formats and patterns.
 
-        Args:
-            text (str): Text to analyze for code references
-
-        Returns:
-            List[CodeReference]: List of found code references
+        This version attempts to handle multiple references like:
+        "Sections 8594.14, 13987, 14108, and 14669.24 of the Government Code"
+        "Government Code Section 8594.14"
+        "Amend Sections 123 through 128 of the Public Utilities Code"
         """
         references = []
 
-        # Multiple patterns to catch different reference formats
-        patterns = [
-            # Standard format: "Section 123 of the Education Code"
-            (
-                r'Sections?\s+([0-9\.\,\-\s&and]+)\s+'
-                r'(?:of\s+(?:the\s+)?)?([A-Za-z\s]+Code)'
-            ),
-            # Reverse format: "Education Code Section 123"
-            (
-                r'([A-Za-z\s]+Code)\s+Sections?\s+'
-                r'([0-9\.\,\-\s&and]+)'
-            ),
-            # Range format: "Sections 123 through 128 of the Education Code"
-            (
-                r'Sections?\s+(\d+)(?:\s+through\s+|\s*\-\s*)(\d+)'
-                r'\s+(?:of\s+(?:the\s+)?)?([A-Za-z\s]+Code)'
-            )
-        ]
+        # Pattern set #1: "Section X of the Y Code" or "Sections X, Y, Z of the Y Code"
+        pattern_1 = re.compile(
+            r'(?:Sections?\s+([\d\.\,\-\s&and]+)\s+(?:of\s+(?:the\s+)?)?([A-Za-z\s]+Code))',
+            flags=re.IGNORECASE
+        )
 
-        for pattern in patterns:
-            matches = re.finditer(pattern, text, re.IGNORECASE)
+        # Pattern set #2: "Y Code Section X" or "Y Code Sections X, Y, Z"
+        pattern_2 = re.compile(
+            r'([A-Za-z\s]+Code)\s+Sections?\s+([\d\.\,\-\s&and]+)',
+            flags=re.IGNORECASE
+        )
 
-            for match in matches:
-                if len(match.groups()) == 2:
-                    # Standard or reverse format
-                    if any(code in match.group(2) for code in self.CA_CODES):
-                        # Standard format
-                        sections_list = self._tokenize_section_numbers(match.group(1))
-                        code_name = match.group(2).strip()
-                    else:
-                        # Reverse format
-                        sections_list = self._tokenize_section_numbers(match.group(2))
-                        code_name = match.group(1).strip()
+        # Range pattern: "Sections 123 through 128 of the Government Code"
+        pattern_3 = re.compile(
+            r'Sections?\s+(\d+)(?:\s+through\s+|\s*-\s*)(\d+)\s+(?:of\s+(?:the\s+)?)?([A-Za-z\s]+Code)',
+            flags=re.IGNORECASE
+        )
+
+        # Collect references from each pattern
+        found_refs = []
+        for pat in [pattern_1, pattern_2]:
+            for match in pat.finditer(text):
+                full_match = match.group(0)
+                # Identify sections part, code name part
+                # pattern_1 captures (sections, code_name)
+                # pattern_2 captures (code_name, sections)
+                if pat == pattern_1:
+                    raw_sections = match.group(1)
+                    code_name = match.group(2)
                 else:
-                    # Range format
-                    start_num = int(match.group(1))
-                    end_num = int(match.group(2))
-                    sections_list = [str(num) for num in range(start_num, end_num + 1)]
-                    code_name = match.group(3).strip()
+                    code_name = match.group(1)
+                    raw_sections = match.group(2)
 
-                # Validate code name against known CA_CODES
                 code_name = self._normalize_code_name(code_name)
                 if code_name:
-                    for section_num in sections_list:
-                        ref = CodeReference(section=section_num, code_name=code_name)
-                        if ref not in references:  # Avoid duplicates
-                            references.append(ref)
+                    # Split out sections
+                    splitted = re.split(r'[,\s]+(?:and\s+|\s+and\s+)?', raw_sections.replace("and", ","))
+                    splitted = [s for s in splitted if s.strip()]
+                    for sec in splitted:
+                        sec = sec.strip().replace(".", "")
+                        if sec and re.match(r'^\d+', sec):  # Basic numeric check
+                            found_refs.append((code_name, sec))
+
+        # Handle range pattern (Sections 100-105, etc.)
+        for match in pattern_3.finditer(text):
+            start_num = match.group(1)
+            end_num = match.group(2)
+            code_name = match.group(3).strip()
+            code_name = self._normalize_code_name(code_name)
+
+            if code_name and start_num.isdigit() and end_num.isdigit():
+                start_i, end_i = int(start_num), int(end_num)
+                if start_i <= end_i:
+                    for i in range(start_i, end_i + 1):
+                        found_refs.append((code_name, str(i)))
+
+        for (code_name, section_number) in found_refs:
+            ref = CodeReference(section=section_number, code_name=code_name)
+            if ref not in references:
+                references.append(ref)
 
         return references
 
@@ -392,40 +405,20 @@ class BaseParser:
         Returns:
             Optional[str]: Normalized code name or None if invalid
         """
-        code_name = code_name.strip()
+        code_name = code_name.replace(" Code", "").strip().title()
 
-        # Direct match
-        if code_name in self.CA_CODES:
-            return code_name
-
-        # Try matching without "Code" suffix
-        base_name = code_name.replace(" Code", "").strip()
+        # Attempt direct match
         for known_code in self.CA_CODES:
-            if known_code.startswith(base_name):
+            # We'll match if known_code in code_name or code_name in known_code
+            if code_name in known_code or known_code in code_name:
                 return known_code
-
-        # Log warning if we can't normalize the code name
-        self.logger.warning(f"Unknown code name encountered: {code_name}")
+        self.logger.warning(f"Unknown or unrecognized code name: {code_name}")
         return None
-
-    def _tokenize_section_numbers(self, text: str) -> List[str]:
-        """
-        Split a string of section numbers into individual numbers.
-
-        Args:
-            text (str): String containing section numbers (e.g., "123, 124 and 125")
-
-        Returns:
-            List[str]: List of individual section numbers
-        """
-        text = re.sub(r'\s*and\s*', ',', text, flags=re.IGNORECASE)
-        parts = re.split(r'[,\s]+', text)
-        return [p.strip() for p in parts if p.strip() and re.match(r'^[\d\.]+$', p.strip())]
 
     def _match_sections(self, bill: TrailerBill) -> None:
         """
         Link digest sections to bill sections based on shared code references
-        and contextual analysis.
+        and fallback to textual similarity if needed.
         """
         try:
             # First try matching by code references
@@ -459,13 +452,13 @@ class BaseParser:
                 )
 
                 # Check for any overlap in references
-                if digest_refs & bill_refs:
+                if digest_refs & bill_refs and digest_refs:
                     digest_section.bill_sections.append(bill_section.number)
-                    bill_section.digest_reference = digest_section.number
+                    bill_section.digest_references.append(digest_section.number)
                     matches_found = True
                     self.logger.debug(
                         f"Matched digest section {digest_section.number} "
-                        f"to bill section {bill_section.number}"
+                        f"to bill section {bill_section.number} by code refs"
                     )
 
         return matches_found
@@ -477,34 +470,40 @@ class BaseParser:
         def similarity(a: str, b: str) -> float:
             return SequenceMatcher(None, a.lower(), b.lower()).ratio()
 
-        for bill_section in bill.bill_sections:
-            if not bill_section.digest_reference:
-                best_match = None
-                best_score = 0
+        # Attempt a partial match for any unmatched digest sections
+        unmatched_digest_sections = [
+            ds for ds in bill.digest_sections if not ds.bill_sections
+        ]
+        unmatched_bill_sections = [
+            bs for bs in bill.bill_sections if not bs.digest_references
+        ]
 
-                for digest_section in bill.digest_sections:
-                    if not digest_section.bill_sections:  # Only consider unmatched digest sections
-                        score = similarity(bill_section.text, digest_section.text)
-                        if score > best_score and score > 0.3:  # Threshold for matching
-                            best_score = score
-                            best_match = digest_section
+        for bill_section in unmatched_bill_sections:
+            best_match = None
+            best_score = 0.0
 
-                if best_match:
-                    best_match.bill_sections.append(bill_section.number)
-                    bill_section.digest_reference = best_match.number
-                    self.logger.debug(
-                        f"Context-matched bill section {bill_section.number} "
-                        f"to digest section {best_match.number} "
-                        f"with score {best_score}"
-                    )
-                    
+            for digest_section in unmatched_digest_sections:
+                score = similarity(bill_section.text, digest_section.text)
+                # If there's moderate textual overlap, consider them matched
+                if score > 0.3 and score > best_score:
+                    best_score = score
+                    best_match = digest_section
+
+            if best_match:
+                best_match.bill_sections.append(bill_section.number)
+                bill_section.digest_references.append(best_match.number)
+                self.logger.debug(
+                    f"Context-matched bill section {bill_section.number} "
+                    f"to digest section {best_match.number} with score {best_score}"
+                )
+
     def _log_matching_results(self, bill: TrailerBill) -> None:
-        """Log the results of section matching."""
+        """Log or warn about any unmatched sections."""
         unmatched_bill_sections = []
         unmatched_digest_sections = []
 
         for section in bill.bill_sections:
-            if not section.digest_reference:
+            if not section.digest_references:
                 unmatched_bill_sections.append(section.number)
 
         for section in bill.digest_sections:
@@ -521,66 +520,10 @@ class BaseParser:
                 f"Unmatched digest sections: {', '.join(unmatched_digest_sections)}"
             )
 
+        matched_count = len(bill.bill_sections) - len(unmatched_bill_sections)
         self.logger.info(
-            f"Matching complete: {len(bill.bill_sections) - len(unmatched_bill_sections)} "
-            f"of {len(bill.bill_sections)} bill sections matched"
+            f"Matching complete: {matched_count} of {len(bill.bill_sections)} bill sections matched"
         )
-        
-    def _calculate_text_similarity(self, text1: str, text2: str) -> float:
-        """
-        Calculate a similarity score between two text segments.
-        This is a basic implementation that could be enhanced.
-
-        Args:
-            text1 (str): First text segment
-            text2 (str): Second text segment
-
-        Returns:
-            float: Similarity score between 0 and 1
-        """
-        # Convert texts to sets of words
-        words1 = set(text1.split())
-        words2 = set(text2.split())
-
-        # Calculate Jaccard similarity
-        intersection = words1 & words2
-        union = words1 | words2
-
-        if not union:
-            return 0.0
-
-        return len(intersection) / len(union)
-
-    def _validate_matches(self, bill: TrailerBill) -> None:
-        """
-        Validate the section matches and log any issues.
-
-        Args:
-            bill (TrailerBill): Bill object to validate
-        """
-        # Check for unmatched sections
-        unmatched_bill_sections = [
-            section.number
-            for section in bill.bill_sections
-            if not section.digest_reference
-        ]
-
-        unmatched_digest_sections = [
-            section.number
-            for section in bill.digest_sections
-            if not section.bill_sections
-        ]
-
-        # Log any issues found
-        if unmatched_bill_sections:
-            self.logger.warning(
-                f"Unmatched bill sections: {', '.join(unmatched_bill_sections)}"
-            )
-
-        if unmatched_digest_sections:
-            self.logger.warning(
-                f"Unmatched digest sections: {', '.join(unmatched_digest_sections)}"
-            )
 
     def _extract_title(self, text: str) -> str:
         """
