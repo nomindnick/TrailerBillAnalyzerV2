@@ -155,7 +155,8 @@ class SectionMatcher:
                 response_format={"type": "json_object"}
             )
 
-            matches_data = json.loads(response.model_dump_json())["choices"][0]["message"]["content"]
+            content = response.choices[0].message.content
+            matches_data = json.loads(content)
             matches_data = json.loads(matches_data)["matches"]
             for match in matches_data:
                 matches.append(MatchResult(
