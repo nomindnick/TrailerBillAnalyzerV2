@@ -323,6 +323,13 @@ Analyze the text and return matches in this JSON format:
         if unmatched:
             self.logger.warning(f"Unmatched digest items: {', '.join(unmatched)}")
 
+    def _format_sections_for_prompt(self, sections: Dict[str, Dict[str, Any]]) -> str:
+        """Format bill sections for the context matching prompt"""
+        formatted = []
+        for section_id, info in sections.items():
+            formatted.append(f"Section {section_id}:\n{info['text']}\nAction: {info['action_type']}\n")
+        return "\n".join(formatted)
+
     def _determine_action(self, text: str) -> str:
         """Determine the action type (add/amend/repeal) from section text."""
         lower = text.lower()
