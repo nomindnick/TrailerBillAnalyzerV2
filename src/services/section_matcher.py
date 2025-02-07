@@ -91,7 +91,7 @@ class SectionMatcher:
             section_map[section_num] = {
                 "text": section_text,
                 "code_refs": self._extract_code_references(section_text),
-                "action_type": self._determine_action_type(section_text),
+                "action_type": self._determine_action(section_text),
                 "code_sections": self._extract_modified_sections(section_text)
             }
 
