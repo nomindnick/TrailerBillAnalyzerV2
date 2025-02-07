@@ -156,8 +156,7 @@ class SectionMatcher:
             )
 
             content = response.choices[0].message.content
-            matches_data = json.loads(content)
-            matches_data = json.loads(matches_data)["matches"]
+            matches_data = json.loads(content)["matches"]
             for match in matches_data:
                 matches.append(MatchResult(
                     digest_id=digest_id,
