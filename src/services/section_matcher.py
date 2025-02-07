@@ -272,3 +272,19 @@ Analyze the text and return matches in this JSON format:
             return "REPEALED"
         return "UNKNOWN"
 
+    def _extract_modified_sections(self, text: str) -> List[str]:
+        """Extract modified code sections from text."""
+        sections = []
+        # Look for patterns like "Section 123 is amended" or "adds Section 456"
+        patterns = [
+            r'Section\s+(\d+(?:\.\d+)?)\s+(?:is|was|being)\s+(?:amended|added|repealed)',
+            r'(?:amends|adds|repeals)\s+Section\s+(\d+(?:\.\d+)?)',
+            r'Section\s+(\d+(?:\.\d+)?)\s+of\s+the\s+[A-Za-z\s]+Code'
+        ]
+        
+        for pattern in patterns:
+            matches = re.finditer(pattern, text, re.IGNORECASE)
+            sections.extend(match.group(1) for match in matches)
+            
+        return list(set(sections))  # Remove duplicates
+
