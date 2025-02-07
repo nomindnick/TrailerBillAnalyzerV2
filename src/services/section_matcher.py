@@ -222,6 +222,31 @@ Analyze the text and return matches in this JSON format:
 
         return validated
 
+    def _extract_section_numbers(self, text: str) -> Set[str]:
+        """Extract section numbers from text using regex patterns"""
+        numbers = set()
+        patterns = [
+            r'Section\s+(\d+(?:\.\d+)?)',
+            r'Sections\s+(\d+(?:\.\d+)?(?:\s*(?:,|and)\s*\d+(?:\.\d+)?)*)',
+            r'Sections\s+(\d+(?:\.\d+)?)\s*(?:to|through|-)\s*(\d+(?:\.\d+)?)'
+        ]
+        
+        for pattern in patterns:
+            matches = re.finditer(pattern, text, re.IGNORECASE)
+            for match in matches:
+                if len(match.groups()) == 1:
+                    # Single section or comma-separated list
+                    sections = re.split(r'[,\s]+and\s+|\s*,\s*', match.group(1))
+                    numbers.update(sections)
+                elif len(match.groups()) == 2:
+                    # Range of sections
+                    start, end = match.groups()
+                    start_num = float(start)
+                    end_num = float(end)
+                    numbers.update(str(num) for num in range(int(start_num), int(end_num) + 1))
+        
+        return numbers
+
     def _verify_complete_matching(self, skeleton: Dict[str, Any]) -> None:
         """Verify all digest items have matches and log warnings for unmatched items"""
         unmatched = []
