@@ -256,3 +256,19 @@ Analyze the text and return matches in this JSON format:
 
         if unmatched:
             self.logger.warning(f"Unmatched digest items: {', '.join(unmatched)}")
+
+    def _determine_action(self, text: str) -> str:
+        """Determine the action type (add/amend/repeal) from section text."""
+        lower = text.lower()
+        if "repealed and added" in lower:
+            return "REPEALED_AND_ADDED"
+        if "amended and repealed" in lower:
+            return "AMENDED_AND_REPEALED" 
+        if "amended" in lower:
+            return "AMENDED"
+        if "added" in lower:
+            return "ADDED"
+        if "repealed" in lower:
+            return "REPEALED"
+        return "UNKNOWN"
+
