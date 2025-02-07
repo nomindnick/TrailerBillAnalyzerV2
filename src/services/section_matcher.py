@@ -230,7 +230,7 @@ Analyze the text and return matches in this JSON format:
             r'Sections\s+(\d+(?:\.\d+)?(?:\s*(?:,|and)\s*\d+(?:\.\d+)?)*)',
             r'Sections\s+(\d+(?:\.\d+)?)\s*(?:to|through|-)\s*(\d+(?:\.\d+)?)'
         ]
-        
+
         for pattern in patterns:
             matches = re.finditer(pattern, text, re.IGNORECASE)
             for match in matches:
@@ -244,23 +244,23 @@ Analyze the text and return matches in this JSON format:
                     start_num = float(start)
                     end_num = float(end)
                     numbers.update(str(num) for num in range(int(start_num), int(end_num) + 1))
-        
+
         return numbers
 
     def _match_by_code_references(self, digest_map: Dict[str, Dict[str, Any]], section_map: Dict[str, Dict[str, Any]]) -> List[MatchResult]:
         """Match digest items to bill sections based on code references"""
         matches = []
-        
+
         for digest_id, digest_info in digest_map.items():
             digest_refs = digest_info["code_refs"]
             if not digest_refs:
                 continue
-                
+
             for section_id, section_info in section_map.items():
                 section_refs = section_info["code_refs"]
                 if not section_refs:
                     continue
-                    
+
                 # Find overlapping references
                 common_refs = digest_refs.intersection(section_refs)
                 if common_refs:
@@ -271,7 +271,28 @@ Analyze the text and return matches in this JSON format:
                         match_type="code_ref",
                         supporting_evidence={"matching_refs": list(common_refs)}
                     ))
-                    
+
+        return matches
+
+    def _match_by_section_numbers(self, digest_map: Dict[str, Dict[str, Any]], section_map: Dict[str, Dict[str, Any]]) -> List[MatchResult]:
+        """Match digest items to bill sections based on section numbers"""
+        matches = []
+
+        for digest_id, digest_info in digest_map.items():
+            digest_sections = digest_info.get("section_refs", set())
+            if not digest_sections:
+                continue
+
+            for section_id, section_info in section_map.items():
+                if section_id in digest_sections:
+                    matches.append(MatchResult(
+                        digest_id=digest_id,
+                        section_id=section_id,
+                        confidence=0.8,  # High confidence but slightly lower than code reference matches
+                        match_type="section_number",
+                        supporting_evidence={"matching_section": section_id}
+                    ))
+
         return matches
 
     def _verify_complete_matching(self, skeleton: Dict[str, Any]) -> None:
@@ -308,10 +329,9 @@ Analyze the text and return matches in this JSON format:
             r'(?:amends|adds|repeals)\s+Section\s+(\d+(?:\.\d+)?)',
             r'Section\s+(\d+(?:\.\d+)?)\s+of\s+the\s+[A-Za-z\s]+Code'
         ]
-        
+
         for pattern in patterns:
             matches = re.finditer(pattern, text, re.IGNORECASE)
             sections.extend(match.group(1) for match in matches)
-            
-        return list(set(sections))  # Remove duplicates
 
+        return list(set(sections))  # Remove duplicates
