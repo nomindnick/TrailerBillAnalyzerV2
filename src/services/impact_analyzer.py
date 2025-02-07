@@ -2,7 +2,7 @@ from typing import Dict, Any
 import logging
 import json
 import os
-import openai
+from openai import OpenAI
 from src.models.practice_groups import PracticeGroups
 
 from src.logging_config import get_module_logger
@@ -17,7 +17,7 @@ class ImpactAnalyzer:
             self.logger.error("OPENAI_API_KEY environment variable is not set")
             raise ValueError("OPENAI_API_KEY environment variable is not set")
 
-        openai.api_key = api_key
+        self.client = OpenAI(api_key=api_key)
         self.model = "gpt-4"
         self.practice_groups = PracticeGroups()
 
@@ -134,11 +134,13 @@ class ImpactAnalyzer:
         """
         Helper for making an async call to OpenAI's chat completion.
         """
-        return openai.ChatCompletion.create(
+        client = openai.OpenAI()
+        response = await client.chat.completions.create(
             model=self.model,
             messages=messages,
             temperature=0
-        )["choices"][0]["message"]["content"]
+        )
+        return response.choices[0].message.content
 
     def _get_default_analysis(self) -> Dict[str, Any]:
         """
