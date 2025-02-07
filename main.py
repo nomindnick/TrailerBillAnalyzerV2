@@ -17,6 +17,7 @@ from src.services.json_builder import JsonBuilder
 from src.services.section_matcher import SectionMatcher
 from src.services.impact_analyzer import ImpactAnalyzer
 from src.services.report_generator import ReportGenerator
+from src.models.practice_groups import PracticeGroups
 
 # Load environment variables
 load_dotenv()
@@ -149,7 +150,8 @@ async def process_bill_analysis(bill_number):
         progress.update_progress(4, "Starting AI analysis", 0, len(parsed_bill.digest_sections))
         client = OpenAI()
         matcher = SectionMatcher(openai_client=client)
-        analyzer = ImpactAnalyzer()
+        practice_groups = PracticeGroups()
+        analyzer = ImpactAnalyzer(openai_client=client, practice_groups_data=practice_groups)
 
         for i, section in enumerate(parsed_bill.bill_sections, 1):
             progress.update_progress(4, f"Analyzing section {i}", i, len(parsed_bill.bill_sections))
