@@ -1,49 +1,63 @@
-from typing import Dict, Any
+from typing import Dict, List, Any, Optional, Set, Union
 import logging
 import json
-import os
-from openai import OpenAI
-from src.models.practice_groups import PracticeGroups
+from datetime import datetime
+from dataclasses import dataclass, field
+from collections import defaultdict
+import re
 
-from src.logging_config import get_module_logger
+@dataclass
+class AgencyImpact:
+    """Represents specific impact on local agencies"""
+    agency_type: str  # e.g., "cities", "counties", "school districts"
+    impact_type: str  # e.g., "compliance", "operational", "financial"
+    description: str
+    deadline: Optional[datetime] = None
+    requirements: List[str] = None
+
+@dataclass
+class ChangeAnalysis:
+    """Represents analysis of a legislative change"""
+    summary: str
+    impacts: List[AgencyImpact]
+    practice_groups: List[Dict[str, str]]
+    action_items: List[str]
+    deadlines: List[Dict[str, Any]]
+    requirements: List[str]
 
 class ImpactAnalyzer:
-    def __init__(self):
-        """Initialize the analyzer with OpenAI client and logger."""
+    """Enhanced analyzer for determining local agency impacts"""
+
+    def __init__(self, openai_client, practice_groups_data):
         self.logger = logging.getLogger(__name__)
+        self.client = openai_client
+        self.practice_groups = practice_groups_data
 
-        api_key = os.getenv('OPENAI_API_KEY')
-        if not api_key:
-            self.logger.error("OPENAI_API_KEY environment variable is not set")
-            raise ValueError("OPENAI_API_KEY environment variable is not set")
-
-        self.client = OpenAI(api_key=api_key)
-        self.model = "gpt-4"
-        self.practice_groups = PracticeGroups()
-
-    async def analyze_changes(self, skeleton: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Analyze all changes in the JSON skeleton for:
-          - Public agency impacts
-          - Practice group relevance
-          - Key action items
-          - Concise summary focusing on practical implications
-        """
+    async def analyze_changes(
+        self,
+        parsed_bill: Dict[str, Any],
+        skeleton: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Analyze changes with enhanced impact detection"""
         try:
             for change in skeleton["changes"]:
-                if change["bill_sections"]:
-                    analyzed_change = await self._analyze_single_change(change)
-                    change.update(analyzed_change)
+                # Get linked sections and code modifications
+                sections = self._get_linked_sections(change, parsed_bill)
+                code_mods = self._get_code_modifications(change, parsed_bill)
 
-            # After analysis, update metadata
-            skeleton["metadata"]["has_agency_impacts"] = any(
-                c.get("impacts_public_agencies") for c in skeleton["changes"]
-            )
-            skeleton["metadata"]["practice_groups_affected"] = sorted(list(set(
-                gp["name"]
-                for c in skeleton["changes"] for gp in c.get("practice_groups", [])
-                if gp["relevance"] == "primary"
-            )))
+                # Generate comprehensive analysis
+                analysis = await self._analyze_change(
+                    change,
+                    sections,
+                    code_mods,
+                    parsed_bill
+                )
+
+                # Update change with analysis results
+                self._update_change_with_analysis(change, analysis)
+
+            # Update metadata
+            self._update_skeleton_metadata(skeleton)
 
             return skeleton
 
@@ -51,170 +65,246 @@ class ImpactAnalyzer:
             self.logger.error(f"Error analyzing changes: {str(e)}")
             raise
 
-    async def _analyze_single_change(self, change: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Analyze a single change for local agency impact using GPT.
-        Encourages a concise, plain-English summary with practical action items.
-        """
-        system_instructions = (
-            "You are a legal analyst specializing in California law, especially public agency impacts. "
-            "Provide a concise analysis focusing on practical implications, compliance requirements, and "
-            "key action items for local agencies (e.g., counties, cities, special districts). "
-            "Use plain English. Limit restating statutory text. "
-            "Focus on what attorneys actually need to know."
+    async def _analyze_change(
+        self,
+        change: Dict[str, Any],
+        sections: List[Dict[str, Any]],
+        code_mods: List[Dict[str, Any]],
+        parsed_bill: Dict[str, Any]
+    ) -> ChangeAnalysis:
+        """Generate comprehensive analysis of a change"""
+        # Build detailed prompt for AI analysis
+        prompt = self._build_analysis_prompt(
+            change,
+            sections,
+            code_mods,
+            parsed_bill
         )
 
-        user_prompt = {
-            "digest_number": change.get("digest_number"),
-            "existing_law": change.get("existing_law"),
-            "proposed_change": change.get("proposed_change"),
-            "code_sections": change.get("code_sections"),
-            "action_type": change.get("action_type"),
-        }
+        # Get AI analysis
+        response = await self.client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {
+                    "role": "system",
+                    "content": """You are a legal expert analyzing legislative changes affecting local public agencies.
+                    Focus on practical implications, compliance requirements, and deadlines.
+                    Provide concise, action-oriented analysis."""
+                },
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0,
+            response_format={"type": "json_object"}
+        )
 
-        messages = [
-            {"role": "system", "content": system_instructions},
-            {
-                "role": "user",
-                "content": (
-                    f"Analyze this legislative change:\n\n"
-                    f"{json.dumps(user_prompt, indent=2)}\n\n"
-                    "Return valid JSON only with the following fields:\n"
-                    "{\n"
-                    "  \"impacts_public_agencies\": boolean,\n"
-                    "  \"substantive_change\": string,\n"
-                    "  \"local_agency_impact\": string,\n"
-                    "  \"analysis\": string,\n"
-                    "  \"key_action_items\": [string],\n"
-                    "  \"impacted_agencies\": [string],\n"
-                    "  \"practice_groups\": [\n"
-                    "    {\n"
-                    "      \"name\": string,\n"
-                    "      \"relevance\": \"primary\" or \"secondary\"\n"
-                    "    }\n"
-                    "  ]\n"
-                    "}\n\n"
-                    "Keep it concise. Focus on real-world implications for public agencies."
-                ),
-            }
+        # Parse and structure the analysis
+        analysis_data = json.loads(response.choices[0].message.content)
+
+        return ChangeAnalysis(
+            summary=analysis_data["summary"],
+            impacts=[
+                AgencyImpact(**impact)
+                for impact in analysis_data["agency_impacts"]
+            ],
+            practice_groups=self._validate_practice_groups(
+                analysis_data["practice_groups"]
+            ),
+            action_items=analysis_data["action_items"],
+            deadlines=analysis_data["deadlines"],
+            requirements=analysis_data["requirements"]
+        )
+
+    def _build_analysis_prompt(
+        self,
+        change: Dict[str, Any],
+        sections: List[Dict[str, Any]],
+        code_mods: List[Dict[str, Any]],
+        parsed_bill: Dict[str, Any]
+    ) -> str:
+        """Build comprehensive prompt for change analysis"""
+        return f"""Analyze this legislative change and its impact on local public agencies:
+
+Digest Text:
+{change['digest_text']}
+
+Bill Sections Implementing This Change:
+{self._format_sections(sections)}
+
+Code Modifications:
+{self._format_code_mods(code_mods)}
+
+Existing Law:
+{change.get('existing_law', '')}
+
+Proposed Changes:
+{change.get('proposed_change', '')}
+
+Practice Group Information:
+{self._format_practice_groups()}
+
+Provide analysis in this JSON format:
+{{
+    "summary": "Clear, concise summary of the change",
+    "agency_impacts": [
+        {
+            "agency_type": "type of agency affected",
+            "impact_type": "type of impact",
+            "description": "specific impact description",
+            "deadline": "YYYY-MM-DD or null",
+            "requirements": ["specific requirement 1", "requirement 2"]
+        }
+    ],
+    "practice_groups": [
+        {
+            "name": "practice group name",
+            "relevance": "primary or secondary",
+            "justification": "why this practice group is relevant"
+        }
+    ],
+    "action_items": [
+        "specific action item 1",
+        "specific action item 2"
+    ],
+    "deadlines": [
+        {
+            "date": "YYYY-MM-DD",
+            "description": "what is due",
+            "affected_agencies": ["agency types"]
+        }
+    ],
+    "requirements": [
+        "specific requirement 1",
+        "specific requirement 2"
+    ]
+}}"""
+
+    def _format_sections(self, sections: List[Dict[str, Any]]) -> str:
+        """Format bill sections for prompt"""
+        formatted = []
+        for section in sections:
+            text = f"Section {section['number']}:\n"
+            text += f"Text: {section['text']}\n"
+            if section.get('code_modifications'):
+                text += "Modifies:\n"
+                for mod in section['code_modifications']:
+                    text += f"- {mod['code_name']} Section {mod['section']} ({mod['action']})\n"
+            formatted.append(text)
+        return "\n".join(formatted)
+
+    def _format_code_mods(self, mods: List[Dict[str, Any]]) -> str:
+        """Format code modifications for prompt"""
+        formatted = []
+        for mod in mods:
+            text = f"{mod['code_name']} Section {mod['section']}:\n"
+            text += f"Action: {mod['action']}\n"
+            text += f"Context: {mod['text']}\n"
+            formatted.append(text)
+        return "\n".join(formatted)
+
+    def _format_practice_groups(self) -> str:
+        """Format practice group information for prompt"""
+        formatted = []
+        for group in self.practice_groups:
+            text = f"{group.name}:\n{group.description}\n"
+            formatted.append(text)
+        return "\n".join(formatted)
+
+    def _validate_practice_groups(
+        self,
+        groups: List[Dict[str, str]]
+    ) -> List[Dict[str, str]]:
+        """Validate and normalize practice group assignments"""
+        validated = []
+        for group in groups:
+            if group["name"] in self.practice_groups.groups:
+                if group["relevance"] in ("primary", "secondary"):
+                    validated.append({
+                        "name": group["name"],
+                        "relevance": group["relevance"]
+                    })
+        return validated
+
+    def _update_change_with_analysis(
+        self,
+        change: Dict[str, Any],
+        analysis: ChangeAnalysis
+    ) -> None:
+        """Update change dictionary with analysis results"""
+        change.update({
+            "substantive_change": analysis.summary,
+            "local_agency_impact": self._format_agency_impacts(analysis.impacts),
+            "practice_groups": analysis.practice_groups,
+            "key_action_items": analysis.action_items,
+            "deadlines": analysis.deadlines,
+            "requirements": analysis.requirements,
+            "impacts_local_agencies": bool(analysis.impacts)
+        })
+
+    def _format_agency_impacts(self, impacts: List[AgencyImpact]) -> str:
+        """Format agency impacts into readable text"""
+        if not impacts:
+            return "No direct impact on local agencies."
+
+        formatted = []
+        for impact in impacts:
+            text = f"{impact.agency_type}: {impact.description}"
+            if impact.deadline:
+                text += f" (Deadline: {impact.deadline.strftime('%B %d, %Y')})"
+            formatted.append(text)
+
+        return "\n".join(formatted)
+
+    def _update_skeleton_metadata(self, skeleton: Dict[str, Any]) -> None:
+        """Update skeleton metadata with impact analysis results"""
+        impacting_changes = [
+            c for c in skeleton["changes"]
+            if c.get("impacts_local_agencies")
         ]
 
-        try:
-            response = await self._call_openai_api(messages)
-            # Attempt to parse the JSON response
-            parsed = {}
-            try:
-                parsed = json.loads(response)
-            except json.JSONDecodeError:
-                self.logger.warning("Could not parse response as JSON; returning default.")
-                return self._get_default_analysis()
+        primary_groups = set()
+        for change in impacting_changes:
+            primary_groups.update(
+                group["name"]
+                for group in change.get("practice_groups", [])
+                if group["relevance"] == "primary"
+            )
 
-            # Validate fields
-            if not isinstance(parsed, dict):
-                return self._get_default_analysis()
+        skeleton["metadata"].update({
+            "has_agency_impacts": bool(impacting_changes),
+            "impacting_changes_count": len(impacting_changes),
+            "practice_groups_affected": sorted(primary_groups)
+        })
 
-            return {
-                "impacts_public_agencies": bool(parsed.get("impacts_public_agencies", False)),
-                "substantive_change": str(parsed.get("substantive_change", "")),
-                "local_agency_impact": str(parsed.get("local_agency_impact", "")),
-                "analysis": str(parsed.get("analysis", "")),
-                "key_action_items": parsed.get("key_action_items", []),
-                "impacted_agencies": parsed.get("impacted_agencies", []),
-                "practice_groups": [
-                    pg for pg in parsed.get("practice_groups", [])
-                    if isinstance(pg, dict) and pg.get("name") and pg.get("relevance") in ("primary", "secondary")
-                ]
-            }
+    def _get_linked_sections(
+        self,
+        change: Dict[str, Any],
+        parsed_bill: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Get bill sections linked to this change"""
+        sections = []
+        for section_num in change.get("bill_sections", []):
+            if section := parsed_bill["bill_sections"].get(section_num):
+                sections.append({
+                    "number": section_num,
+                    **section
+                })
+        return sections
 
-        except Exception as e:
-            self.logger.error(f"Error analyzing single change: {str(e)}")
-            return self._get_default_analysis()
-
-    async def _call_openai_api(self, messages):
-        """
-        Helper for making an async call to OpenAI's chat completion.
-        """
-        client = openai.OpenAI()
-        response = await client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=0
+    def _get_code_modifications(
+        self,
+        change: Dict[str, Any],
+        parsed_bill: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Get code modifications related to this change"""
+        mods = []
+        digest_item = next(
+            (item for item in parsed_bill["digest_items"]
+             if item.number == change.get("digest_number")),
+            None
         )
-        return response.choices[0].message.content
-
-    def _get_default_analysis(self) -> Dict[str, Any]:
-        """
-        Return a default, no-impact analysis if the AI call fails.
-        """
-        return {
-            "impacts_public_agencies": False,
-            "substantive_change": "",
-            "local_agency_impact": "",
-            "analysis": "",
-            "key_action_items": [],
-            "impacted_agencies": [],
-            "practice_groups": []
-        }
-
-    def get_analysis_stats(self, skeleton: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Get statistics about the impact analysis results.
-        """
-        total_changes = len(skeleton["changes"])
-        impacting_changes = len([
-            c for c in skeleton["changes"]
-            if c.get("impacts_public_agencies")
-        ])
-
-        practice_group_counts = {}
-        for c in skeleton["changes"]:
-            for pg in c.get("practice_groups", []):
-                name = pg.get("name")
-                if not name:
-                    continue
-                if name not in practice_group_counts:
-                    practice_group_counts[name] = {
-                        "primary": 0,
-                        "secondary": 0
-                    }
-                if pg.get("relevance") == "primary":
-                    practice_group_counts[name]["primary"] += 1
-                else:
-                    practice_group_counts[name]["secondary"] += 1
-
-        return {
-            "total_changes": total_changes,
-            "impacting_changes": impacting_changes,
-            "impact_rate": impacting_changes / total_changes if total_changes else 0,
-            "practice_group_distribution": practice_group_counts
-        }
-
-    def validate_analysis(self, skeleton: Dict[str, Any]) -> list:
-        """
-        Validate the impact analysis results and return any issues found.
-        """
-        issues = []
-
-        for change in skeleton["changes"]:
-            if change.get("impacts_public_agencies") and not change.get("analysis"):
-                issues.append({
-                    "type": "missing_analysis",
-                    "id": change["id"],
-                    "message": "Impact marked but no analysis provided"
-                })
-
-            if not change.get("impacts_public_agencies") and change.get("analysis"):
-                issues.append({
-                    "type": "inconsistent_analysis",
-                    "id": change["id"],
-                    "message": "Analysis provided but no impact marked"
-                })
-
-            if change.get("impacts_public_agencies") and not change.get("practice_groups"):
-                issues.append({
-                    "type": "missing_practice_groups",
-                    "id": change["id"],
-                    "message": "Impact marked but no practice groups assigned"
-                })
-
-        return issues
+        if digest_item:
+            mods.extend(
+                {"number": mod.section, **mod.__dict__}
+                for mod in digest_item.code_modifications
+            )
+        return mods

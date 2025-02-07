@@ -1,53 +1,60 @@
-import logging
-import re
-from typing import Dict, Any, List, Union
+from typing import Dict, Any, List, Union, Optional, Set
 from datetime import datetime
-from weasyprint import HTML, CSS
+import logging
+from jinja2 import Environment, FileSystemLoader, Template
 import os
-from jinja2 import Environment, FileSystemLoader
+from weasyprint import HTML, CSS
+from dataclasses import dataclass, field
+from collections import defaultdict
+
+@dataclass
+class ReportSection:
+    """Represents a section in the report"""
+    title: str
+    content: Dict[str, Any]
+    section_type: str  # 'impact' or 'no_impact'
+    practice_group: Optional[str] = None
 
 class ReportGenerator:
-    """
-    Generates formatted reports from analyzed bill data.
-    Can produce text, HTML, or PDF outputs.
-    """
+    """Enhanced report generator with improved section organization and formatting"""
 
     def __init__(self):
-        """Initialize the report generator with a logger and Jinja environment."""
         self.logger = logging.getLogger(__name__)
 
-        # We will look for 'templates' in the same directory as this file unless changed
-        # Adjust if needed depending on your project structure
+        # Initialize Jinja environment
         template_dir = os.path.join(os.path.dirname(__file__), 'templates')
-
         self.jinja_env = Environment(
             loader=FileSystemLoader(template_dir),
             autoescape=True
         )
 
-    # ----------------------------------------------------------------------
-    # Public API
-    # ----------------------------------------------------------------------
+        # Register custom filters
+        self._register_custom_filters()
 
     def generate_report(
         self,
-        analyzed_skeleton: Dict[str, Any],
+        analyzed_data: Dict[str, Any],
         bill_info: Dict[str, Any],
-        bill_text: str,
+        parsed_bill: Dict[str, Any],
         output_format: str = "html"
     ) -> Union[str, bytes]:
-        """Generate a report in the specified format."""
+        """Generate enhanced report with better organization and formatting"""
         try:
-            # Process the bill text into sections for reference
-            bill_sections = self._process_bill_sections(bill_text)
+            # Process data into report sections
+            report_sections = self._organize_report_sections(
+                analyzed_data,
+                parsed_bill
+            )
 
             # Prepare template data
             template_data = self._prepare_template_data(
-                analyzed_skeleton, 
+                analyzed_data,
                 bill_info,
-                bill_sections
+                report_sections,
+                parsed_bill
             )
 
+            # Generate report in requested format
             if output_format == "html":
                 return self._generate_html_report(template_data)
             elif output_format == "pdf":
@@ -56,220 +63,338 @@ class ReportGenerator:
             else:
                 raise ValueError(f"Unsupported output format: {output_format}")
 
-        except Exception as exc:
-            self.logger.error(f"Error generating {output_format} report: {str(exc)}")
+        except Exception as e:
+            self.logger.error(f"Error generating report: {str(e)}")
             raise
 
-    def save_report(self, report_content: Union[str, bytes], filename: str) -> None:
-        """Save the report to a file."""
-        mode = 'wb' if isinstance(report_content, bytes) else 'w'
-        try:
-            with open(filename, mode) as f:
-                f.write(report_content)
-        except Exception as exc:
-            self.logger.error(f"Error saving report: {str(exc)}")
-            raise
+    def _organize_report_sections(
+        self,
+        analyzed_data: Dict[str, Any],
+        parsed_bill: Dict[str, Any]
+    ) -> List[ReportSection]:
+        """Organize changes into structured report sections"""
+        sections = []
 
-    # ----------------------------------------------------------------------
-    # Internal Processing
-    # ----------------------------------------------------------------------
+        # Group changes by practice group
+        practice_group_changes = self._group_by_practice_group(
+            analyzed_data["changes"]
+        )
 
-    def _process_bill_sections(self, bill_text: str) -> Dict[str, Dict[str, Any]]:
-        """
-        Process bill text into a dictionary of sections with metadata.
+        # Create sections for each practice group
+        for group, changes in practice_group_changes.items():
+            sections.append(
+                ReportSection(
+                    title=group,
+                    content=self._process_changes(changes, parsed_bill),
+                    section_type="impact",
+                    practice_group=group
+                )
+            )
 
-        Returns:
-            Dict with structure:
-            {
-                "section_number": {
-                    "text": "full text of section",
-                    "code": "Government Code/Public Resources Code/etc",
-                    "section_number": "referenced code section number",
-                    "action": "amended/added/repealed"
-                }
+        # Add section for general impacts (no specific practice group)
+        general_impacts = self._get_general_impacts(analyzed_data["changes"])
+        if general_impacts:
+            sections.append(
+                ReportSection(
+                    title="General Local Agency Impact",
+                    content=self._process_changes(general_impacts, parsed_bill),
+                    section_type="impact"
+                )
+            )
+
+        # Add section for non-impacting changes
+        no_impact_changes = self._get_no_impact_changes(analyzed_data["changes"])
+        if no_impact_changes:
+            sections.append(
+                ReportSection(
+                    title="Changes with No Local Agency Impact",
+                    content=self._process_changes(no_impact_changes, parsed_bill),
+                    section_type="no_impact"
+                )
+            )
+
+        return sections
+
+    def _group_by_practice_group(
+        self,
+        changes: List[Dict[str, Any]]
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """Group changes by primary practice group"""
+        grouped = {}
+
+        for change in changes:
+            if change.get("impacts_local_agencies"):
+                primary_groups = [
+                    group["name"]
+                    for group in change.get("practice_groups", [])
+                    if group["relevance"] == "primary"
+                ]
+
+                for group in primary_groups:
+                    if group not in grouped:
+                        grouped[group] = []
+                    grouped[group].append(change)
+
+        return grouped
+
+    def _process_changes(
+        self,
+        changes: List[Dict[str, Any]],
+        parsed_bill: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Process changes with enhanced section information"""
+        processed = []
+
+        for change in changes:
+            # Get linked bill sections
+            section_details = self._get_section_details(
+                change.get("bill_sections", []),
+                parsed_bill
+            )
+
+            processed_change = {
+                "id": change["id"],
+                "substantive_change": change["substantive_change"],
+                "local_agency_impact": change["local_agency_impact"],
+                "section_details": section_details,
+                "practice_groups": change.get("practice_groups", []),
+                "key_action_items": change.get("key_action_items", []),
+                "deadlines": change.get("deadlines", []),
+                "requirements": change.get("requirements", [])
             }
-        """
-        sections = {}
-        try:
-            # Pattern matches both "SECTION X." and "SEC. X." followed by text
-            pattern = r'^(?:SECTION|SEC\.)\s+(\d+)\.?\s+(.*?)(?=^(?:SECTION|SEC\.)|$)'
 
-            matches = re.finditer(pattern, bill_text, re.MULTILINE | re.DOTALL)
+            processed.append(processed_change)
 
-            for match in matches:
-                section_num = match.group(1)
-                full_text = match.group(2).strip()
+        return processed
 
-                # Regex to parse first line to get code reference and action
-                first_line_pattern = r'Section\s+(\d+(?:\.\d+)?)\s+(?:of\s+the\s+)?([A-Za-z\s]+Code)\s+is\s+(\w+)'
-                code_match = re.search(first_line_pattern, full_text)
+    def _get_section_details(
+        self,
+        section_numbers: List[str],
+        parsed_bill: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Get detailed information about bill sections"""
+        details = []
 
-                sections[section_num] = {
-                    "text": full_text,
-                    "code": code_match.group(2) if code_match else None,
-                    "section_number": code_match.group(1) if code_match else None,
-                    "action": code_match.group(3) if code_match else None
+        for num in section_numbers:
+            if section := parsed_bill["bill_sections"].get(num):
+                section_detail = {
+                    "number": num,
+                    "text": section["text"],
+                    "code_modifications": []
                 }
 
-            self.logger.info(f"Processed {len(sections)} bill sections")
-            return sections
+                # Add code modification details
+                for mod in section.get("code_modifications", []):
+                    section_detail["code_modifications"].append({
+                        "code_name": mod.code_name,
+                        "section": mod.section,
+                        "action": mod.action
+                    })
 
-        except Exception as exc:
-            self.logger.error(f"Error processing bill sections: {str(exc)}")
-            self.logger.debug(f"Bill text preview: {bill_text[:500]}")
-            return {}
+                details.append(section_detail)
+
+        return details
 
     def _prepare_template_data(
         self,
-        analyzed_skeleton: Dict[str, Any],
+        analyzed_data: Dict[str, Any],
         bill_info: Dict[str, Any],
-        bill_sections: Dict[str, Dict[str, Any]]
+        report_sections: List[ReportSection],
+        parsed_bill: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Prepare data for rendering in the report template."""
-        # Get the date in proper format
-        date_approved = self._format_date(bill_info.get('date_approved'))
-
-        changes = []
-        for change in analyzed_skeleton.get('changes', []):
-            processed_change = {
-                'id': change.get('id', ''),
-                'impacts_local_agencies': change.get('impacts_local_agencies', False),
-                'bill_sections': change.get('bill_sections', []),
-                'substantive_change': change.get('substantive_change', ''),
-                'local_agency_impact': change.get('local_agency_impact', ''),
-                'analysis': change.get('analysis', ''),
-                'key_action_items': change.get('key_action_items', []),
-                'practice_groups': change.get('practice_groups', []),
-                'impacted_agencies': change.get('impacted_agencies', [])
-            }
-
-            # Attach section details
-            section_details = []
-            for sec_num in processed_change['bill_sections']:
-                if sec_num in bill_sections:
-                    section_details.append({
-                        'number': sec_num,
-                        'text': bill_sections[sec_num].get('text', ''),
-                        'code': bill_sections[sec_num].get('code', ''),
-                        'action': bill_sections[sec_num].get('action', '')
-                    })
-            processed_change['section_details'] = section_details
-
-            changes.append(processed_change)
-
-        # Now separate changes by local agency impact
-        no_impact_changes = [c for c in changes if not c['impacts_local_agencies']]
-        impacting_changes = [c for c in changes if c['impacts_local_agencies']]
-
-        # Collect all practice groups (that appear as primary) among the changes that do impact local agencies
-        practice_groups_affected = sorted(list(set(
-            pg['name'] for c in impacting_changes for pg in c['practice_groups'] if pg.get('relevance') == 'primary'
-        )))
-
-        # Group changes by their primary practice groups
-        grouped_changes = {}
-        general_local_agency_impact_changes = []
-
-        for c in impacting_changes:
-            primary_pgs = [pg['name'] for pg in c.get('practice_groups', []) if pg.get('relevance') == 'primary']
-            if not primary_pgs:
-                # No primary group assigned, but it does impact local agencies
-                general_local_agency_impact_changes.append(c)
-            else:
-                for pg_name in primary_pgs:
-                    if pg_name not in grouped_changes:
-                        grouped_changes[pg_name] = []
-                    grouped_changes[pg_name].append(c)
-
-        # Template data
+        """Prepare comprehensive data for report template"""
         return {
-            'bill_info': bill_info,
-            'date_approved': date_approved,
-            'total_changes': len(changes),
-            'impacting_changes': len(impacting_changes),
-            'practice_areas': practice_groups_affected,
-            'changes': changes,
-            'no_impact_changes': no_impact_changes,
-            'grouped_changes': grouped_changes,
-            'general_local_agency_impact_changes': general_local_agency_impact_changes
+            "bill_info": bill_info,
+            "metadata": analyzed_data["metadata"],
+            "sections": report_sections,
+            "practice_areas": sorted(list(set(
+                section.practice_group
+                for section in report_sections
+                if section.practice_group
+            ))),
+            "date_generated": datetime.now().strftime("%B %d, %Y"),
+            "bill_sections": parsed_bill["bill_sections"]
         }
 
+    def _register_custom_filters(self) -> None:
+        """Register custom Jinja filters for formatting"""
+        self.jinja_env.filters.update({
+            'format_date': self._format_date,
+            'format_code_refs': self._format_code_references,
+            'format_requirements': self._format_requirements,
+            'format_deadlines': self._format_deadlines
+        })
+
+    def _format_date(self, date: Optional[datetime]) -> str:
+        """Format date for display"""
+        return date.strftime("%B %d, %Y") if date else "Not Available"
+
+    def _format_code_references(
+        self,
+        modifications: List[Dict[str, Any]]
+    ) -> str:
+        """Format code references for display"""
+        refs = []
+        for mod in modifications:
+            ref = f"{mod['code_name']} Section {mod['section']}"
+            if mod.get('action'):
+                ref += f" ({mod['action']})"
+            refs.append(ref)
+        return ", ".join(refs)
+
+    def _format_requirements(
+        self,
+        requirements: List[str],
+        indent: str = ""
+    ) -> str:
+        """Format requirements as HTML list"""
+        if not requirements:
+            return ""
+        items = [f"{indent}<li>{req}</li>" for req in requirements]
+        return f"{indent}<ul>\n{''.join(items)}\n{indent}</ul>"
+
+    def _format_deadlines(
+        self,
+        deadlines: List[Dict[str, Any]]
+    ) -> str:
+        """Format deadlines as HTML table"""
+        if not deadlines:
+            return ""
+
+        rows = []
+        for deadline in deadlines:
+            date = deadline.get("date", "")
+            description = deadline.get("description", "")
+            agencies = ", ".join(deadline.get("affected_agencies", []))
+
+            rows.append(
+                f"<tr>"
+                f"<td>{date}</td>"
+                f"<td>{description}</td>"
+                f"<td>{agencies}</td>"
+                f"</tr>"
+            )
+
+        return (
+            "<table class='deadline-table'>"
+            "<thead>"
+            "<tr>"
+            "<th>Date</th>"
+            "<th>Requirement</th>"
+            "<th>Affected Agencies</th>"
+            "</tr>"
+            "</thead>"
+            "<tbody>"
+            f"{''.join(rows)}"
+            "</tbody>"
+            "</table>"
+        )
+
     def _generate_html_report(self, template_data: Dict[str, Any]) -> str:
-        """Generate HTML report using the Jinja template."""
+        """Generate HTML report with improved formatting"""
         try:
-            # Add custom template filters
-            def format_section_reference(section):
-                if isinstance(section, dict):
-                    return f"{section.get('code', '')} Section {section.get('number', '')}"
-                return str(section)
-
-            self.jinja_env.filters['format_section'] = format_section_reference
-            self.jinja_env.filters['format_analysis'] = self._format_analysis_section_html
-
             template = self.jinja_env.get_template('report.html')
-            rendered_html = template.render(**template_data)
-            return rendered_html
-
-        except Exception as exc:
-            self.logger.error(f"Error generating HTML report: {str(exc)}")
-            self.logger.exception(exc)
+            return template.render(**template_data)
+        except Exception as e:
+            self.logger.error(f"Error generating HTML report: {str(e)}")
             raise
 
     def _convert_to_pdf(self, html_content: str) -> bytes:
-        """Convert HTML report to PDF."""
+        """Convert HTML report to PDF with enhanced styling"""
         try:
+            # Add print-specific CSS
+            css = CSS(string="""
+                @page {
+                    margin: 1in;
+                    @top-right {
+                        content: "Page " counter(page) " of " counter(pages);
+                    }
+                }
+
+                /* Enhanced table styling */
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 1em 0;
+                }
+
+                th, td {
+                    border: 1px solid #dee2e6;
+                    padding: 0.5rem;
+                }
+
+                th {
+                    background-color: #f8f9fa;
+                }
+
+                /* Improved section spacing */
+                section {
+                    margin-bottom: 2em;
+                    break-inside: avoid;
+                }
+
+                h1, h2, h3 {
+                    break-after: avoid;
+                }
+
+                /* Better list formatting */
+                ul, ol {
+                    margin: 0.5em 0;
+                    padding-left: 1.5em;
+                }
+
+                li {
+                    margin-bottom: 0.25em;
+                }
+
+                /* Deadline table specific styling */
+                .deadline-table th {
+                    background-color: #e9ecef;
+                    font-weight: bold;
+                }
+            """)
+
             html = HTML(string=html_content)
-            return html.write_pdf()
-        except Exception as exc:
-            self.logger.error(f"Error converting to PDF: {str(exc)}")
+            return html.write_pdf(stylesheets=[css])
+
+        except Exception as e:
+            self.logger.error(f"Error converting to PDF: {str(e)}")
             raise
 
-    # ----------------------------------------------------------------------
-    # Formatting Helpers
-    # ----------------------------------------------------------------------
+    def _get_general_impacts(
+        self,
+        changes: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Get changes that impact agencies but have no primary practice group"""
+        return [
+            change for change in changes
+            if change.get("impacts_local_agencies")
+            and not any(
+                group.get("relevance") == "primary"
+                for group in change.get("practice_groups", [])
+            )
+        ]
 
-    def _format_date(self, date: Any) -> str:
-        """Format a date for display in the report."""
-        if isinstance(date, datetime):
-            return date.strftime('%B %d, %Y')
-        return 'Not Available'
+    def _get_no_impact_changes(
+        self,
+        changes: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Get changes that don't impact local agencies"""
+        return [
+            change for change in changes
+            if not change.get("impacts_local_agencies")
+        ]
 
-    def _format_analysis_section_html(self, analysis_text: str) -> str:
-        """Convert raw analysis text into formatted HTML."""
-        if not analysis_text:
-            return ""
-        lines = self._extract_lines(analysis_text)
-        return self._process_subheadings_and_bullets_html(lines)
-
-    def _extract_lines(self, raw_text: str) -> List[str]:
-        """Extract non-empty lines from text, stripping out HTML tags."""
-        if not raw_text:
-            return []
-        cleaned_text = re.sub(r'<[^>]+>', '', raw_text)
-        return [line.strip() for line in cleaned_text.split('\n') if line.strip()]
-
-    def _process_subheadings_and_bullets_html(self, lines: List[str]) -> str:
-        """
-        Convert lines into subheadings (h4) when a line ends with ':' 
-        and bullet points (<ul><li>) otherwise.
-        """
-        html_chunks = []
-        in_list = False
-
-        for line in lines:
-            if line.endswith(':'):
-                if in_list:
-                    html_chunks.append("</ul>")
-                    in_list = False
-                subheading = line[:-1]  # remove trailing colon
-                html_chunks.append(f"<h4>{subheading}</h4>")
-            else:
-                if not in_list:
-                    html_chunks.append("<ul>")
-                    in_list = True
-                html_chunks.append(f"<li>{line}</li>")
-
-        if in_list:
-            html_chunks.append("</ul>")
-
-        return "\n".join(html_chunks)
+    def save_report(
+        self,
+        report_content: Union[str, bytes],
+        filename: str
+    ) -> None:
+        """Save report to file with error handling"""
+        try:
+            mode = 'wb' if isinstance(report_content, bytes) else 'w'
+            with open(filename, mode, encoding='utf-8' if mode == 'w' else None) as f:
+                f.write(report_content)
+        except Exception as e:
+            self.logger.error(f"Error saving report: {str(e)}")
+            raise
