@@ -155,11 +155,8 @@ async def process_bill_analysis(bill_number):
 
         for i, section in enumerate(parsed_bill.bill_sections, 1):
             progress.update_progress(4, f"Analyzing section {i}", i, len(parsed_bill.bill_sections))
-            section_data = {
-                "section_number": section.number,
-                "section_text": section.text
-            }
-            skeleton = await matcher.match_section(skeleton, section_data)
+            skeleton = await matcher.match_sections(skeleton, bill_text)
+            break  # We only need to do this once, not for each section
 
         analyzed_skeleton = await analyzer.analyze_changes(skeleton)
 
