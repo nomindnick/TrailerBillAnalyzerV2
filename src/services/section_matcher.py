@@ -1,6 +1,7 @@
 from typing import Dict, List, Any, Optional, Set, Tuple, Union
 import re
 import logging
+import json
 from dataclasses import dataclass, field
 from collections import defaultdict
 
@@ -154,7 +155,8 @@ class SectionMatcher:
                 response_format={"type": "json_object"}
             )
 
-            matches_data = self._parse_ai_matches(response.choices[0].message.content)
+            matches_data = json.loads(response.model_dump_json())["choices"][0]["message"]["content"]
+            matches_data = json.loads(matches_data)["matches"]
             for match in matches_data:
                 matches.append(MatchResult(
                     digest_id=digest_id,
