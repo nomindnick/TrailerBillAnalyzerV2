@@ -247,6 +247,33 @@ Analyze the text and return matches in this JSON format:
         
         return numbers
 
+    def _match_by_code_references(self, digest_map: Dict[str, Dict[str, Any]], section_map: Dict[str, Dict[str, Any]]) -> List[MatchResult]:
+        """Match digest items to bill sections based on code references"""
+        matches = []
+        
+        for digest_id, digest_info in digest_map.items():
+            digest_refs = digest_info["code_refs"]
+            if not digest_refs:
+                continue
+                
+            for section_id, section_info in section_map.items():
+                section_refs = section_info["code_refs"]
+                if not section_refs:
+                    continue
+                    
+                # Find overlapping references
+                common_refs = digest_refs.intersection(section_refs)
+                if common_refs:
+                    matches.append(MatchResult(
+                        digest_id=digest_id,
+                        section_id=section_id,
+                        confidence=0.9,  # High confidence for exact reference matches
+                        match_type="code_ref",
+                        supporting_evidence={"matching_refs": list(common_refs)}
+                    ))
+                    
+        return matches
+
     def _verify_complete_matching(self, skeleton: Dict[str, Any]) -> None:
         """Verify all digest items have matches and log warnings for unmatched items"""
         unmatched = []
