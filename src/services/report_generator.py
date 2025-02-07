@@ -3,7 +3,8 @@ import re
 from typing import Dict, Any, List, Union
 from datetime import datetime
 from weasyprint import HTML, CSS
-from jinja2 import Environment, select_autoescape
+import os
+from jinja2 import Environment, FileSystemLoader
 
 class ReportGenerator:
     """
@@ -12,9 +13,17 @@ class ReportGenerator:
     """
 
     def __init__(self):
-        """Initialize the report generator with a logger and default CSS styles."""
+        """Initialize the report generator with a logger and Jinja environment."""
         self.logger = logging.getLogger(__name__)
-        self.css_styles = self._get_default_css()
+
+        # We will look for 'templates' in the same directory as this file unless changed
+        # Adjust if needed depending on your project structure
+        template_dir = os.path.join(os.path.dirname(__file__), 'templates')
+
+        self.jinja_env = Environment(
+            loader=FileSystemLoader(template_dir),
+            autoescape=True
+        )
 
     # ----------------------------------------------------------------------
     # Public API
@@ -24,23 +33,25 @@ class ReportGenerator:
         self,
         analyzed_skeleton: Dict[str, Any],
         bill_info: Dict[str, Any],
+        bill_text: str,
         output_format: str = "html"
     ) -> Union[str, bytes]:
-        """
-        Generate a report in the specified format.
-
-        :param analyzed_skeleton: The analyzed bill data
-        :param bill_info: Basic information about the bill
-        :param output_format: "text", "html", or "pdf"
-        :return: str for text/html formats, bytes for PDF format
-        """
+        """Generate a report in the specified format."""
         try:
-            if output_format == "text":
-                return self._generate_text_report(analyzed_skeleton, bill_info)
-            elif output_format == "html":
-                return self._generate_html_report(analyzed_skeleton, bill_info)
+            # Process the bill text into sections for reference
+            bill_sections = self._process_bill_sections(bill_text)
+
+            # Prepare template data
+            template_data = self._prepare_template_data(
+                analyzed_skeleton, 
+                bill_info,
+                bill_sections
+            )
+
+            if output_format == "html":
+                return self._generate_html_report(template_data)
             elif output_format == "pdf":
-                html_content = self._generate_html_report(analyzed_skeleton, bill_info)
+                html_content = self._generate_html_report(template_data)
                 return self._convert_to_pdf(html_content)
             else:
                 raise ValueError(f"Unsupported output format: {output_format}")
@@ -50,12 +61,7 @@ class ReportGenerator:
             raise
 
     def save_report(self, report_content: Union[str, bytes], filename: str) -> None:
-        """
-        Save the report to a file.
-
-        :param report_content: Content returned by generate_report
-        :param filename: The file path where the report should be saved
-        """
+        """Save the report to a file."""
         mode = 'wb' if isinstance(report_content, bytes) else 'w'
         try:
             with open(filename, mode) as f:
@@ -65,184 +71,180 @@ class ReportGenerator:
             raise
 
     # ----------------------------------------------------------------------
-    # Text Report
+    # Internal Processing
     # ----------------------------------------------------------------------
 
-    def _generate_text_report(self, analyzed_skeleton: Dict[str, Any], bill_info: Dict[str, Any]) -> str:
-        """Generate a plain text version of the report."""
+    def _process_bill_sections(self, bill_text: str) -> Dict[str, Dict[str, Any]]:
+        """
+        Process bill text into a dictionary of sections with metadata.
+
+        Returns:
+            Dict with structure:
+            {
+                "section_number": {
+                    "text": "full text of section",
+                    "code": "Government Code/Public Resources Code/etc",
+                    "section_number": "referenced code section number",
+                    "action": "amended/added/repealed"
+                }
+            }
+        """
+        sections = {}
         try:
-            parts = [
-                self._generate_header_text(bill_info),
-                self._generate_executive_summary_text(analyzed_skeleton),
-                self._generate_practice_area_analysis_text(analyzed_skeleton)
-            ]
-            return "\n\n".join(parts)
+            # Pattern matches both "SECTION X." and "SEC. X." followed by text
+            pattern = r'^(?:SECTION|SEC\.)\s+(\d+)\.?\s+(.*?)(?=^(?:SECTION|SEC\.)|$)'
+
+            matches = re.finditer(pattern, bill_text, re.MULTILINE | re.DOTALL)
+
+            for match in matches:
+                section_num = match.group(1)
+                full_text = match.group(2).strip()
+
+                # Regex to parse first line to get code reference and action
+                first_line_pattern = r'Section\s+(\d+(?:\.\d+)?)\s+(?:of\s+the\s+)?([A-Za-z\s]+Code)\s+is\s+(\w+)'
+                code_match = re.search(first_line_pattern, full_text)
+
+                sections[section_num] = {
+                    "text": full_text,
+                    "code": code_match.group(2) if code_match else None,
+                    "section_number": code_match.group(1) if code_match else None,
+                    "action": code_match.group(3) if code_match else None
+                }
+
+            self.logger.info(f"Processed {len(sections)} bill sections")
+            return sections
+
         except Exception as exc:
-            self.logger.error(f"Error generating text report: {str(exc)}")
-            raise
+            self.logger.error(f"Error processing bill sections: {str(exc)}")
+            self.logger.debug(f"Bill text preview: {bill_text[:500]}")
+            return {}
 
-    def _generate_header_text(self, bill_info: Dict[str, Any]) -> str:
-        """Generate the text report header section."""
-        try:
-            date_approved = self._get_date_approved(bill_info)
-            return (
-                f"BILL ANALYSIS REPORT\n"
-                f"{'-' * 50}\n"
-                f"Bill Number: {bill_info.get('bill_number', 'Not Available')}\n"
-                f"Chapter Number: {bill_info.get('chapter_number', 'Not Available')}\n"
-                f"Title: {bill_info.get('title', 'Not Available')}\n"
-                f"Date Approved: {date_approved}"
-            )
-        except Exception as exc:
-            self.logger.error(f"Error generating header: {str(exc)}")
-            return "BILL ANALYSIS REPORT\n" + ("-" * 50)
+    def _prepare_template_data(
+        self,
+        analyzed_skeleton: Dict[str, Any],
+        bill_info: Dict[str, Any],
+        bill_sections: Dict[str, Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Prepare data for rendering in the report template."""
+        # Get the date in proper format
+        date_approved = self._format_date(bill_info.get('date_approved'))
 
-    def _generate_executive_summary_text(self, analyzed_skeleton: Dict[str, Any]) -> str:
-        """Generate an executive summary section for the text report."""
-        total_changes = len(analyzed_skeleton['changes'])
-        impacting_changes = len(self._get_impacting_changes(analyzed_skeleton))
-        practice_groups = ', '.join(analyzed_skeleton['metadata']['practice_groups_affected'])
-        return (
-            f"EXECUTIVE SUMMARY\n"
-            f"{'-' * 50}\n"
-            f"Total Changes: {total_changes}\n"
-            f"Changes Impacting Local Agencies: {impacting_changes}\n"
-            f"Practice Areas Affected: {practice_groups}"
-        )
-
-    def _generate_practice_area_analysis_text(self, analyzed_skeleton: Dict[str, Any]) -> str:
-        """Generate the analysis-by-practice-area section for the text report."""
-        sections = ["ANALYSIS BY PRACTICE AREA", "=" * 24]
-
-        impacting_changes = self._get_impacting_changes(analyzed_skeleton)
-        no_impact_changes = self._get_no_impact_changes(analyzed_skeleton)
-        affected_areas = analyzed_skeleton['metadata']['practice_groups_affected']
-
-        # For each practice area, add relevant changes
-        for area in affected_areas:
-            sections.append(self._generate_practice_area_section_text(area, impacting_changes))
-
-        # If there are no-impact changes, add them at the end
-        if no_impact_changes:
-            sections.append(self._generate_no_impact_section_text(no_impact_changes))
-
-        return "\n".join(sections)
-
-    def _generate_practice_area_section_text(self, area: str, changes: List[Dict[str, Any]]) -> str:
-        """Generate the text describing how a practice area is impacted by changes."""
-        section_lines = [f"\n{area.upper()}", "=" * len(area)]
-
-        for change in changes:
-            # Only include changes relevant to this practice area
-            if not any(pg['name'] == area for pg in change.get('practice_groups', [])):
-                continue
-
-            # Header lines
-            section_lines.append(self._format_change_header(change))
-
-            # Relevance level
-            relevance = next(
-                (pg['relevance'] for pg in change.get('practice_groups', []) if pg['name'] == area),
-                'unknown'
-            )
-            section_lines.append(f"Relevance Level: {relevance.title()}")
-
-            # Impact analysis
-            if change.get('impact_analysis'):
-                section_lines.append("\nImpact Analysis:")
-                section_lines.append(self._format_analysis_section_text(change['impact_analysis']))
-
-            section_lines.append("\n" + "-" * 80 + "\n")
-
-        return "\n".join(section_lines)
-
-    def _generate_no_impact_section_text(self, changes: List[Dict[str, Any]]) -> str:
-        """Generate a text section for changes that have no local agency impact."""
-        if not changes:
-            return ""
-
-        section_lines = ["\nCHANGES WITH NO LOCAL AGENCY IMPACT", "=" * 31]
-        for change in changes:
-            section_lines.append(self._format_change_header(change))
-            section_lines.append("Summary:")
-            digest_text = change.get('digest_text', '')
-            section_lines.append(self._format_analysis_section_text(digest_text))
-            section_lines.append("\n" + "-" * 80 + "\n")
-
-        return "\n".join(section_lines)
-
-    # ----------------------------------------------------------------------
-    # HTML/PDF Report
-    # ----------------------------------------------------------------------
-
-    def _generate_html_report(self, analyzed_skeleton: Dict[str, Any], bill_info: Dict[str, Any]) -> str:
-        """Generate the HTML version of the report."""
-        try:
-            # Prepare data for template
-            date_approved = self._get_date_approved(bill_info)
-            self._prepare_changes_for_template(analyzed_skeleton)
-
-            # Jinja2 template
-            html_template = self._get_html_template()
-            template_data = {
-                'css_styles': self.css_styles,
-                'bill_info': bill_info,
-                'date_approved': date_approved,
-                'total_changes': len(analyzed_skeleton['changes']),
-                'impacting_changes': len(self._get_impacting_changes(analyzed_skeleton)),
-                'practice_areas': analyzed_skeleton['metadata']['practice_groups_affected'],
-                'changes': self._get_impacting_changes(analyzed_skeleton),
-                'no_impact_changes': self._get_no_impact_changes(analyzed_skeleton),
-                'get_practice_group_relevance': self._generate_practice_group_relevance,
-                'get_no_impact_summary': self._generate_no_impact_summary,
-                'format_analysis_section_html': self._format_analysis_section_html
+        changes = []
+        for change in analyzed_skeleton.get('changes', []):
+            processed_change = {
+                'id': change.get('id', ''),
+                'impacts_local_agencies': change.get('impacts_local_agencies', False),
+                'bill_sections': change.get('bill_sections', []),
+                'substantive_change': change.get('substantive_change', ''),
+                'local_agency_impact': change.get('local_agency_impact', ''),
+                'analysis': change.get('analysis', ''),
+                'key_action_items': change.get('key_action_items', []),
+                'practice_groups': change.get('practice_groups', []),
+                'impacted_agencies': change.get('impacted_agencies', [])
             }
 
-            # Render template
-            env = Environment(autoescape=select_autoescape(['html', 'xml']))
-            template = env.from_string(html_template)
-            return template.render(**template_data)
+            # Attach section details
+            section_details = []
+            for sec_num in processed_change['bill_sections']:
+                if sec_num in bill_sections:
+                    section_details.append({
+                        'number': sec_num,
+                        'text': bill_sections[sec_num].get('text', ''),
+                        'code': bill_sections[sec_num].get('code', ''),
+                        'action': bill_sections[sec_num].get('action', '')
+                    })
+            processed_change['section_details'] = section_details
+
+            changes.append(processed_change)
+
+        # Now separate changes by local agency impact
+        no_impact_changes = [c for c in changes if not c['impacts_local_agencies']]
+        impacting_changes = [c for c in changes if c['impacts_local_agencies']]
+
+        # Collect all practice groups (that appear as primary) among the changes that do impact local agencies
+        practice_groups_affected = sorted(list(set(
+            pg['name'] for c in impacting_changes for pg in c['practice_groups'] if pg.get('relevance') == 'primary'
+        )))
+
+        # Group changes by their primary practice groups
+        grouped_changes = {}
+        general_local_agency_impact_changes = []
+
+        for c in impacting_changes:
+            primary_pgs = [pg['name'] for pg in c.get('practice_groups', []) if pg.get('relevance') == 'primary']
+            if not primary_pgs:
+                # No primary group assigned, but it does impact local agencies
+                general_local_agency_impact_changes.append(c)
+            else:
+                for pg_name in primary_pgs:
+                    if pg_name not in grouped_changes:
+                        grouped_changes[pg_name] = []
+                    grouped_changes[pg_name].append(c)
+
+        # Template data
+        return {
+            'bill_info': bill_info,
+            'date_approved': date_approved,
+            'total_changes': len(changes),
+            'impacting_changes': len(impacting_changes),
+            'practice_areas': practice_groups_affected,
+            'changes': changes,
+            'no_impact_changes': no_impact_changes,
+            'grouped_changes': grouped_changes,
+            'general_local_agency_impact_changes': general_local_agency_impact_changes
+        }
+
+    def _generate_html_report(self, template_data: Dict[str, Any]) -> str:
+        """Generate HTML report using the Jinja template."""
+        try:
+            # Add custom template filters
+            def format_section_reference(section):
+                if isinstance(section, dict):
+                    return f"{section.get('code', '')} Section {section.get('number', '')}"
+                return str(section)
+
+            self.jinja_env.filters['format_section'] = format_section_reference
+            self.jinja_env.filters['format_analysis'] = self._format_analysis_section_html
+
+            template = self.jinja_env.get_template('report.html')
+            rendered_html = template.render(**template_data)
+            return rendered_html
 
         except Exception as exc:
             self.logger.error(f"Error generating HTML report: {str(exc)}")
+            self.logger.exception(exc)
             raise
 
     def _convert_to_pdf(self, html_content: str) -> bytes:
-        """
-        Convert the HTML report to PDF using WeasyPrint.
-        Returns the PDF as bytes.
-        """
+        """Convert HTML report to PDF."""
         try:
             html = HTML(string=html_content)
-            stylesheet = CSS(string=self.css_styles)
-            return html.write_pdf(stylesheets=[stylesheet])
+            return html.write_pdf()
         except Exception as exc:
             self.logger.error(f"Error converting to PDF: {str(exc)}")
-            self.logger.exception("Full traceback:")
             raise
 
     # ----------------------------------------------------------------------
     # Formatting Helpers
     # ----------------------------------------------------------------------
 
+    def _format_date(self, date: Any) -> str:
+        """Format a date for display in the report."""
+        if isinstance(date, datetime):
+            return date.strftime('%B %d, %Y')
+        return 'Not Available'
+
     def _format_analysis_section_html(self, analysis_text: str) -> str:
         """Convert raw analysis text into formatted HTML."""
         if not analysis_text:
             return ""
-
         lines = self._extract_lines(analysis_text)
         return self._process_subheadings_and_bullets_html(lines)
 
-    def _format_analysis_section_text(self, analysis_text: str) -> str:
-        """Convert raw analysis text into formatted plaintext."""
-        lines = self._extract_lines(analysis_text)
-        return self._process_subheadings_and_bullets_text(lines)
-
     def _extract_lines(self, raw_text: str) -> List[str]:
-        """Extract non-empty lines from text, stripping out XML/HTML tags."""
+        """Extract non-empty lines from text, stripping out HTML tags."""
         if not raw_text:
             return []
-
         cleaned_text = re.sub(r'<[^>]+>', '', raw_text)
         return [line.strip() for line in cleaned_text.split('\n') if line.strip()]
 
@@ -271,342 +273,3 @@ class ReportGenerator:
             html_chunks.append("</ul>")
 
         return "\n".join(html_chunks)
-
-    def _process_subheadings_and_bullets_text(self, lines: List[str]) -> str:
-        """
-        Convert lines into uppercase subheadings when a line ends with ':'
-        and bullet points otherwise.
-        """
-        output_lines = []
-        in_bullet_block = False
-
-        for line in lines:
-            if line.endswith(':'):
-                # Close out any existing bullet block
-                if in_bullet_block:
-                    output_lines.append("")
-                    in_bullet_block = False
-
-                subheading_text = line[:-1].upper()
-                output_lines.append(subheading_text)
-                output_lines.append("-" * len(subheading_text))
-            else:
-                if not in_bullet_block:
-                    in_bullet_block = True
-                output_lines.append(f"  • {line}")
-
-        return "\n".join(output_lines)
-
-    # ----------------------------------------------------------------------
-    # Practice Group Logic
-    # ----------------------------------------------------------------------
-
-    def _generate_practice_group_relevance(self, change: Dict[str, Any], practice_group: str) -> str:
-        """
-        Generate the textual explanation for how a change impacts a specific practice group.
-        """
-        pg_entry = next(
-            (pg for pg in change.get("practice_groups", []) if pg["name"] == practice_group),
-            None
-        )
-        if not pg_entry:
-            return ""
-
-        relevance_level = pg_entry.get("relevance", "")
-        explanations = {
-            "Business and Facilities": {
-                "primary": (
-                    "This change directly affects the business operations and facilities "
-                    "management of local agencies (e.g., infrastructure, procurement, or operational requirements)."
-                ),
-                "secondary": (
-                    "This change has indirect implications for local agency business operations "
-                    "or facilities management (e.g., optional or procedural adjustments)."
-                )
-            },
-            "Public Finance": {
-                "primary": (
-                    "This change has direct fiscal implications for local agencies, affecting "
-                    "funding mechanisms, financial obligations, or budgeting."
-                ),
-                "secondary": (
-                    "This change presents potential financial considerations for local agencies "
-                    "through optional programs or indirect fiscal effects."
-                )
-            },
-            # Add additional practice groups as needed
-        }
-
-        base_explanation = explanations.get(practice_group, {}).get(relevance_level, "")
-        if not base_explanation:
-            return ""
-
-        return f"Practice Group Relevance ({relevance_level.title()}): {base_explanation}"
-
-    def _generate_no_impact_summary(self, change: Dict[str, Any]) -> str:
-        """
-        Generate a message explaining why a change does not affect local agencies.
-        """
-        digest_text = change.get('digest_text', '')
-        state_only_indicators = [
-            "state agency", "state department", "state entity",
-            "Department of ", "state vehicle fleet", "High-Speed Rail Authority"
-        ]
-
-        if any(ind.lower() in digest_text.lower() for ind in state_only_indicators):
-            return (
-                "This change affects only state-level agencies and operations, "
-                "with no direct impact on local agencies."
-            )
-
-        if any(word in digest_text.lower() for word in ["technical", "administrative"]):
-            return (
-                "This is a technical or administrative change that does not affect "
-                "local agency operations or requirements."
-            )
-
-        return (
-            "This change does not create new requirements or modify existing obligations, "
-            "and does not directly affect local agency operations."
-        )
-
-    # ----------------------------------------------------------------------
-    # Internal Utilities
-    # ----------------------------------------------------------------------
-
-    def _get_date_approved(self, bill_info: Dict[str, Any]) -> str:
-        """Safely return a date string or 'Not Available' if no date is provided."""
-        date_approved = bill_info.get('date_approved')
-        if isinstance(date_approved, datetime):
-            return date_approved.strftime('%Y-%m-%d')
-        return 'Not Available'
-
-    def _format_change_header(self, change: Dict[str, Any]) -> str:
-        """
-        Format the text report header for a change, including bill section references.
-        """
-        refs = change.get('bill_sections', [])
-        sections = f"[Bill Sections: {', '.join(refs)}]" if refs else ""
-        return f"\n{sections}\n"
-
-    def _get_impacting_changes(self, analyzed_skeleton: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Return only the changes that impact local agencies."""
-        return [chg for chg in analyzed_skeleton['changes'] if chg.get('impacts_local_agencies')]
-
-    def _get_no_impact_changes(self, analyzed_skeleton: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Return changes that do not impact local agencies."""
-        return [chg for chg in analyzed_skeleton['changes'] if not chg.get('impacts_local_agencies')]
-
-    def _prepare_changes_for_template(self, analyzed_skeleton: Dict[str, Any]) -> None:
-        """
-        Modify the analyzed skeleton in-place so each change has
-        a list of 'practice_groups_names' for easier handling in the Jinja template.
-        """
-        for change in analyzed_skeleton['changes']:
-            change['practice_groups_names'] = [
-                pg['name'] for pg in change.get('practice_groups', [])
-            ]
-
-    # ----------------------------------------------------------------------
-    # Templates / Default CSS
-    # ----------------------------------------------------------------------
-
-    def _get_html_template(self) -> str:
-        """Return the Jinja2 template string for the HTML report."""
-        return r"""
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <title>Bill Analysis Report - {{ bill_info.bill_number }}</title>
-            <style>
-                {{ css_styles }}
-            </style>
-        </head>
-        <body>
-            <h1>Bill Analysis Report</h1>
-
-            <div class="header-info">
-                <p><strong>Bill Number:</strong> {{ bill_info.bill_number }}</p>
-                <p><strong>Chapter Number:</strong> {{ bill_info.chapter_number }}</p>
-                <p><strong>Title:</strong> {{ bill_info.title }}</p>
-                <p><strong>Date Approved:</strong> {{ date_approved }}</p>
-            </div>
-
-            <div class="executive-summary">
-                <h2>Executive Summary</h2>
-                <p><strong>Total Changes:</strong> {{ total_changes }}</p>
-                <p><strong>Changes Impacting Local Agencies:</strong> {{ impacting_changes }}</p>
-                <p><strong>Practice Areas Affected:</strong> {{ practice_areas|join(', ') }}</p>
-            </div>
-
-            <h2>Analysis by Practice Area</h2>
-            {% for area in practice_areas %}
-            <div class="practice-area">
-                <div class="practice-area-header">
-                    <h3>{{ area }}</h3>
-                </div>
-                {% for change in changes %}
-                    {% if area in change.practice_groups_names %}
-                    <div class="relevance-explanation">
-                        {{ get_practice_group_relevance(change, area) }}
-                    </div>
-                    <div class="impact-analysis">
-                        {{ format_analysis_section_html(change.impact_analysis)|safe }}
-                    </div>
-                    {% endif %}
-                {% endfor %}
-            </div>
-            {% endfor %}
-
-            {% if no_impact_changes %}
-            <div class="no-impact-section">
-                <h3>Changes with No Local Agency Impact</h3>
-                {% for change in no_impact_changes %}
-                <div class="no-impact-item">
-                    <p class="summary">{{ get_no_impact_summary(change) }}</p>
-                    <p>Change:</p>
-                    <div>
-                        {{ format_analysis_section_html(change.digest_text)|safe }}
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-            {% endif %}
-        </body>
-        </html>
-        """
-
-    def _get_default_css(self) -> str:
-        """
-        Return the default CSS styles for the report.
-        FIXED: Use proper syntax for `content:` in margin boxes.
-        """
-        return r"""
-        @page {
-            margin: 1in;
-            @top-center {
-                content: 'Bill Analysis Report';
-                font-family: Arial, sans-serif;
-                font-size: 10pt;
-            }
-            @bottom-right {
-                content: 'Page ' counter(page);
-                font-family: Arial, sans-serif;
-                font-size: 10pt;
-            }
-        }
-
-        body {
-            font-family: Arial, sans-serif;
-            font-size: 11pt;
-            line-height: 1.5;
-            color: #333333;
-        }
-
-        h1 {
-            color: #1a5f7a;
-            font-size: 24pt;
-            margin-bottom: 20px;
-            border-bottom: 2px solid #1a5f7a;
-            padding-bottom: 5px;
-        }
-
-        h2 {
-            color: #1a5f7a;
-            font-size: 18pt;
-            margin-top: 30px;
-            margin-bottom: 15px;
-            border-bottom: 1px solid #1a5f7a;
-            padding-bottom: 3px;
-        }
-
-        h3 {
-            color: #2c3e50;
-            font-size: 14pt;
-            margin-top: 20px;
-            margin-bottom: 10px;
-        }
-
-        h4 {
-            color: #2c3e50;
-            font-size: 12pt;
-            margin-top: 15px;
-            margin-bottom: 8px;
-        }
-
-        .header-info {
-            margin-bottom: 30px;
-            padding: 15px;
-            background-color: #f8f9fa;
-            border-radius: 5px;
-        }
-
-        .header-info p {
-            margin: 5px 0;
-        }
-
-        .executive-summary {
-            margin: 20px 0;
-            padding: 15px;
-            background-color: #f1f7fa;
-            border-radius: 5px;
-            border: 1px solid #dee2e6;
-        }
-
-        .practice-area {
-            margin: 20px 0;
-            padding: 15px;
-            background-color: #ffffff;
-            border: 1px solid #dee2e6;
-            border-radius: 5px;
-        }
-
-        .practice-area-header {
-            background-color: #1a5f7a;
-            color: white;
-            padding: 10px;
-            margin: -15px -15px 15px -15px;
-            border-radius: 5px 5px 0 0;
-        }
-
-        .relevance-explanation {
-            background-color: #e9ecef;
-            padding: 10px;
-            margin: 10px 0;
-            border-left: 4px solid #1a5f7a;
-        }
-
-        .impact-analysis {
-            margin: 15px 0;
-            padding: 10px;
-            border-left: 4px solid #6c757d;
-            background-color: #fafafa;
-            border-radius: 5px;
-        }
-
-        .impact-analysis ul {
-            margin-left: 1.2em;
-        }
-
-        .no-impact-section {
-            margin: 20px 0;
-            padding: 15px;
-            background-color: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 5px;
-        }
-
-        .no-impact-item {
-            margin: 10px 0;
-            padding: 10px;
-            background-color: #ffffff;
-            border-left: 4px solid #6c757d;
-            border-radius: 5px;
-        }
-
-        .summary {
-            font-weight: bold;
-            color: #2c3e50;
-        }
-        """

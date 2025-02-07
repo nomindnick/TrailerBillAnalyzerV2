@@ -27,7 +27,7 @@ class ImpactAnalyzer:
             raise
 
         # Specify model
-        self.model = "gpt-4-1106-preview"  # Updated to a current model
+        self.model = "gpt-4o-2024-08-06"  # Updated to a current model
         self.practice_groups = PracticeGroups()
 
     async def analyze_changes(self, skeleton: Dict[str, Any]) -> Dict[str, Any]:
@@ -40,22 +40,24 @@ class ImpactAnalyzer:
 
             # Update metadata using the new impacts_local_agencies field
             skeleton["metadata"]["has_agency_impacts"] = any(
-                change.get("impacts_local_agencies")  # Changed from impacts_public_agencies
+                change.get("impacts_local_agencies")
                 for change in skeleton["changes"]
             )
 
+            # Collect all practice groups that are marked as "primary" for changes that impact local agencies
             skeleton["metadata"]["practice_groups_affected"] = sorted(list(set(
                 group["name"]
                 for change in skeleton["changes"]
+                if change.get("impacts_local_agencies")
                 for group in change.get("practice_groups", [])
-                if change.get("impacts_local_agencies") and group.get("relevance") == "primary"  # Added impacts_local_agencies check
+                if group.get("relevance") == "primary"
             )))
 
             return skeleton
 
         except Exception as e:
             self.logger.error(f"Error analyzing changes: {str(e)}")
-            raise 
+            raise
 
     async def _analyze_single_change(self, change: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze a single change for its impact on public agencies."""
@@ -63,9 +65,9 @@ class ImpactAnalyzer:
             messages = [
                 {
                     "role": "system",
-                    "content": """You are analyzing changes to California law that may affect public agencies.
-    Focus on practical operational impacts, compliance requirements, and implementation considerations.
-    Return only valid JSON with your analysis."""
+                    "content": """You are analyzing changes to California law that may affect local public agencies.
+Focus on practical operational impacts, compliance requirements, and implementation considerations.
+Return only valid JSON with your analysis."""
                 },
                 {
                     "role": "user",
@@ -81,124 +83,95 @@ class ImpactAnalyzer:
             )
 
             result = json.loads(response.choices[0].message.content)
-            return self._validate_analysis_result(result)
+
+            # Validate and clean up the result
+            validated_result = {
+                "impacts_local_agencies": bool(result.get("impacts_local_agencies", False)),
+                "substantive_change": str(result.get("substantive_change", "")),
+                "local_agency_impact": str(result.get("local_agency_impact", "")),
+                "analysis": str(result.get("analysis", "")),
+                "key_action_items": result.get("key_action_items", []),
+                "practice_groups": [],
+                # New field to capture which agencies (cities, counties, districts, etc.) are impacted
+                "impacted_agencies": result.get("impacted_agencies", [])
+            }
+
+            # Process practice groups if there are any
+            if result.get("practice_groups"):
+                validated_result["practice_groups"] = [
+                    {
+                        "name": pg["name"],
+                        "relevance": pg["relevance"]
+                    }
+                    for pg in result["practice_groups"]
+                    if self.practice_groups.get_group_by_name(pg.get("name"))
+                    and pg.get("relevance") in ("primary", "secondary")
+                ]
+
+            # Log the result for debugging
+            self.logger.debug(f"Analysis result for change: {json.dumps(validated_result, indent=2)}")
+
+            return validated_result
 
         except Exception as e:
-            self.logger.error(f"Error analyzing change {change.get('id', 'UNKNOWN')}: {str(e)}")
+            self.logger.error(f"Error analyzing change: {str(e)}")
+            self.logger.exception(e)  # Log full traceback
             return self._get_default_analysis()
 
     def _build_analysis_prompt(self, change: Dict[str, Any]) -> str:
         """Build a comprehensive prompt for the AI analysis."""
         practice_group_info = self.practice_groups.get_prompt_text(detail_level="brief")
 
-        return f"""You are a legal analyst specializing in California law, with a focus on how legislative changes impact local public agencies. Your task is to analyze a proposed change to California law and determine its relevance to local public agencies such as school districts, cities, counties, special districts, and joint powers authorities.
+        return f"""You are a legal analyst specializing in California law, with expertise in analyzing legislative changes that affect local public agencies like cities, counties, school districts, and special districts. Your task is to analyze a proposed change to California law and produce a clear, concise analysis that will help attorneys quickly understand if and how the change impacts their public agency clients.
 
-    First, review the following information about the proposed law change:
+Review the following information about the proposed law change:
 
-    <digest_text>
-    {change["digest_text"]}
-    </digest_text>
+<digest_text>
+{change["digest_text"]}
+</digest_text>
 
-    <existing_law>
-    {change["existing_law"]}
-    </existing_law>
+<existing_law>
+{change["existing_law"]}
+</existing_law>
 
-    <proposed_change>
-    {change["proposed_change"]}
-    </proposed_change>
+<proposed_change>
+{change["proposed_change"]}
+</proposed_change>
 
-    <code_sections>
-    {', '.join(change["code_sections"])}
-    </code_sections>
+<code_sections>
+{', '.join(change["code_sections"])}
+</code_sections>
 
-    Now, carefully analyze this information to determine if the change directly impacts any local agencies. Conduct your analysis inside <detailed_analysis> tags:
+Based on this information, provide your final analysis in the following JSON format:
 
-    <detailed_analysis>
-    1. Affected Local Agencies:
-       [List out the specific types of local agencies that might be affected by this change]
-
-    2. New Obligations:
-       [Analyze whether the change creates any new obligations for local agencies]
-       - What specific new responsibilities or duties are introduced?
-       - Can you provide an example of how a local agency might need to adapt to meet these new obligations?
-
-    3. Funding, Operations, or Compliance:
-       [Analyze whether the change affects local agency funding, operations, or compliance requirements]
-       - How might this change impact local agency budgets?
-       - What operational processes might need to be modified?
-       - Are there new compliance measures that local agencies will need to implement?
-
-    4. Interaction with State Agencies:
-       [Analyze whether the change alters how local agencies interact with state agencies]
-       - Does this change introduce new reporting requirements to state agencies?
-       - Are there changes in how local agencies might receive guidance or oversight from state agencies?
-
-    5. Programs or Services:
-       [Analyze whether the change affects programs or services that local agencies rely on]
-       - What specific programs or services might be impacted?
-       - How might these changes affect the delivery of services to the public?
-
-    6. Key Points for Public Agency Clients:
-       [Summarize the most important aspects of this change that attorneys should quickly understand for their public agency clients]
-       - What are the top 3-5 takeaways from this change?
-       - Are there any immediate actions that local agencies should consider?
-
-    Conclusion:
-    [Based on the above analysis, determine if this change directly impacts local public agencies. Provide a brief summary of why or why not.]
-    </detailed_analysis>
-
-    If you've determined that there ARE local agency impacts, consider the following practice groups and their areas of focus:
-
-    <practice_group_info>
-    {practice_group_info}
-    </practice_group_info>
-
-    Guidelines for Practice Group Assignment:
-
-    1. Primary Relevance (requires at least one):
-       - Creates direct compliance obligations for local agencies within that practice area
-       - Requires significant operational changes in that practice area
-       - Materially affects funding or resources in that practice area
-       - Imposes new legal requirements or liabilities in that practice area
-
-    2. Secondary Relevance (requires at least one):
-       - Creates optional opportunities that local agencies may want to consider
-       - May require minor procedural updates in that practice area
-       - Has indirect effects on operations or resources in that practice area
-       - Changes the context in which local agencies operate without imposing direct requirements
-
-    3. No Relevance:
-       - Changes that only affect state agencies
-       - Changes that create theoretical possibilities for local agency involvement
-       - Changes that might have very indirect or speculative effects
-       - Administrative or technical changes with no operational impact
-
-    Your analysis should:
-    1. Assign practice groups conservatively - only when there's a clear connection
-    2. Provide distinct analysis for each practice group rather than duplicating content
-    3. Focus on concrete, specific impacts rather than speculative possibilities
-    4. Distinguish clearly between mandatory requirements and optional opportunities
-
-    Now, provide your final analysis in the following JSON format:
-
-    {{
-      "impacts_local_agencies": boolean,
-      "impact_analysis": string or null,
-      "practice_groups": [
+{{
+    "impacts_local_agencies": boolean,
+    "substantive_change": string,
+    "local_agency_impact": string,
+    "analysis": string,
+    "key_action_items": [string],  
+    "impacted_agencies": [string],
+    "practice_groups": [
         {{
-          "name": string,
-          "relevance": "primary" or "secondary"
+            "name": string,
+            "relevance": "primary" or "secondary"
         }}
-      ]
-    }}
+    ]
+}}
 
-    Ensure that:
-    1. "impacts_local_agencies" is a boolean indicating if this DIRECTLY impacts local public agencies.
-    2. "impact_analysis" is a detailed analysis of how this affects local public agencies, or null if there is no impact.
-    3. "practice_groups" is an array of objects, each containing a "name" and "relevance" field. Only include practice groups if there is a genuine connection to local agency impacts.
-    4. If there are no local agency impacts, mark "impacts_local_agencies" as false, set "impact_analysis" to null, and include an empty array for "practice_groups".
+Requirements for each field:
+1. "impacts_local_agencies": Indicate True if local agencies are materially impacted by the change, else False.
+2. "substantive_change": Provide a concise description of what the law is changing.
+3. "local_agency_impact": Provide a clear explanation if (and how) this change impacts local agencies.
+4. "analysis": Offer a focused analysis of what attorneys need to know (requirements, compliance, operational changes, financial implications, etc.).
+5. "key_action_items": 3-5 specific and actionable steps local agencies or their counsel should consider.
+6. "impacted_agencies": List specific local agencies affected (e.g., cities, counties, school districts, special districts), or leave it empty if none are specifically singled out.
+7. "practice_groups": Identify which practice groups are impacted. Use:
+   - "primary" if the change directly imposes compliance obligations or significant operational changes in that practice area.
+   - "secondary" if it creates optional or minor considerations.
 
-    Remember to focus on providing a useful analysis that allows attorneys to quickly understand if the proposed change has sections directly relevant to their public agency clients."""
+If you determine that there are no local agency impacts, set "impacts_local_agencies" to false, provide a short statement in "local_agency_impact", leave "practice_groups" empty, and note "impacted_agencies" as empty.
+"""
 
     def _validate_analysis_result(self, result: Dict[str, Any]) -> Dict[str, Any]:
         """Validate and clean up the AI analysis result."""
@@ -258,7 +231,7 @@ class ImpactAnalyzer:
         total_changes = len(skeleton["changes"])
         impacting_changes = len([
             c for c in skeleton["changes"]
-            if c.get("impacts_public_agencies")
+            if c.get("impacts_local_agencies")
         ])
 
         practice_group_counts = {}
@@ -266,12 +239,12 @@ class ImpactAnalyzer:
             primary_count = len([
                 c for c in skeleton["changes"]
                 if any(pg.get("name") == group.name and pg.get("relevance") == "primary"
-                      for pg in c.get("practice_groups", []))
+                       for pg in c.get("practice_groups", []))
             ])
             secondary_count = len([
                 c for c in skeleton["changes"]
                 if any(pg.get("name") == group.name and pg.get("relevance") == "secondary"
-                      for pg in c.get("practice_groups", []))
+                       for pg in c.get("practice_groups", []))
             ])
             if primary_count > 0 or secondary_count > 0:
                 practice_group_counts[group.name] = {
@@ -292,21 +265,21 @@ class ImpactAnalyzer:
         issues = []
 
         for change in skeleton["changes"]:
-            if change.get("impacts_public_agencies") and not change.get("impact_analysis"):
+            if change.get("impacts_local_agencies") and not change.get("analysis"):
                 issues.append({
                     "type": "missing_analysis",
                     "id": change["id"],
                     "message": "Impact marked but no analysis provided"
                 })
 
-            if not change.get("impacts_public_agencies") and change.get("impact_analysis"):
+            if not change.get("impacts_local_agencies") and change.get("analysis"):
                 issues.append({
                     "type": "inconsistent_analysis",
                     "id": change["id"],
                     "message": "Analysis provided but no impact marked"
                 })
 
-            if change.get("impacts_public_agencies") and not change.get("practice_groups"):
+            if change.get("impacts_local_agencies") and not change.get("practice_groups"):
                 issues.append({
                     "type": "missing_practice_groups",
                     "id": change["id"],

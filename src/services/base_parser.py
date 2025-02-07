@@ -426,87 +426,106 @@ class BaseParser:
         """
         Link digest sections to bill sections based on shared code references
         and contextual analysis.
-
-        Args:
-            bill (TrailerBill): Bill object to process
         """
-        # First pass: Direct code reference matching
-        matches_found = self._match_by_code_references(bill)
+        try:
+            # First try matching by code references
+            matches_found = self._match_by_code_references(bill)
 
-        # Second pass: Context-based matching for unmatched sections
-        if not matches_found:
-            self._match_by_context(bill)
+            # If no matches found by code references, try context matching
+            if not matches_found:
+                self._match_by_context(bill)
 
-        # Validate and log matching results
-        self._validate_matches(bill)
+            # Log matching results
+            self._log_matching_results(bill)
+
+        except Exception as e:
+            self.logger.error(f"Error in section matching: {str(e)}")
+            self.logger.exception(e)
 
     def _match_by_code_references(self, bill: TrailerBill) -> bool:
-        """
-        Match sections based on shared code references.
-
-        Args:
-            bill (TrailerBill): Bill object to process
-
-        Returns:
-            bool: True if any matches were found
-        """
+        """Match sections based on shared code references."""
         matches_found = False
 
         for digest_section in bill.digest_sections:
-            digest_refs = {
+            digest_refs = set(
                 f"{ref.code_name}:{ref.section}"
                 for ref in digest_section.code_references
-            }
+            )
 
             for bill_section in bill.bill_sections:
-                bill_refs = {
+                bill_refs = set(
                     f"{ref.code_name}:{ref.section}"
                     for ref in bill_section.code_references
-                }
+                )
 
-                if digest_refs & bill_refs:  # If there's any overlap
+                # Check for any overlap in references
+                if digest_refs & bill_refs:
                     digest_section.bill_sections.append(bill_section.number)
                     bill_section.digest_reference = digest_section.number
                     matches_found = True
+                    self.logger.debug(
+                        f"Matched digest section {digest_section.number} "
+                        f"to bill section {bill_section.number}"
+                    )
 
         return matches_found
 
     def _match_by_context(self, bill: TrailerBill) -> None:
-        """
-        Attempt to match sections based on contextual analysis when
-        code references aren't sufficient.
+        """Match sections based on textual similarity when code references fail."""
+        from difflib import SequenceMatcher
 
-        Args:
-            bill (TrailerBill): Bill object to process
-        """
+        def similarity(a: str, b: str) -> float:
+            return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+
         for bill_section in bill.bill_sections:
             if not bill_section.digest_reference:
-                # Get text snippets for matching
-                section_text = bill_section.text.lower()
-
                 best_match = None
-                highest_similarity = 0
+                best_score = 0
 
                 for digest_section in bill.digest_sections:
-                    # Skip digest sections that already have matches
-                    if digest_section.bill_sections:
-                        continue
+                    if not digest_section.bill_sections:  # Only consider unmatched digest sections
+                        score = similarity(bill_section.text, digest_section.text)
+                        if score > best_score and score > 0.3:  # Threshold for matching
+                            best_score = score
+                            best_match = digest_section
 
-                    # Compare key phrases and context
-                    similarity = self._calculate_text_similarity(
-                        section_text,
-                        digest_section.proposed_changes.lower()
-                    )
-
-                    if similarity > highest_similarity:
-                        highest_similarity = similarity
-                        best_match = digest_section
-
-                # If we found a good match, link them
-                if best_match and highest_similarity > 0.5:  # Threshold for matching
+                if best_match:
                     best_match.bill_sections.append(bill_section.number)
                     bill_section.digest_reference = best_match.number
+                    self.logger.debug(
+                        f"Context-matched bill section {bill_section.number} "
+                        f"to digest section {best_match.number} "
+                        f"with score {best_score}"
+                    )
+                    
+    def _log_matching_results(self, bill: TrailerBill) -> None:
+        """Log the results of section matching."""
+        unmatched_bill_sections = []
+        unmatched_digest_sections = []
 
+        for section in bill.bill_sections:
+            if not section.digest_reference:
+                unmatched_bill_sections.append(section.number)
+
+        for section in bill.digest_sections:
+            if not section.bill_sections:
+                unmatched_digest_sections.append(section.number)
+
+        if unmatched_bill_sections:
+            self.logger.warning(
+                f"Unmatched bill sections: {', '.join(unmatched_bill_sections)}"
+            )
+
+        if unmatched_digest_sections:
+            self.logger.warning(
+                f"Unmatched digest sections: {', '.join(unmatched_digest_sections)}"
+            )
+
+        self.logger.info(
+            f"Matching complete: {len(bill.bill_sections) - len(unmatched_bill_sections)} "
+            f"of {len(bill.bill_sections)} bill sections matched"
+        )
+        
     def _calculate_text_similarity(self, text1: str, text2: str) -> float:
         """
         Calculate a similarity score between two text segments.

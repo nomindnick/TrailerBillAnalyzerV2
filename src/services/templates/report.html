@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Bill Analysis Report - {{ bill_info.bill_number }}</title>
+    <style>
+        /* Core styles */
+        :root {
+            --primary-color: #1a5f7a;
+            --secondary-color: #2c3e50;
+            --background-light: #f8f9fa;
+            --border-color: #dee2e6;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Header Styles */
+        .report-header {
+            background-color: var(--background-light);
+            padding: 1.5rem;
+            border-radius: 5px;
+            margin-bottom: 2rem;
+        }
+
+        .report-header h1 {
+            color: var(--primary-color);
+            margin: 0 0 1rem 0;
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 0.5rem;
+        }
+
+        /* Executive Summary */
+        .executive-summary {
+            background-color: #f1f7fa;
+            padding: 1.5rem;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+            margin-bottom: 2rem;
+        }
+
+        /* Sub-sections for changes */
+        .practice-group-section {
+            margin-bottom: 2rem;
+        }
+
+        .change-box {
+            background-color: #fff;
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+        }
+
+        .change-header {
+            background-color: var(--primary-color);
+            color: #fff;
+            margin: -1rem -1rem 1rem -1rem;
+            padding: 1rem;
+            border-top-left-radius: 5px;
+            border-top-right-radius: 5px;
+        }
+
+        .section-list {
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+        }
+
+        .section-item {
+            background-color: var(--background-light);
+            display: inline-block;
+            margin-right: 5px;
+            padding: 4px 6px;
+            border-radius: 3px;
+            margin-bottom: 5px;
+        }
+
+        .agency-list {
+            margin: 0.5rem 0;
+            padding-left: 1.2rem;
+        }
+
+        .agency-list li {
+            list-style: disc;
+        }
+
+        .action-items {
+            background-color: #f8f9fa;
+            padding: 0.8rem;
+            margin-top: 1rem;
+            border-radius: 4px;
+        }
+
+        .action-items ul {
+            margin: 0.5rem 0;
+            padding-left: 1.2rem;
+        }
+
+        /* No impact section */
+        .no-impact-section {
+            margin-top: 3rem;
+            padding-top: 1rem;
+            border-top: 2px solid var(--border-color);
+        }
+    </style>
+</head>
+<body>
+    <!-- Report Header -->
+    <div class="report-header">
+        <h1>Bill Analysis Report</h1>
+        <p><strong>Bill Number:</strong> {{ bill_info.bill_number }}</p>
+        <p><strong>Chapter Number:</strong> {{ bill_info.chapter_number }}</p>
+        <p><strong>Title:</strong> {{ bill_info.title }}</p>
+        <p><strong>Date Approved:</strong> {{ date_approved }}</p>
+    </div>
+
+    <!-- Executive Summary -->
+    <div class="executive-summary">
+        <h2>Executive Summary</h2>
+        <p><strong>Total Changes:</strong> {{ total_changes }}</p>
+        <p><strong>Changes Impacting Local Agencies:</strong> {{ impacting_changes }}</p>
+        <p><strong>Practice Areas Affected:</strong> 
+            {% if practice_areas %}
+                {{ practice_areas|join(', ') }}
+            {% else %}
+                None
+            {% endif %}
+        </p>
+    </div>
+
+    <!-- Report by Practice Group -->
+    <h2>Report by Practice Group</h2>
+    {% if grouped_changes %}
+      {% for group_name, changes_list in grouped_changes.items() %}
+        <div class="practice-group-section">
+            <h3>{{ group_name }}</h3>
+            {% for change in changes_list %}
+            <div class="change-box">
+                <div class="change-header">
+                    <strong>Substantive Change</strong>
+                </div>
+
+                <div class="section-list">
+                    <strong>Trailer Bill Sections:</strong>
+                    {% if change.section_details %}
+                        {% for sec in change.section_details %}
+                            <span class="section-item">
+                                {{ sec.code ~ ' Section ' ~ sec.number if sec.code else 'Section ' ~ sec.number }}
+                                {% if sec.action %} [{{ sec.action|capitalize }}]{% endif %}
+                            </span>
+                        {% endfor %}
+                    {% else %}
+                        <span>No specific sections found.</span>
+                    {% endif %}
+                </div>
+
+                <p>{{ change.substantive_change }}</p>
+
+                <h4>Local Agencies Impacted</h4>
+                {% if change.impacted_agencies %}
+                    <ul class="agency-list">
+                        {% for agency in change.impacted_agencies %}
+                        <li>{{ agency }}</li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p>No specific local agencies identified.</p>
+                {% endif %}
+
+                <h4>Local Agency Impact</h4>
+                <p>{{ change.local_agency_impact }}</p>
+
+                {% if change.analysis %}
+                <h4>Analysis</h4>
+                <div>{{ change.analysis|format_analysis }}</div>
+                {% endif %}
+
+                {% if change.key_action_items %}
+                <div class="action-items">
+                    <strong>Key Action Items</strong>
+                    <ul>
+                        {% for item in change.key_action_items %}
+                        <li>{{ item }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+      {% endfor %}
+    {% else %}
+      <p>No changes were matched to specific practice groups.</p>
+    {% endif %}
+
+    <!-- General Local Agency Impact (no primary practice group) -->
+    {% if general_local_agency_impact_changes %}
+    <h2>General Local Agency Impact</h2>
+    {% for change in general_local_agency_impact_changes %}
+    <div class="change-box">
+        <div class="change-header">
+            <strong>Substantive Change</strong>
+        </div>
+
+        <div class="section-list">
+            <strong>Trailer Bill Sections:</strong>
+            {% if change.section_details %}
+                {% for sec in change.section_details %}
+                    <span class="section-item">
+                        {{ sec.code ~ ' Section ' ~ sec.number if sec.code else 'Section ' ~ sec.number }}
+                        {% if sec.action %} [{{ sec.action|capitalize }}]{% endif %}
+                    </span>
+                {% endfor %}
+            {% else %}
+                <span>No specific sections found.</span>
+            {% endif %}
+        </div>
+
+        <p>{{ change.substantive_change }}</p>
+
+        <h4>Local Agencies Impacted</h4>
+        {% if change.impacted_agencies %}
+            <ul class="agency-list">
+                {% for agency in change.impacted_agencies %}
+                <li>{{ agency }}</li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>No specific local agencies identified.</p>
+        {% endif %}
+
+        <h4>Local Agency Impact</h4>
+        <p>{{ change.local_agency_impact }}</p>
+
+        {% if change.analysis %}
+        <h4>Analysis</h4>
+        <div>{{ change.analysis|format_analysis }}</div>
+        {% endif %}
+
+        {% if change.key_action_items %}
+        <div class="action-items">
+            <strong>Key Action Items</strong>
+            <ul>
+                {% for item in change.key_action_items %}
+                <li>{{ item }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <!-- No Impact Changes -->
+    {% if no_impact_changes %}
+    <div class="no-impact-section">
+        <h2>Changes with No Local Agency Impact</h2>
+        {% for change in no_impact_changes %}
+        <div class="change-box">
+            <div class="change-header">
+                <strong>Substantive Change</strong>
+            </div>
+
+            <div class="section-list">
+                <strong>Trailer Bill Sections:</strong>
+                {% if change.section_details %}
+                    {% for sec in change.section_details %}
+                        <span class="section-item">
+                            {{ sec.code ~ ' Section ' ~ sec.number if sec.code else 'Section ' ~ sec.number }}
+                            {% if sec.action %} [{{ sec.action|capitalize }}]{% endif %}
+                        </span>
+                    {% endfor %}
+                {% else %}
+                    <span>No specific sections found.</span>
+                {% endif %}
+            </div>
+
+            <p>{{ change.substantive_change }}</p>
+
+            <!-- Even if no local impact, we can mention if agencies are theoretically impacted -->
+            <h4>Local Agencies Impacted</h4>
+            {% if change.impacted_agencies %}
+                <ul class="agency-list">
+                    {% for agency in change.impacted_agencies %}
+                    <li>{{ agency }}</li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>No specific local agencies identified.</p>
+            {% endif %}
+
+            <h4>Local Agency Impact</h4>
+            <p>{{ change.local_agency_impact }}</p>
+
+            {% if change.analysis %}
+            <h4>Analysis</h4>
+            <div>{{ change.analysis|format_analysis }}</div>
+            {% endif %}
+
+            {% if change.key_action_items %}
+            <div class="action-items">
+                <strong>Key Action Items</strong>
+                <ul>
+                    {% for item in change.key_action_items %}
+                    <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</body>
+</html>

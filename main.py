@@ -131,12 +131,13 @@ async def process_bill_analysis(bill_number):
         # Step 1: Fetch bill text
         progress.update_progress(1, "Fetching bill text")
         bill_scraper = BillScraper(max_retries=3, timeout=30)
-        bill_text = await bill_scraper.get_bill_text(bill_number, 2024)
+        bill_text_response = await bill_scraper.get_bill_text(bill_number, 2024)
+        bill_text = bill_text_response['full_text']  # Store the full text
 
         # Step 2: Initial parsing
         progress.update_progress(2, "Parsing bill components")
         parser = BaseParser()
-        parsed_bill = parser.parse_bill(bill_text['full_text'])
+        parsed_bill = parser.parse_bill(bill_text)
 
         # Step 3: Build analysis structure
         progress.update_progress(3, "Building analysis structure")
@@ -161,12 +162,16 @@ async def process_bill_analysis(bill_number):
         # Step 5: Generate report
         progress.update_progress(5, "Generating final report")
         report_gen = ReportGenerator()
-        report = report_gen.generate_report(analyzed_skeleton, {
-            'bill_number': bill_number,
-            'title': parsed_bill.title,
-            'chapter_number': parsed_bill.chapter_number,
-            'date_approved': parsed_bill.date_approved
-        })
+        report = report_gen.generate_report(
+            analyzed_skeleton, 
+            {
+                'bill_number': bill_number,
+                'title': parsed_bill.title,
+                'chapter_number': parsed_bill.chapter_number,
+                'date_approved': parsed_bill.date_approved
+            },
+            bill_text  # Pass the bill text here
+        )
 
         # Save report
         report_filename = f"bill_analysis_{bill_number}.html"
