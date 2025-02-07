@@ -222,6 +222,24 @@ Analyze the text and return matches in this JSON format:
 
         return validated
 
+    def _get_unmatched_digests(self, digest_map: Dict[str, Dict[str, Any]], matches: List[MatchResult]) -> Dict[str, Dict[str, Any]]:
+        """Get digest items that haven't been matched yet"""
+        matched_ids = {match.digest_id for match in matches}
+        return {
+            digest_id: info 
+            for digest_id, info in digest_map.items() 
+            if digest_id not in matched_ids
+        }
+
+    def _get_unmatched_sections(self, section_map: Dict[str, Dict[str, Any]], matches: List[MatchResult]) -> Dict[str, Dict[str, Any]]:
+        """Get bill sections that haven't been matched yet"""
+        matched_ids = {match.section_id for match in matches}
+        return {
+            section_id: info
+            for section_id, info in section_map.items()
+            if section_id not in matched_ids
+        }
+
     def _extract_section_numbers(self, text: str) -> Set[str]:
         """Extract section numbers from text using regex patterns"""
         numbers = set()
