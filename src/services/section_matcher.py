@@ -145,26 +145,32 @@ class SectionMatcher:
                 bill_text
             )
 
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are analyzing bill sections to determine which sections implement specific digest items. Return a JSON object with matches and confidence scores."},
-                    {"role": "user", "content": context_prompt}
-                ],
-                temperature=0,
-                response_format={"type": "json_object"}
-            )
+            try:
+                completion = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": "You are analyzing bill sections to determine which sections implement specific digest items. Return a JSON object with matches and confidence scores."},
+                        {"role": "user", "content": context_prompt}
+                    ],
+                    temperature=0,
+                    response_format={"type": "json_object"}
+                ).__aenter__()  # Use async context manager
 
-            content = response.choices[0].message.content
-            matches_data = json.loads(content)["matches"]
-            for match in matches_data:
-                matches.append(MatchResult(
-                    digest_id=digest_id,
-                    section_id=match["section_id"],
-                    confidence=match["confidence"],
-                    match_type="context",
-                    supporting_evidence=match["evidence"]
-                ))
+                content = completion.choices[0].message.content
+                matches_data = json.loads(content)["matches"]
+
+                for match in matches_data:
+                    matches.append(MatchResult(
+                        digest_id=digest_id,
+                        section_id=match["section_id"],
+                        confidence=match["confidence"],
+                        match_type="context",
+                        supporting_evidence=match["evidence"]
+                    ))
+
+            except Exception as e:
+                self.logger.error(f"Error in AI matching: {str(e)}")
+                continue
 
         return matches
 

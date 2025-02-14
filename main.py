@@ -149,16 +149,28 @@ async def process_bill_analysis(bill_number):
         # Step 4: AI Analysis with substeps
         progress.update_progress(4, "Starting AI analysis", 0, len(parsed_bill.digest_sections))
         client = OpenAI()
+
+        # Create an async event loop for OpenAI calls
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
         matcher = SectionMatcher(openai_client=client)
         practice_groups = PracticeGroups()
         analyzer = ImpactAnalyzer(openai_client=client, practice_groups_data=practice_groups)
 
-        for i, section in enumerate(parsed_bill.bill_sections, 1):
-            progress.update_progress(4, f"Analyzing section {i}", i, len(parsed_bill.bill_sections))
-            skeleton = await matcher.match_sections(skeleton, bill_text)
-            break  # We only need to do this once, not for each section
+        try:
+            for i, section in enumerate(parsed_bill.bill_sections, 1):
+                progress.update_progress(4, f"Analyzing section {i}", i, len(parsed_bill.bill_sections))
+                skeleton = await matcher.match_sections(skeleton, bill_text)
+                break  # We only need to do this once, not for each section
 
-        analyzed_skeleton = await analyzer.analyze_changes(skeleton)
+            analyzed_skeleton = await analyzer.analyze_changes(skeleton)
+
+        except Exception as e:
+            logger.error(f"Error during AI analysis: {str(e)}")
+            raise
+        finally:
+            loop.close()
 
         # Step 5: Generate report
         progress.update_progress(5, "Generating final report")
