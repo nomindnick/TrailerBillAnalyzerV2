@@ -146,7 +146,7 @@ class SectionMatcher:
             )
 
             try:
-                completion = await self.client.chat.completions.create(
+                completion = self.client.chat.completions.create(
                     model=self.model,
                     messages=[
                         {"role": "system", "content": "You are analyzing bill sections to determine which sections implement specific digest items. Return a JSON object with matches and confidence scores."},
