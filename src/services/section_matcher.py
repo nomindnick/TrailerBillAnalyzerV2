@@ -154,7 +154,7 @@ class SectionMatcher:
                     ],
                     temperature=0,
                     response_format={"type": "json_object"}
-                ).__aenter__()  # Use async context manager
+                )
 
                 content = completion.choices[0].message.content
                 matches_data = json.loads(content)["matches"]
