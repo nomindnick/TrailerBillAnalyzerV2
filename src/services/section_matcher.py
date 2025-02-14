@@ -368,3 +368,20 @@ Analyze the text and return matches in this JSON format:
             sections.extend(match.group(1) for match in matches)
 
         return list(set(sections))  # Remove duplicates
+
+    def _update_skeleton_with_matches(self, skeleton: Dict[str, Any], matches: List[MatchResult]) -> Dict[str, Any]:
+        """Update skeleton with validated matches"""
+        # Create a mapping of digest_id to matched sections
+        digest_matches = defaultdict(list)
+        for match in matches:
+            digest_matches[match.digest_id].append({
+                "section_id": match.section_id,
+                "confidence": match.confidence,
+                "match_type": match.match_type
+            })
+
+        # Update each change in the skeleton
+        for change in skeleton["changes"]:
+            change["bill_sections"] = digest_matches.get(change["id"], [])
+
+        return skeleton
