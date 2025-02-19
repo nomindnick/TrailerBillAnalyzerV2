@@ -18,6 +18,7 @@ from src.services.section_matcher import SectionMatcher
 from src.services.impact_analyzer import ImpactAnalyzer
 from src.services.report_generator import ReportGenerator
 from src.models.practice_groups import PracticeGroups
+from src.models.bill_components import TrailerBill, BillSection
 
 # Load environment variables
 load_dotenv()
@@ -47,7 +48,6 @@ def after_request(response):
     logger.info(f"Response headers: {dict(response.headers)}")
     return response
 
-
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 class AnalysisProgressHandler:
@@ -62,7 +62,7 @@ class AnalysisProgressHandler:
         self.current_step = step
         if substep is not None:
             self.current_substep = substep
-            self.total_substeps = total_substeps
+            self.total_substeps = total_substeps if total_substeps else 0
 
         logger.info(f"Progress: Step {step} - {message}")
         self.socket.emit('analysis_progress', {
@@ -71,6 +71,33 @@ class AnalysisProgressHandler:
             'current_substep': self.current_substep,
             'total_substeps': self.total_substeps
         })
+
+def trailer_bill_to_dict(bill: TrailerBill) -> dict:
+    """
+    Convert the parsed TrailerBill object into a dictionary
+    that has a 'bill_sections' key. This matches what the
+    report_generator.py code expects.
+    """
+    sections_dict = {}
+    for bs in bill.bill_sections:  # bs is a BillSection object
+        # Gather code references as a list of dicts
+        code_mods = []
+        for ref in bs.code_references:
+            code_mods.append({
+                "code_name": ref.code_name,
+                "section": ref.section,
+                # If you need an action field, you could store it here if available
+                "action": getattr(ref, "action", None)
+            })
+        sections_dict[bs.number] = {
+            "text": bs.text,
+            "code_modifications": code_mods
+        }
+
+    return {
+        "bill_sections": sections_dict
+        # Optionally, you could add more fields if needed
+    }
 
 # Frontend routes
 @app.route('/', defaults={'path': ''})
@@ -98,7 +125,7 @@ def analyze_bill():
 
         logger.info(f"Starting analysis for bill {bill_number}")
 
-        # Start async analysis
+        # Start async analysis in background
         socketio.start_background_task(
             target=lambda: asyncio.run(process_bill_analysis(bill_number))
         )
@@ -146,44 +173,37 @@ async def process_bill_analysis(bill_number):
         json_builder = JsonBuilder()
         skeleton = json_builder.create_skeleton(parsed_bill.digest_sections)
 
-        # Step 4: AI Analysis with substeps
+        # Step 4: AI Analysis
         progress.update_progress(4, "Starting AI analysis", 0, len(parsed_bill.digest_sections))
         client = OpenAI()
-
-        # Create an async event loop for OpenAI calls
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
         matcher = SectionMatcher(openai_client=client)
         practice_groups = PracticeGroups()
         analyzer = ImpactAnalyzer(openai_client=client, practice_groups_data=practice_groups)
 
-        try:
-            for i, section in enumerate(parsed_bill.bill_sections, 1):
-                progress.update_progress(4, f"Analyzing section {i}", i, len(parsed_bill.bill_sections))
-                skeleton = await matcher.match_sections(skeleton, bill_text)
-                break  # We only need to do this once, not for each section
+        # Match sections
+        skeleton = await matcher.match_sections(skeleton, bill_text)
 
-            analyzed_skeleton = await analyzer.analyze_changes(skeleton)
-
-        except Exception as e:
-            logger.error(f"Error during AI analysis: {str(e)}")
-            raise
-        finally:
-            loop.close()
+        # Analyze changes
+        analyzed_skeleton = await analyzer.analyze_changes(parsed_bill, skeleton)
 
         # Step 5: Generate report
         progress.update_progress(5, "Generating final report")
         report_gen = ReportGenerator()
+
+        # **Important**: Convert our TrailerBill object -> dictionary format
+        # that the report generator expects.
+        parsed_bill_dict = trailer_bill_to_dict(parsed_bill)
+
         report = report_gen.generate_report(
-            analyzed_skeleton, 
+            analyzed_skeleton,
             {
                 'bill_number': bill_number,
                 'title': parsed_bill.title,
                 'chapter_number': parsed_bill.chapter_number,
-                'date_approved': parsed_bill.date_approved
+                # Convert dates to ISO or keep them None if not present
+                'date_approved': parsed_bill.date_approved.isoformat() if parsed_bill.date_approved else None
             },
-            bill_text  # Pass the bill text here
+            parsed_bill_dict  # pass the structured dictionary here (NOT just bill_text)
         )
 
         # Save report

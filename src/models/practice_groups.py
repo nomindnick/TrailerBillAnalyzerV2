@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 from enum import Enum
 
 class PracticeGroupRelevance(Enum):
@@ -24,7 +24,7 @@ class PracticeGroup:
 class PracticeGroups:
     """Container for practice group definitions and related methods"""
     def __init__(self):
-        self.groups: Dict[str, PracticeGroup] = {
+        self._groups: Dict[str, PracticeGroup] = {
             "special_education": PracticeGroup(
                 name="Special Education",
                 description="Handles matters involving the Individuals with Disabilities Education Act (IDEA), Section 504, and related California special education laws. Primary focus areas include IEP compliance, special education due process, SELPA governance, mental health services, and disputes regarding placement, services, and accommodations for students with disabilities."
@@ -63,21 +63,30 @@ class PracticeGroups:
             )
         }
 
+    @property
+    def groups(self) -> Dict[str, PracticeGroup]:
+        """Access the groups dictionary"""
+        return self._groups
+
+    @property
+    def group_names(self) -> Set[str]:
+        """Get set of all practice group names"""
+        return {group.name for group in self._groups.values()}
+
     def get_prompt_text(self, detail_level: str = "full") -> str:
         """Generate formatted text for AI prompt"""
         return "\n".join(
             group.format_for_prompt(detail_level)
-            for group in self.groups.values()
+            for group in self._groups.values()
         )
 
     def validate_groups(self, groups: List[str]) -> List[str]:
         """Validate that provided groups exist"""
-        valid_names = {group.name for group in self.groups.values()}
-        return [g for g in groups if g in valid_names]
+        return [g for g in groups if g in self.group_names]
 
     def get_group_by_name(self, name: str) -> Optional[PracticeGroup]:
         """Get a practice group by its display name"""
-        for group in self.groups.values():
+        for group in self._groups.values():
             if group.name == name:
                 return group
         return None

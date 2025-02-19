@@ -1,10 +1,11 @@
-from typing import Dict, List, Any, Optional, Set, Union
 import logging
 import json
+import asyncio
 from datetime import datetime
-from dataclasses import dataclass, field
-from collections import defaultdict
-import re
+from dataclasses import dataclass
+from typing import Dict, List, Any, Optional
+from src.models.bill_components import TrailerBill
+
 
 @dataclass
 class AgencyImpact:
@@ -13,7 +14,8 @@ class AgencyImpact:
     impact_type: str  # e.g., "compliance", "operational", "financial"
     description: str
     deadline: Optional[datetime] = None
-    requirements: List[str] = None
+    requirements: Optional[List[str]] = None
+
 
 @dataclass
 class ChangeAnalysis:
@@ -25,6 +27,7 @@ class ChangeAnalysis:
     deadlines: List[Dict[str, Any]]
     requirements: List[str]
 
+
 class ImpactAnalyzer:
     """Enhanced analyzer for determining local agency impacts"""
 
@@ -35,30 +38,20 @@ class ImpactAnalyzer:
 
     async def analyze_changes(
         self,
-        parsed_bill: Dict[str, Any],
+        parsed_bill: TrailerBill,
         skeleton: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Analyze changes with enhanced impact detection"""
         try:
             for change in skeleton["changes"]:
-                # Get linked sections and code modifications
-                sections = self._get_linked_sections(change, parsed_bill)
-                code_mods = self._get_code_modifications(change, parsed_bill)
-
-                # Generate comprehensive analysis
-                analysis = await self._analyze_change(
-                    change,
-                    sections,
-                    code_mods,
-                    parsed_bill
-                )
+                # Get comprehensive analysis for each "change"
+                analysis = await self._analyze_change(change, parsed_bill)
 
                 # Update change with analysis results
                 self._update_change_with_analysis(change, analysis)
 
-            # Update metadata
+            # Update skeleton metadata
             self._update_skeleton_metadata(skeleton)
-
             return skeleton
 
         except Exception as e:
@@ -68,12 +61,14 @@ class ImpactAnalyzer:
     async def _analyze_change(
         self,
         change: Dict[str, Any],
-        sections: List[Dict[str, Any]],
-        code_mods: List[Dict[str, Any]],
-        parsed_bill: Dict[str, Any]
+        parsed_bill: TrailerBill
     ) -> ChangeAnalysis:
         """Generate comprehensive analysis of a change"""
-        # Build detailed prompt for AI analysis
+        # Prepare the relevant data
+        sections = self._get_linked_sections(change, parsed_bill)
+        code_mods = self._get_code_modifications(change, parsed_bill)
+
+        # Build prompt for AI analysis
         prompt = self._build_analysis_prompt(
             change,
             sections,
@@ -81,37 +76,44 @@ class ImpactAnalyzer:
             parsed_bill
         )
 
-        # Get AI analysis
-        response = await self.client.chat.completions.create(
-            model="gpt-4o-2024-08-06",
-            messages=[
-                {
-                    "role": "system",
-                    "content": """You are a legal expert analyzing legislative changes affecting local public agencies.
-                    Focus on practical implications, compliance requirements, and deadlines.
-                    Provide concise, action-oriented analysis."""
-                },
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0,
-            response_format={"type": "json_object"}
+        # NOTE: Because the OpenAI call is synchronous, we run it in an executor:
+        response = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: self.client.chat.completions.create(
+                model="gpt-4o-2024-08-06",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": """You are a legal expert analyzing legislative changes affecting local public agencies.
+                        Focus on practical implications, compliance requirements, and deadlines.
+                        Provide concise, action-oriented analysis."""
+                    },
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0,
+                # Keep your custom parameter here if your library supports it
+                response_format={"type": "json_object"}
+            )
         )
 
-        # Parse and structure the analysis
-        analysis_data = json.loads(response.choices[0].message.content)
+        ai_content = response.choices[0].message.content
+        analysis_data = json.loads(ai_content)
 
+        # Convert string dates to datetime objects
+        self._parse_analysis_dates(analysis_data)
+
+        # Build ChangeAnalysis
         return ChangeAnalysis(
-            summary=analysis_data["summary"],
+            summary=analysis_data.get("summary", ""),
             impacts=[
-                AgencyImpact(**impact)
-                for impact in analysis_data["agency_impacts"]
+                AgencyImpact(**impact) for impact in analysis_data.get("agency_impacts", [])
             ],
             practice_groups=self._validate_practice_groups(
-                analysis_data["practice_groups"]
+                analysis_data.get("practice_groups", [])
             ),
-            action_items=analysis_data["action_items"],
-            deadlines=analysis_data["deadlines"],
-            requirements=analysis_data["requirements"]
+            action_items=analysis_data.get("action_items", []),
+            deadlines=analysis_data.get("deadlines", []),
+            requirements=analysis_data.get("requirements", [])
         )
 
     def _build_analysis_prompt(
@@ -119,7 +121,7 @@ class ImpactAnalyzer:
         change: Dict[str, Any],
         sections: List[Dict[str, Any]],
         code_mods: List[Dict[str, Any]],
-        parsed_bill: Dict[str, Any]
+        parsed_bill: TrailerBill
     ) -> str:
         """Build comprehensive prompt for change analysis"""
         return f"""Analyze this legislative change and its impact on local public agencies:
@@ -140,50 +142,50 @@ Proposed Changes:
 {change.get('proposed_change', '')}
 
 Practice Group Information:
-{self._format_practice_groups()}
+{self.practice_groups.get_prompt_text(detail_level="brief")}
 
 Provide analysis in this JSON format:
 {{
     "summary": "Clear, concise summary of the change",
     "agency_impacts": [
-        {
+        {{
             "agency_type": "type of agency affected",
             "impact_type": "type of impact",
             "description": "specific impact description",
             "deadline": "YYYY-MM-DD or null",
             "requirements": ["specific requirement 1", "requirement 2"]
-        }
+        }}
     ],
     "practice_groups": [
-        {
+        {{
             "name": "practice group name",
             "relevance": "primary or secondary",
             "justification": "why this practice group is relevant"
-        }
+        }}
     ],
     "action_items": [
         "specific action item 1",
         "specific action item 2"
     ],
     "deadlines": [
-        {
+        {{
             "date": "YYYY-MM-DD",
             "description": "what is due",
             "affected_agencies": ["agency types"]
-        }
+        }}
     ],
     "requirements": [
         "specific requirement 1",
         "specific requirement 2"
     ]
-}}"""
+}}
+"""
 
     def _format_sections(self, sections: List[Dict[str, Any]]) -> str:
         """Format bill sections for prompt"""
         formatted = []
         for section in sections:
-            text = f"Section {section['number']}:\n"
-            text += f"Text: {section['text']}\n"
+            text = f"Section {section['number']}:\nText: {section['text']}\n"
             if section.get('code_modifications'):
                 text += "Modifies:\n"
                 for mod in section['code_modifications']:
@@ -195,34 +197,30 @@ Provide analysis in this JSON format:
         """Format code modifications for prompt"""
         formatted = []
         for mod in mods:
-            text = f"{mod['code_name']} Section {mod['section']}:\n"
-            text += f"Action: {mod['action']}\n"
-            text += f"Context: {mod['text']}\n"
+            text = f"{mod.get('code_name', '')} Section {mod.get('section', '')}:\n"
+            text += f"Action: {mod.get('action', '')}\n"
+            text += f"Context: {mod.get('text', '')}\n"
             formatted.append(text)
         return "\n".join(formatted)
 
-    def _format_practice_groups(self) -> str:
-        """Format practice group information for prompt"""
-        formatted = []
-        for group in self.practice_groups:
-            text = f"{group.name}:\n{group.description}\n"
-            formatted.append(text)
-        return "\n".join(formatted)
+    def _parse_analysis_dates(self, analysis_data: Dict[str, Any]) -> None:
+        """Convert date strings to datetime objects where applicable"""
+        # agency_impacts => "deadline"
+        for impact in analysis_data.get("agency_impacts", []):
+            if impact.get("deadline"):
+                impact["deadline"] = self._try_parse_date(impact["deadline"])
 
-    def _validate_practice_groups(
-        self,
-        groups: List[Dict[str, str]]
-    ) -> List[Dict[str, str]]:
-        """Validate and normalize practice group assignments"""
-        validated = []
-        for group in groups:
-            if group["name"] in self.practice_groups.groups:
-                if group["relevance"] in ("primary", "secondary"):
-                    validated.append({
-                        "name": group["name"],
-                        "relevance": group["relevance"]
-                    })
-        return validated
+        # deadlines => "date"
+        for deadline in analysis_data.get("deadlines", []):
+            if deadline.get("date"):
+                deadline["date"] = self._try_parse_date(deadline["date"])
+
+    def _try_parse_date(self, date_str: str) -> Optional[datetime]:
+        """Safely parse a date string in YYYY-MM-DD format; return None on failure"""
+        try:
+            return datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError:
+            return None
 
     def _update_change_with_analysis(
         self,
@@ -251,7 +249,6 @@ Provide analysis in this JSON format:
             if impact.deadline:
                 text += f" (Deadline: {impact.deadline.strftime('%B %d, %Y')})"
             formatted.append(text)
-
         return "\n".join(formatted)
 
     def _update_skeleton_metadata(self, skeleton: Dict[str, Any]) -> None:
@@ -278,33 +275,65 @@ Provide analysis in this JSON format:
     def _get_linked_sections(
         self,
         change: Dict[str, Any],
-        parsed_bill: Dict[str, Any]
+        parsed_bill: TrailerBill
     ) -> List[Dict[str, Any]]:
         """Get bill sections linked to this change"""
         sections = []
         for section_num in change.get("bill_sections", []):
-            if section := parsed_bill["bill_sections"].get(section_num):
+            # If your code in skeleton stores dicts with 'section_id' rather than the raw ID,
+            # adjust accordingly. This example assumes a direct string of the section's number:
+            if isinstance(section_num, dict) and "section_id" in section_num:
+                section_num = section_num["section_id"]
+
+            section = next(
+                (s for s in parsed_bill.bill_sections if s.number == str(section_num)),
+                None
+            )
+            if section:
                 sections.append({
                     "number": section_num,
-                    **section
+                    "text": section.text,
+                    "code_modifications": [
+                        {
+                            "code_name": ref.code_name,
+                            "section": ref.section,
+                            "action": getattr(ref, 'action', None),
+                            "text": getattr(ref, 'text', None)
+                        }
+                        for ref in section.code_references
+                    ]
                 })
         return sections
 
     def _get_code_modifications(
         self,
         change: Dict[str, Any],
-        parsed_bill: Dict[str, Any]
+        parsed_bill: TrailerBill
     ) -> List[Dict[str, Any]]:
         """Get code modifications related to this change"""
         mods = []
-        digest_item = next(
-            (item for item in parsed_bill["digest_items"]
-             if item.number == change.get("digest_number")),
-            None
-        )
-        if digest_item:
-            mods.extend(
-                {"number": mod.section, **mod.__dict__}
-                for mod in digest_item.code_modifications
+        digest_number = change.get("digest_number")
+        if digest_number:
+            digest_section = next(
+                (d for d in parsed_bill.digest_sections if d.number == digest_number),
+                None
             )
+            if digest_section:
+                for ref in digest_section.code_references:
+                    mods.append({
+                        "code_name": ref.code_name,
+                        "section": ref.section,
+                        "action": getattr(ref, 'action', None),
+                        "text": getattr(ref, 'text', None)
+                    })
         return mods
+
+    def _validate_practice_groups(
+        self,
+        practice_groups: List[Dict[str, str]]
+    ) -> List[Dict[str, str]]:
+        """
+        You may want to validate the practice group names or structure here.
+        Returning as-is in this example.
+        """
+        return practice_groups
