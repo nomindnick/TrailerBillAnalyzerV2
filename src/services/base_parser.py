@@ -124,13 +124,13 @@ class BaseParser:
         if matches:
             for match in matches:
                 # e.g. match for "SECTION 1. ..." or "SEC. 12 ..."
-                section_label = match.group(1)  # "SEC." or "SECTION"
-                section_num = match.group(2).strip()  # "1", "2", etc.
+                section_label = match.group(1)  # e.g. "SEC." or "SECTION"
+                section_num = match.group(2).strip()  # e.g. "1", "2"
                 section_body = match.group(3).strip()
 
                 code_refs, action = self._parse_section_header(section_body)
                 bs = BillSection(
-                    number=section_num,
+                    number=section_num,  # only numeric
                     text=section_body,
                     code_references=code_refs
                 )

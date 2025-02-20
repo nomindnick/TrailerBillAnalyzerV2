@@ -86,7 +86,6 @@ class SectionMatcher:
         We'll store them keyed by the numeric section_id (string).
         """
         section_map = {}
-        # Updated pattern to catch "SECTION 1." lines more easily
         pattern = r'(?:^|\n)(SEC(?:TION)?\.?)\s+(\d+)(?:\.)?\s+(.*?)(?=\nSEC(?:TION)?\.?\s+\d+|\Z)'
         matches = re.finditer(pattern, bill_text, flags=re.IGNORECASE | re.DOTALL)
 
@@ -244,7 +243,8 @@ class SectionMatcher:
 
     def _validate_matches(self, matches: List[MatchResult]) -> List[MatchResult]:
         """
-        Keep only the highest confidence match if there's a duplicate (digest_id, section_id).
+        Keep only the highest confidence match per (digest_id, section_id).
+        Deduplicate if the same (digest_id, section_id) appears multiple times.
         """
         from collections import defaultdict
         validated = []
@@ -261,16 +261,18 @@ class SectionMatcher:
 
     def _update_skeleton_with_matches(self, skeleton: Dict[str, Any], matches: List[MatchResult]) -> Dict[str, Any]:
         from collections import defaultdict
-        digest_to_sections = defaultdict(list)
+        digest_to_sections = defaultdict(set)  # use set to avoid duplicates
+
         for m in matches:
-            digest_to_sections[m.digest_id].append({
-                "section_id": m.section_id,
-                "confidence": m.confidence,
-                "match_type": m.match_type
-            })
+            digest_to_sections[m.digest_id].add(m.section_id)
 
         for change in skeleton["changes"]:
-            change["bill_sections"] = digest_to_sections.get(change["id"], [])
+            match_set = digest_to_sections.get(change["id"], set())
+            # Convert to the list of dicts required
+            change["bill_sections"] = [
+                {"section_id": sec_id, "confidence": 1.0, "match_type": "final"}
+                for sec_id in sorted(match_set, key=lambda x: int(x) if x.isdigit() else x)
+            ]
 
         return skeleton
 

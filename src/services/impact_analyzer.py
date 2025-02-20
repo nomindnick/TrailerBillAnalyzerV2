@@ -62,12 +62,12 @@ class ImpactAnalyzer:
                         "content": (
                             "You are a legal expert analyzing legislative changes affecting "
                             "California local public agencies (cities, counties, special districts, "
-                            "school districts, law enforcement agencies, etc.) OR state agencies. "
+                            "school districts, JPAs, etc.) OR state agencies. "
                             "Focus on practical implications, compliance requirements, deadlines/effective dates, "
-                            "and *specifically name which local agencies are impacted.* Identify relevant "
-                            "practice groups from the provided list, if any. Indicate only one group as 'primary' "
-                            "if it is most applicable, and label others 'secondary' if needed. "
-                            "Your entire response MUST be valid JSON, and nothing else. "
+                            "and specifically name which local agencies are impacted if applicable. "
+                            "Identify relevant practice groups from the provided list, if any. "
+                            "Indicate only one group as 'primary' if it clearly applies, others 'secondary' if needed. "
+                            "Your response MUST be valid JSON, and nothing else. "
                             "If you are not sure or it doesn't apply, return an empty JSON object like {}."
                         )
                     },
@@ -118,7 +118,7 @@ class ImpactAnalyzer:
         impacts_state = False
         for imp in impacts:
             l = imp.agency_type.lower()
-            if any(x in l for x in ["city", "county", "counties", "local", "school district", "special district", "law enforcement"]):
+            if any(x in l for x in ["city", "county", "counties", "local", "school district", "special district", "law enforcement", "jpa"]):
                 impacts_local = True
             if any(x in l for x in ["state", "department", "caltrans", "dmv", "high-speed rail", "transportation agency"]):
                 impacts_state = True
@@ -211,14 +211,20 @@ class ImpactAnalyzer:
         proposed_change_text = change.get("proposed_change", "")
         practice_groups_text = self.practice_groups.get_prompt_text(detail_level="brief")
 
+        # ADDED: we specifically instruct GPT to provide (1) what the change does,
+        # (2) which local agencies are affected, (3) how they're affected, etc.
+        # The system prompt above also encourages focusing on local agencies if applicable.
         return f"""
-Analyze the following trailer bill digest change. Identify:
-- A concise summary
-- Which agencies (local agencies - specify which types, and/or state agencies) are impacted
-- Deadlines/effective dates
-- Key action items
-- Additional requirements
-- Relevant practice groups from the list (indicate one primary if it clearly applies)
+Analyze this trailer bill digest change. Provide in your JSON:
+1) A short summary describing what the law change does, focusing on practical/legal effect.
+2) The type(s) of local agency (cities, counties, special districts, JPAs, etc.) affected, if any.
+3) How those local agencies are affected, including new requirements or compliance steps.
+4) State agency impacts if relevant.
+5) Deadlines/effective dates.
+6) Action items to implement or comply.
+7) Additional requirements.
+8) Relevant practice group(s) from the list (mark only one as 'primary' if it clearly applies).
+
 Return JSON with fields exactly:
 {{
   "summary": "...",
@@ -332,5 +338,5 @@ Practice Group Definitions (brief):
         return out
 
     def _get_code_modifications(self, change: Dict[str, Any], parsed_bill: TrailerBill) -> List[Dict[str, Any]]:
-        # Currently returns empty or a placeholder. You could expand if needed.
+        # Currently returns empty or a placeholder. Could be expanded if needed.
         return []

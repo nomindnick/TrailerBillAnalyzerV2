@@ -23,6 +23,7 @@ class ReportGenerator:
 
         self._register_custom_filters()
 
+        # Updated CSS for improved readability
         self.css_styles = """
             @page {
                 margin: 1in;
@@ -32,33 +33,37 @@ class ReportGenerator:
             }
 
             body {
-                font-family: Arial, sans-serif;
+                font-family: 'Helvetica Neue', Arial, sans-serif;
                 line-height: 1.6;
                 color: #333;
-                max-width: 1100px;
+                max-width: 1000px;
                 margin: 0 auto;
                 padding: 2rem;
             }
 
             .report-header {
-                background-color: #f8f9fa;
+                background-color: #f0f4f8;
                 padding: 1.5rem;
                 border-radius: 5px;
                 margin-bottom: 2rem;
+                border: 1px solid #dee2e6;
             }
 
             .report-header h1 {
                 color: #1a5f7a;
-                margin: 0 0 1rem 0;
-                border-bottom: 2px solid #1a5f7a;
+                margin: 0 0 0.5rem 0;
                 padding-bottom: 0.5rem;
             }
 
+            .report-header p {
+                margin: 0.2rem 0;
+            }
+
             .executive-summary {
-                background-color: #f1f7fa;
+                background-color: #fafafa;
                 padding: 1.5rem;
+                border: 1px solid #ccc;
                 border-radius: 5px;
-                border: 1px solid #dee2e6;
                 margin-bottom: 2rem;
             }
 
@@ -77,6 +82,7 @@ class ReportGenerator:
                 padding: 1rem;
                 border-top-left-radius: 5px;
                 border-top-right-radius: 5px;
+                font-weight: bold;
             }
 
             .section-list {
@@ -113,10 +119,7 @@ class ReportGenerator:
                 margin-top: 2rem;
                 border-bottom: 2px solid #dee2e6;
                 padding-bottom: 0.5rem;
-            }
-
-            .key-topics-list {
-                margin: 0.5rem 0 0.5rem 1.2rem;
+                color: #444;
             }
         """
 
@@ -155,7 +158,7 @@ class ReportGenerator:
         """
         Group changes by their *primary* practice group. Then gather any changes
         that have no local agency impacts or no practice group into a separate
-        "No Direct Local Agency Impact" section.
+        'No Direct Local Agency Impact' section.
         """
         practice_group_map = defaultdict(list)
         no_local_impact_changes = []
@@ -178,7 +181,7 @@ class ReportGenerator:
                     break
 
             if not primary_pg:
-                # if no primary group is assigned, treat it as no local impact for grouping
+                # if no primary group is assigned, treat as no local impact group
                 no_local_impact_changes.append(ch)
             else:
                 practice_group_map[primary_pg].append(ch)
@@ -209,20 +212,9 @@ class ReportGenerator:
         sections: List[ReportSection]
     ) -> Dict[str, Any]:
 
-        # Summaries for local and state
         total_changes = len(analyzed_data.get("changes", []))
         local_count = analyzed_data["metadata"].get("local_impacts_count", 0)
         state_count = analyzed_data["metadata"].get("state_impacts_count", 0)
-
-        # Gather short bullet items from each change's "substantive_change" as key topics
-        key_topics = []
-        for ch in analyzed_data.get("changes", []):
-            # We'll just take the first sentence or so
-            summ = ch.get("substantive_change", "")
-            if summ:
-                # Grab up to 150 chars
-                short_summ = (summ[:150] + '...') if len(summ) > 150 else summ
-                key_topics.append(short_summ.strip())
 
         # Just pick out practice groups that appear as 'primary' in any of the changes
         practice_areas = set()
@@ -231,19 +223,11 @@ class ReportGenerator:
                 if pg.get("relevance") == "primary":
                     practice_areas.add(pg["name"])
 
-        # Build a short bullet-list of unique topics (limit to 6 for brevity)
-        unique_topics = list(dict.fromkeys(key_topics))  # preserve insertion order & remove dups
-        short_topic_list = unique_topics[:6]
-
-        # Executive summary text
+        # Provide a simple short summary for the executive summary:
         local_summary = f"{local_count} changes potentially impact local agencies."
         state_summary = f"{state_count} changes potentially impact state agencies."
-        if local_count == 0 and state_count == 0:
-            summary_text = "No direct local or state agency impacts identified."
-        else:
-            summary_text = (
-                "Key funding, compliance, and operational changes may affect agencies at multiple levels."
-            )
+
+        # If you want to remove 'Key Topics' or 'Key Takeaways,' we do not generate them here
 
         template_data = {
             "bill_info": bill_info,
@@ -252,9 +236,7 @@ class ReportGenerator:
             "local_summary": local_summary,
             "state_summary": state_summary,
             "practice_areas": list(practice_areas),
-            "report_sections": sections,
-            "summary_text": summary_text,
-            "key_topics": short_topic_list
+            "report_sections": sections
         }
         return template_data
 

@@ -23,23 +23,13 @@
         <p><strong>Total Changes Identified:</strong> {{ total_changes }}</p>
         <p><strong>Local Agency Impact:</strong> {{ local_summary }}</p>
         <p><strong>State Agency Impact:</strong> {{ state_summary }}</p>
-        <p><strong>Practice Areas Affected (primary relevance):</strong>
+        <p><strong>Practice Areas Affected (Primary Relevance):</strong>
             {% if practice_areas %}
                 {{ practice_areas|join(', ') }}
             {% else %}
                 None
             {% endif %}
         </p>
-        <p><strong>Key Takeaways:</strong> {{ summary_text }}</p>
-
-        {% if key_topics %}
-        <p><strong>Key Topics:</strong></p>
-        <ul class="key-topics-list">
-            {% for topic in key_topics %}
-            <li>{{ topic }}</li>
-            {% endfor %}
-        </ul>
-        {% endif %}
     </div>
 
     <!-- Sections by Practice Group or No Local Impact -->
@@ -50,7 +40,7 @@
         {% for change in section.content.changes %}
         <div class="change-box">
             <div class="change-header">
-                <strong>Substantive Change</strong>
+                Substantive Change
             </div>
 
             <!-- Show the Bill Section references -->
