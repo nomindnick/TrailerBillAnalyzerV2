@@ -4,7 +4,7 @@ eventlet.monkey_patch()
 
 from flask import Flask, send_from_directory, request, jsonify, make_response
 from flask_socketio import SocketIO, emit
-from openai import OpenAI
+import openai
 from flask_cors import CORS
 import os
 from dotenv import load_dotenv
@@ -18,7 +18,8 @@ from src.services.section_matcher import SectionMatcher
 from src.services.impact_analyzer import ImpactAnalyzer
 from src.services.report_generator import ReportGenerator
 from src.models.practice_groups import PracticeGroups
-from src.models.bill_components import TrailerBill, BillSection
+from src.models.bill_components import TrailerBill
+import sys
 
 # Load environment variables
 load_dotenv()
@@ -27,8 +28,10 @@ load_dotenv()
 if not os.getenv('OPENAI_API_KEY'):
     raise ValueError("OPENAI_API_KEY environment variable is not set")
 
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 logger = logging.getLogger(__name__)
 logger.info("Environment variables loaded")
 
@@ -75,18 +78,15 @@ class AnalysisProgressHandler:
 def trailer_bill_to_dict(bill: TrailerBill) -> dict:
     """
     Convert the parsed TrailerBill object into a dictionary
-    that has a 'bill_sections' key. This matches what the
-    report_generator.py code expects.
+    that has a 'bill_sections' key for the report generator.
     """
     sections_dict = {}
-    for bs in bill.bill_sections:  # bs is a BillSection object
-        # Gather code references as a list of dicts
+    for bs in bill.bill_sections:
         code_mods = []
         for ref in bs.code_references:
             code_mods.append({
                 "code_name": ref.code_name,
                 "section": ref.section,
-                # If you need an action field, you could store it here if available
                 "action": getattr(ref, "action", None)
             })
         sections_dict[bs.number] = {
@@ -96,10 +96,8 @@ def trailer_bill_to_dict(bill: TrailerBill) -> dict:
 
     return {
         "bill_sections": sections_dict
-        # Optionally, you could add more fields if needed
     }
 
-# Frontend routes
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve(path):
@@ -107,7 +105,6 @@ def serve(path):
         return send_from_directory(app.static_folder, path)
     return send_from_directory(app.static_folder, 'index.html')
 
-# API routes
 @app.route('/api/analyze', methods=['POST'])
 def analyze_bill():
     try:
@@ -144,7 +141,6 @@ def serve_report(filename):
     reports_dir = os.path.join(app.root_path, 'reports')
     return send_from_directory(reports_dir, filename)
 
-# Error handlers
 @app.errorhandler(404)
 def not_found_error(error):
     return jsonify({'error': 'Not found'}), 404
@@ -153,7 +149,6 @@ def not_found_error(error):
 def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
 
-# Analysis process
 async def process_bill_analysis(bill_number):
     progress = AnalysisProgressHandler(socketio)
     try:
@@ -161,7 +156,7 @@ async def process_bill_analysis(bill_number):
         progress.update_progress(1, "Fetching bill text")
         bill_scraper = BillScraper(max_retries=3, timeout=30)
         bill_text_response = await bill_scraper.get_bill_text(bill_number, 2024)
-        bill_text = bill_text_response['full_text']  # Store the full text
+        bill_text = bill_text_response['full_text']
 
         # Step 2: Initial parsing
         progress.update_progress(2, "Parsing bill components")
@@ -175,7 +170,7 @@ async def process_bill_analysis(bill_number):
 
         # Step 4: AI Analysis
         progress.update_progress(4, "Starting AI analysis", 0, len(parsed_bill.digest_sections))
-        client = OpenAI()
+        client = openai
         matcher = SectionMatcher(openai_client=client)
         practice_groups = PracticeGroups()
         analyzer = ImpactAnalyzer(openai_client=client, practice_groups_data=practice_groups)
@@ -190,8 +185,6 @@ async def process_bill_analysis(bill_number):
         progress.update_progress(5, "Generating final report")
         report_gen = ReportGenerator()
 
-        # **Important**: Convert our TrailerBill object -> dictionary format
-        # that the report generator expects.
         parsed_bill_dict = trailer_bill_to_dict(parsed_bill)
 
         report = report_gen.generate_report(
@@ -200,13 +193,11 @@ async def process_bill_analysis(bill_number):
                 'bill_number': bill_number,
                 'title': parsed_bill.title,
                 'chapter_number': parsed_bill.chapter_number,
-                # Convert dates to ISO or keep them None if not present
                 'date_approved': parsed_bill.date_approved.isoformat() if parsed_bill.date_approved else None
             },
-            parsed_bill_dict  # pass the structured dictionary here (NOT just bill_text)
+            parsed_bill_dict
         )
 
-        # Save report
         report_filename = f"bill_analysis_{bill_number}.html"
         os.makedirs('reports', exist_ok=True)
         report_path = os.path.join('reports', report_filename)
@@ -229,20 +220,16 @@ async def process_bill_analysis(bill_number):
 @app.route('/api/reports/<filename>.pdf')
 def serve_pdf_report(filename):
     try:
-        # Get the HTML file path
         html_path = os.path.join(app.root_path, 'reports', f'{filename}.html')
         if not os.path.exists(html_path):
             logger.error(f"Report file not found: {html_path}")
             return jsonify({'error': 'Report not found'}), 404
 
-        # Read HTML content
         with open(html_path, 'r', encoding='utf-8') as f:
             html_content = f.read()
 
-        # Generate PDF
         report_gen = ReportGenerator()
         try:
-            # Pass the stylesheet so that it matches the same CSS used in our ReportGenerator
             html = HTML(string=html_content)
             css = CSS(string=report_gen.css_styles)
             pdf_content = html.write_pdf(stylesheets=[css])
@@ -251,7 +238,6 @@ def serve_pdf_report(filename):
             logger.exception("Full traceback:")
             return jsonify({'error': 'Failed to generate PDF'}), 500
 
-        # Create response with proper headers
         response = make_response(pdf_content)
         response.headers.set('Content-Type', 'application/pdf')
         response.headers.set('Content-Disposition', 'attachment', filename=f'{filename}.pdf')
@@ -264,17 +250,13 @@ def serve_pdf_report(filename):
         return jsonify({'error': 'Failed to generate PDF'}), 500
 
 if __name__ == '__main__':
-    # Ensure reports directory exists
     os.makedirs('reports', exist_ok=True)
 
-    # Build the frontend if it doesn't exist
     if not os.path.exists('frontend/dist'):
         logger.info("Building frontend...")
         os.system('cd frontend && npm install && npm run build')
 
-    # Get the port from environment variable
     port = int(os.environ.get('PORT', 8080))
 
-    # Start the server
     logger.info(f"Starting server on port {port}...")
     socketio.run(app, host='0.0.0.0', port=port, debug=True)

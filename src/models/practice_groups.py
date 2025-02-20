@@ -1,20 +1,17 @@
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set
+from typing import Dict, Optional, Set
 from enum import Enum
 
 class PracticeGroupRelevance(Enum):
-    """Defines the relevance level of a practice group for a given change"""
     PRIMARY = "primary"
     SECONDARY = "secondary"
 
 @dataclass
 class PracticeGroup:
-    """Represents a practice group and its description"""
     name: str
     description: str
 
     def format_for_prompt(self, detail_level: str = "full") -> str:
-        """Format practice group info for different prompt types"""
         if detail_level == "minimal":
             return self.name
         elif detail_level == "brief":
@@ -22,70 +19,68 @@ class PracticeGroup:
         return f"{self.name}: {self.description}"
 
 class PracticeGroups:
-    """Container for practice group definitions and related methods"""
+    """
+    Container for practice group definitions. You can expand it if needed.
+    """
     def __init__(self):
         self._groups: Dict[str, PracticeGroup] = {
             "special_education": PracticeGroup(
                 name="Special Education",
-                description="Handles matters involving the Individuals with Disabilities Education Act (IDEA), Section 504, and related California special education laws. Primary focus areas include IEP compliance, special education due process, SELPA governance, mental health services, and disputes regarding placement, services, and accommodations for students with disabilities."
+                description="Focuses on IDEA, Section 504, SELPA governance, IEP compliance, etc."
             ),
             "student_services": PracticeGroup(
                 name="Student Services",
-                description="Addresses laws governing student rights, discipline, and educational programs including student free speech, privacy rights, search and seizure, suspension/expulsion, discrimination, harassment, and Title IX compliance. Covers matters related to student records, residency, attendance, transfers, and specialized programs like continuation schools and community day schools."
+                description="Addresses laws governing student rights, discipline, Title IX, etc."
             ),
             "charter_schools": PracticeGroup(
                 name="Charter Schools",
-                description="Focuses on charter school authorization, oversight, and facilities issues under California Charter Schools Act and Proposition 39. Key areas include petition review/renewal, memoranda of understanding, facilities agreements, oversight compliance, and revocation proceedings."
+                description="Focuses on charter school authorization and oversight."
             ),
             "business_facilities": PracticeGroup(
                 name="Business and Facilities",
-                description="Handles public agency business operations including procurement, contracting, construction, real property transactions, and facilities funding. Core areas include bidding requirements, construction contracts, developer fees, property acquisition/disposition, environmental compliance (CEQA), and state facilities funding programs."
+                description="Handles public agency business operations, procurement, construction, CEQA, etc."
             ),
             "board_governance": PracticeGroup(
                 name="Board Governance",
-                description="Advises on laws governing public agency operations including the Brown Act, Public Records Act, Political Reform Act, and California Voting Rights Act. Focuses on board policies, conflicts of interest, ethics requirements, election matters, and public transparency obligations."
+                description="Advises on the Brown Act, Public Records Act, elections, conflicts of interest."
             ),
             "labor_employment": PracticeGroup(
                 name="Labor and Employment",
-                description="Covers employment law matters including collective bargaining, employee discipline, discrimination/harassment, leaves, accommodations, and wage/hour compliance. Key areas include certificated and classified employment, PERB proceedings, FEHA/Title VII compliance, and CalSTRS/CalPERS benefits."
+                description="Collective bargaining, employee discipline, Title VII compliance, etc."
             ),
             "litigation": PracticeGroup(
                 name="Litigation",
-                description="Handles civil litigation in state and federal courts including writs, civil rights claims, construction disputes, and administrative proceedings. Focus areas include ADA compliance, discrimination claims, personal injury defense, and challenges to agency decisions."
+                description="Handles civil litigation in state/federal courts, construction disputes, etc."
             ),
             "public_finance": PracticeGroup(
                 name="Public Finance",
-                description="Advises on public agency financing including bonds, certificates of participation, and special taxes/assessments. Key areas include Proposition 39 bonds, refunding bonds, tax/revenue anticipation notes, developer fees, and parcel taxes."
+                description="Public agency financing, bonds, tax/revenue anticipation notes, developer fees."
             ),
             "technology_privacy": PracticeGroup(
                 name="Technology and Privacy",
-                description="Addresses technology procurement, data privacy, electronic communications, and records retention requirements. Focus areas include student data privacy, cybersecurity compliance, technology contracts, and electronic public records obligations."
+                description="Data privacy, cybersecurity compliance, technology procurement, e-records."
             )
         }
 
     @property
     def groups(self) -> Dict[str, PracticeGroup]:
-        """Access the groups dictionary"""
         return self._groups
 
     @property
     def group_names(self) -> Set[str]:
-        """Get set of all practice group names"""
-        return {group.name for group in self._groups.values()}
+        return {g.name for g in self._groups.values()}
 
     def get_prompt_text(self, detail_level: str = "full") -> str:
-        """Generate formatted text for AI prompt"""
         return "\n".join(
             group.format_for_prompt(detail_level)
             for group in self._groups.values()
         )
 
-    def validate_groups(self, groups: List[str]) -> List[str]:
-        """Validate that provided groups exist"""
+    def validate_groups(self, groups):
+        # Not used at the moment in detail
         return [g for g in groups if g in self.group_names]
 
     def get_group_by_name(self, name: str) -> Optional[PracticeGroup]:
-        """Get a practice group by its display name"""
         for group in self._groups.values():
             if group.name == name:
                 return group
