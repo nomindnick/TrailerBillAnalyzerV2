@@ -73,11 +73,14 @@ class BillScraper:
 
                     if response.status == 200:
                         html_content = await response.text()
+                        content_length = len(html_content) if html_content else 0
+                        self.logger.info(f"Received HTML content of length: {content_length}")
+
+                        if not html_content or content_length < 100:
+                            raise ValueError(f"Received invalid content (length: {content_length})")
+
                         self.logger.debug(f"First 500 chars of response: {html_content[:500]}")
 
-                        if not html_content:
-                            raise ValueError("Empty response received")
-                        
                         result = self._parse_bill_page(html_content)
                         if not result or not result.get('full_text'):
                             raise ValueError("Failed to extract bill text from HTML")
