@@ -297,13 +297,17 @@ class BaseParser:
         # Very simplistic approach:
         # If we see "Existing law" and "This bill would", we split
         # or we just keep them as is
+        if not text:
+            return "", ""
+            
         pattern = r"(Existing law.*?)(This bill would.*)"
         match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
         if match:
             existing_text = match.group(1).strip()
             change_text = match.group(2).strip()
-
-        return existing_text, change_text
+            return existing_text, change_text
+            
+        return text, ""  # If no match, treat entire text as existing law
 
     def _match_sections(self, bill: TrailerBill) -> None:
         """
