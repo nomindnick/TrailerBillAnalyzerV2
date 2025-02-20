@@ -4,7 +4,7 @@ eventlet.monkey_patch()
 
 from flask import Flask, send_from_directory, request, jsonify, make_response
 from flask_socketio import SocketIO, emit
-import openai
+from openai import AsyncOpenAI  # Updated import: using AsyncOpenAI
 from flask_cors import CORS
 import os
 from dotenv import load_dotenv
@@ -16,7 +16,7 @@ from src.services.base_parser import BaseParser
 from src.services.json_builder import JsonBuilder
 from src.services.section_matcher import SectionMatcher
 from src.services.impact_analyzer import ImpactAnalyzer
-from src.services.report_generator import ReportGenerator
+from src.services.report_generator import ReportGenerator  # <-- ADD THIS IMPORT
 from src.models.practice_groups import PracticeGroups
 from src.models.bill_components import TrailerBill
 import sys
@@ -28,7 +28,8 @@ load_dotenv()
 if not os.getenv('OPENAI_API_KEY'):
     raise ValueError("OPENAI_API_KEY environment variable is not set")
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Instantiate the async OpenAI client
+client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
@@ -170,7 +171,6 @@ async def process_bill_analysis(bill_number):
 
         # Step 4: AI Analysis
         progress.update_progress(4, "Starting AI analysis", 0, len(parsed_bill.digest_sections))
-        client = openai
         matcher = SectionMatcher(openai_client=client)
         practice_groups = PracticeGroups()
         analyzer = ImpactAnalyzer(openai_client=client, practice_groups_data=practice_groups)

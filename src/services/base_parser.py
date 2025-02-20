@@ -24,9 +24,10 @@ class BaseParser:
             r'(Assembly|Senate)\s+Bill\s+(?:No\.?\s+)?(\d+)\s+CHAPTER\s*(\d+)\s*'
         )
         self.digest_section_pattern = r'\((\d+)\)\s+([^(]+)(?=\(\d+\)|$)'
+        # Updated pattern to better capture "SECTION X." lines:
         self.bill_section_pattern = (
-            r'^(?:SEC(?:TION)?\.?)\s+(\d+(?:\.\d+)?)(?:\.|:)?\s+(.*?)'
-            r'(?=^(?:SEC(?:TION)?\.?)\s+\d+|\Z)'
+            r'(?:^|\n)(SEC(?:TION)?\.?)\s+(\d+)(?:\.)?\s+(.*?)'
+            r'(?=\nSEC(?:TION)?\.?\s+\d+|\Z)'
         )
         self.date_pattern = (
             r'Approved by Governor\s+([^.]+)\.\s+Filed with Secretary of State\s+([^.]+)\.'
@@ -117,15 +118,17 @@ class BaseParser:
 
     def _parse_bill_sections(self, bill_portion: str) -> List[BillSection]:
         sections = []
-        pattern = re.compile(self.bill_section_pattern, flags=re.IGNORECASE | re.DOTALL | re.MULTILINE)
+        pattern = re.compile(self.bill_section_pattern, flags=re.IGNORECASE | re.DOTALL)
         matches = list(pattern.finditer(bill_portion))
 
         if matches:
             for match in matches:
-                section_num = match.group(1).strip()
-                section_body = match.group(2).strip()
-                code_refs, action = self._parse_section_header(section_body)
+                # e.g. match for "SECTION 1. ..." or "SEC. 12 ..."
+                section_label = match.group(1)  # "SEC." or "SECTION"
+                section_num = match.group(2).strip()  # "1", "2", etc.
+                section_body = match.group(3).strip()
 
+                code_refs, action = self._parse_section_header(section_body)
                 bs = BillSection(
                     number=section_num,
                     text=section_body,
@@ -133,7 +136,6 @@ class BaseParser:
                 )
                 sections.append(bs)
         else:
-            # Fallback if no explicit sections found
             fallback_refs = self._extract_code_references(bill_portion)
             if fallback_refs:
                 for i, ref in enumerate(fallback_refs, start=1):
@@ -164,95 +166,66 @@ class BaseParser:
          - Ranges: "Sections 103 to 105 of the Government Code"
         """
         references = []
-        # Combine multiple patterns to capture different ordering:
         patterns = [
-            # Format: "Sections 8594.14 and 13987 of the Government Code"
             r"(?i)Sections?\s+([\d\.\-\,\s&and]+)\s+of\s+(?:the\s+)?([A-Za-z\s]+Code)",
-            # Format: "Government Code Sections 8594.14 and 13987"
             r"(?i)([A-Za-z\s]+Code)\s+Sections?\s+([\d\.\-\,\s&and]+)",
-            # Ranges: "Sections 100 to 102 of the Government Code"
             r"(?i)Sections?\s+(\d+(?:\.\d+)?)(?:\s*(?:to|through|-)\s*(\d+(?:\.\d+)?))?\s+of\s+(?:the\s+)?([A-Za-z\s]+Code)",
         ]
-
-        # To handle single line references like: "Section 8594.14 of the Government Code" distinctly:
+        # Format for single section references:
         single_section_pattern = r"(?i)Section\s+(\d+(?:\.\d+)?)(?:\s+of\s+(?:the\s+)?([A-Za-z\s]+Code))?"
         single_rev_pattern = r"(?i)([A-Za-z\s]+Code)\s+Section\s+(\d+(?:\.\d+)?)"
 
-        # We'll parse using each pattern:
-        # Because we may have overlap in patterns, we'll do a best effort approach
         all_matches = []
 
-        # Multi reference patterns
         for pat in patterns:
             for match in re.finditer(pat, text):
                 all_matches.append(match)
-
-        # Single reference patterns
         for match in re.finditer(single_section_pattern, text):
             all_matches.append(match)
         for match in re.finditer(single_rev_pattern, text):
             all_matches.append(match)
 
-        # We'll store them in a set of (code_name, section_num) to avoid duplication
         unique_refs = set()
 
         for match in all_matches:
             groups = match.groups()
-            # We must interpret them carefully because pattern structures differ
-            # We'll unify logic in a single approach:
-            # If pattern is "Sections 8594.14, 13987 of Government Code"
-            # groups might be ( '8594.14, 13987', 'Government Code' )
-            # We'll split the sections
-            # If pattern is a range: ( '100', '102', 'Government Code' )
-            # If single section: ( '8594.14', 'Government Code' )
-            # Or reversed: ( 'Government Code', '8594.14, 13987' )
-
-            # We'll try a safe approach:
-            # We see how many groups we have:
             if len(groups) == 2:
-                # Could be (sections_str, code_name) or (code_name, sections_str)
-                # We try to guess which is code name vs. sections
-                # We'll do a naive check for "Code" to identify code name
-                if "code" in groups[1].lower():
-                    # (sections_str, code_name)
+                if groups[1] is not None and "code" in groups[1].lower():
                     sections_str = groups[0]
                     code_name = groups[1].strip()
                     for sec in self._split_section_list(sections_str):
                         unique_refs.add((code_name, sec))
-                elif "code" in groups[0].lower():
-                    # (code_name, sections_str)
+                elif groups[0] is not None and "code" in groups[0].lower():
                     code_name = groups[0].strip()
-                    sections_str = groups[1]
+                    sections_str = groups[1] if groups[1] is not None else ""
                     for sec in self._split_section_list(sections_str):
                         unique_refs.add((code_name, sec))
-
             elif len(groups) == 3:
-                # Could be (sections_str, None, code_name) for a single range, or
-                # (start, end, code_name) for a range
-                # We'll see if the second group is None
+                # e.g. (start, maybe_end, code_name)
                 start = groups[0]
                 maybe_end = groups[1]
                 code_name = groups[2]
+                code_name = code_name.strip() if code_name is not None else ""
                 if maybe_end:
-                    # It's a range
-                    start_val = int(float(start))
-                    end_val = int(float(maybe_end))
-                    for i in range(start_val, end_val + 1):
-                        unique_refs.add((code_name.strip(), str(i)))
+                    try:
+                        start_val = int(float(start))
+                        end_val = int(float(maybe_end))
+                        for i in range(start_val, end_val + 1):
+                            unique_refs.add((code_name, str(i)))
+                    except ValueError:
+                        for sec in self._split_section_list(start):
+                            unique_refs.add((code_name, sec))
                 else:
-                    # It's probably sections_str, code_name
-                    # so we do the multi-split
                     for sec in self._split_section_list(start):
-                        unique_refs.add((code_name.strip(), sec))
+                        unique_refs.add((code_name, sec))
             else:
-                # If there's an unexpected group count, we just skip
+                # handle single section patterns, etc.
                 pass
 
         code_refs = []
         for (code, sec) in unique_refs:
-            # Remove extra whitespace
-            code = code.strip()
-            sec = sec.strip()
+            code = code.strip() if code is not None else ""
+            sec = sec.strip() if sec is not None else ""
             if code and sec:
                 code_ref = CodeReference(section=sec, code_name=code)
                 code_refs.append(code_ref)
@@ -260,10 +233,8 @@ class BaseParser:
         return code_refs
 
     def _split_section_list(self, sections_str: str) -> List[str]:
-        # Attempt to split on commas, 'and', etc.
-        # e.g. "8594.14, 13987 and 13989"
         s = re.sub(r'\s+and\s+', ',', sections_str, flags=re.IGNORECASE)
-        s = re.sub(r'\s+', '', s)  # remove extra spaces
+        s = re.sub(r'\s+', '', s)
         parts = re.split(r',', s)
         return [p for p in parts if p]
 
@@ -304,7 +275,7 @@ class BaseParser:
             change_text = match.group(2).strip()
             return existing_text, change_text
 
-        return text.strip(), ""  # If no match, treat entire text as existing law
+        return text.strip(), ""
 
     def _match_sections(self, bill: TrailerBill) -> None:
         """
@@ -330,9 +301,11 @@ class BaseParser:
             return None
 
     def _normalize_section_breaks(self, text: str) -> str:
-        return re.sub(
-            r'([.:;])(?!\n)\s*(?=(SEC(?:TION)?\.))',
-            r'\1\n',
+        # Insert line breaks before "SEC." or "SECTION" if not already present.
+        text = re.sub(
+            r'(?<!\n)(SEC(?:TION)?\.?\s+\d+)',
+            r'\n\1',
             text,
             flags=re.IGNORECASE
         )
+        return text

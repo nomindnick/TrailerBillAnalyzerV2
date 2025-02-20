@@ -20,224 +20,37 @@
     <!-- Executive Summary -->
     <div class="executive-summary">
         <h2>Executive Summary</h2>
-        <p><strong>Total Changes:</strong> {{ total_changes }}</p>
-        <p><strong>Changes Impacting Local Agencies:</strong> {{ impacting_changes }}</p>
-        <p><strong>Practice Areas Affected:</strong>
+        <p><strong>Total Changes Identified:</strong> {{ total_changes }}</p>
+        <p><strong>Local Agency Impact:</strong> {{ local_summary }}</p>
+        <p><strong>State Agency Impact:</strong> {{ state_summary }}</p>
+        <p><strong>Practice Areas Affected (primary relevance):</strong>
             {% if practice_areas %}
                 {{ practice_areas|join(', ') }}
             {% else %}
                 None
             {% endif %}
         </p>
+        <p><strong>Key Takeaways:</strong> {{ summary_text }}</p>
     </div>
 
-    <!-- Report by Practice Group -->
-    <h2>Report by Practice Group</h2>
-    {% if grouped_changes %}
-      {% for group_name, changes_list in grouped_changes.items() %}
-        <div class="practice-group-section">
-            <h3>{{ group_name }}</h3>
-            {% for change in changes_list %}
-            <div class="change-box">
-                <div class="change-header">
-                    <strong>Substantive Change</strong>
-                </div>
+    <!-- Sections by Impact Type -->
+    {% for section in report_sections %}
+    <div class="report-section">
+        <h2 class="report-section-title">{{ section.title }}</h2>
 
-                <!-- Show the Bill Section references -->
-                <div class="section-list">
-                    <strong>Trailer Bill Sections:</strong>
-                    {% if change.section_details %}
-                        {% for sec in change.section_details %}
-                            <span class="section-item">
-                                SEC. {{ sec.number }}
-                                {% if sec.code_modifications %}
-                                    {% for cmd in sec.code_modifications %}
-                                        <br>{{ cmd.code_name }} Section {{ cmd.section }}
-                                        {% if cmd.action %}[{{ cmd.action|capitalize }}]{% endif %}
-                                    {% endfor %}
-                                {% endif %}
-                            </span>
-                        {% endfor %}
-                    {% else %}
-                        <span>No specific sections found.</span>
-                    {% endif %}
-                </div>
-
-                <p>{{ change.substantive_change }}</p>
-
-                <!-- Show Existing Law / Proposed Changes -->
-                {% if change.existing_law %}
-                <h4>Existing Law</h4>
-                <p>{{ change.existing_law }}</p>
-                {% endif %}
-                {% if change.proposed_change %}
-                <h4>Proposed Changes</h4>
-                <p>{{ change.proposed_change }}</p>
-                {% endif %}
-
-                <h4>Local Agencies Impacted</h4>
-                {% if change.local_agency_impact and change.local_agency_impact != "No specific local agencies identified." %}
-                    <p>{{ change.local_agency_impact }}</p>
-                {% else %}
-                    <p>No specific local agencies identified.</p>
-                {% endif %}
-
-                {% if change.key_action_items %}
-                <div class="action-items">
-                    <strong>Key Action Items</strong>
-                    <ul>
-                        {% for item in change.key_action_items %}
-                        <li>{{ item }}</li>
-                        {% endfor %}
-                    </ul>
-                </div>
-                {% endif %}
-
-                {% if change.deadlines %}
-                <div class="action-items">
-                    <strong>Deadlines</strong>
-                    <ul>
-                        {% for dl in change.deadlines %}
-                        <li>
-                            <strong>{{ dl.date if dl.date else "N/A" }}</strong>:
-                            {{ dl.description }}
-                            {% if dl.affected_agencies %}
-                            (Affected agencies: {{ dl.affected_agencies|join(', ') }})
-                            {% endif %}
-                        </li>
-                        {% endfor %}
-                    </ul>
-                </div>
-                {% endif %}
-
-                {% if change.requirements %}
-                <div class="action-items">
-                    <strong>Additional Requirements</strong>
-                    <ul>
-                        {% for req in change.requirements %}
-                        <li>{{ req }}</li>
-                        {% endfor %}
-                    </ul>
-                </div>
-                {% endif %}
-            </div>
-            {% endfor %}
-        </div>
-      {% endfor %}
-    {% else %}
-      <p>No changes were matched to specific practice groups.</p>
-    {% endif %}
-
-    {% if general_local_agency_impact_changes %}
-    <h2>General Local Agency Impact</h2>
-    {% for change in general_local_agency_impact_changes %}
-    <div class="change-box">
-        <div class="change-header">
-            <strong>Substantive Change</strong>
-        </div>
-
-        <!-- Show the Bill Section references -->
-        <div class="section-list">
-            <strong>Trailer Bill Sections:</strong>
-            {% if change.section_details %}
-                {% for sec in change.section_details %}
-                    <span class="section-item">
-                        SEC. {{ sec.number }}
-                        {% if sec.code_modifications %}
-                            {% for cmd in sec.code_modifications %}
-                                <br>{{ cmd.code_name }} Section {{ cmd.section }}
-                                {% if cmd.action %}[{{ cmd.action|capitalize }}]{% endif %}
-                            {% endfor %}
-                        {% endif %}
-                    </span>
-                {% endfor %}
-            {% else %}
-                <span>No specific sections found.</span>
-            {% endif %}
-        </div>
-
-        <p>{{ change.substantive_change }}</p>
-
-        <!-- Show Existing Law / Proposed Changes -->
-        {% if change.existing_law %}
-        <h4>Existing Law</h4>
-        <p>{{ change.existing_law }}</p>
-        {% endif %}
-        {% if change.proposed_change %}
-        <h4>Proposed Changes</h4>
-        <p>{{ change.proposed_change }}</p>
-        {% endif %}
-
-        <h4>Local Agencies Impacted</h4>
-        {% if change.local_agency_impact and change.local_agency_impact != "No specific local agencies identified." %}
-            <p>{{ change.local_agency_impact }}</p>
-        {% else %}
-            <p>No specific local agencies identified.</p>
-        {% endif %}
-
-        {% if change.key_action_items %}
-        <div class="action-items">
-            <strong>Key Action Items</strong>
-            <ul>
-                {% for item in change.key_action_items %}
-                <li>{{ item }}</li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-
-        {% if change.deadlines %}
-        <div class="action-items">
-            <strong>Deadlines</strong>
-            <ul>
-                {% for dl in change.deadlines %}
-                <li>
-                    <strong>{{ dl.date if dl.date else "N/A" }}</strong>:
-                    {{ dl.description }}
-                    {% if dl.affected_agencies %}
-                    (Affected agencies: {{ dl.affected_agencies|join(', ') }})
-                    {% endif %}
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-
-        {% if change.requirements %}
-        <div class="action-items">
-            <strong>Additional Requirements</strong>
-            <ul>
-                {% for req in change.requirements %}
-                <li>{{ req }}</li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-    </div>
-    {% endfor %}
-    {% endif %}
-
-    {% if no_impact_changes %}
-    <div class="no-impact-section">
-        <h2>Changes with No Local Agency Impact</h2>
-        {% for change in no_impact_changes %}
+        {% for change in section.content.changes %}
         <div class="change-box">
             <div class="change-header">
                 <strong>Substantive Change</strong>
             </div>
 
+            <!-- Show the Bill Section references -->
             <div class="section-list">
                 <strong>Trailer Bill Sections:</strong>
-                {% if change.section_details %}
-                    {% for sec in change.section_details %}
+                {% if change.bill_sections %}
+                    {% for sec in change.bill_sections %}
                         <span class="section-item">
-                            SEC. {{ sec.number }}
-                            {% if sec.code_modifications %}
-                                {% for cmd in sec.code_modifications %}
-                                    <br>{{ cmd.code_name }} Section {{ cmd.section }}
-                                    {% if cmd.action %}[{{ cmd.action|capitalize }}]{% endif %}
-                                {% endfor %}
-                            {% endif %}
+                            SEC. {{ sec.section_id }}
                         </span>
                     {% endfor %}
                 {% else %}
@@ -247,7 +60,9 @@
 
             <p>{{ change.substantive_change }}</p>
 
-            <!-- Existing Law / Proposed Changes -->
+            <!-- Show Existing Law / Proposed Changes if desired
+                 (We have them in the skeleton, but not displayed by default.
+                 You can uncomment if you want them shown):
             {% if change.existing_law %}
             <h4>Existing Law</h4>
             <p>{{ change.existing_law }}</p>
@@ -256,13 +71,10 @@
             <h4>Proposed Changes</h4>
             <p>{{ change.proposed_change }}</p>
             {% endif %}
+            -->
 
-            <h4>Local Agencies Impacted</h4>
-            {% if change.local_agency_impact and change.local_agency_impact != "No specific local agencies identified." %}
-                <p>{{ change.local_agency_impact }}</p>
-            {% else %}
-                <p>No specific local agencies identified.</p>
-            {% endif %}
+            <h4>Agencies Impacted</h4>
+            <p>{{ change.local_agency_impact_summary }}</p>
 
             {% if change.key_action_items %}
             <div class="action-items">
@@ -302,9 +114,22 @@
                 </ul>
             </div>
             {% endif %}
+
+            {% if change.practice_groups %}
+            <div class="action-items">
+                <strong>Relevant Practice Groups</strong>
+                <ul>
+                    {% for pg in change.practice_groups %}
+                    <li>
+                        {{ pg.name }} ({{ pg.relevance }}) - {{ pg.justification }}
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
         </div>
         {% endfor %}
     </div>
-    {% endif %}
+    {% endfor %}
 </body>
 </html>

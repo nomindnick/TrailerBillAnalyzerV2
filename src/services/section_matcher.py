@@ -20,12 +20,19 @@ class SectionMatcher:
     based on code references, explicit section numbers, and context.
     """
 
-    def __init__(self, openai_client, model="gpt-4"):
+    def __init__(self, openai_client, model="gpt-4o-2024-08-06"):
         self.logger = logging.getLogger(__name__)
         self.client = openai_client
         self.model = model
 
     async def match_sections(self, skeleton: Dict[str, Any], bill_text: str) -> Dict[str, Any]:
+        """
+        Matches each digest 'change' to one or more sections in the raw bill text.
+        We'll do three passes:
+        1) Exact code reference matching
+        2) Section number matching
+        3) GPT-based context matching
+        """
         try:
             digest_map = self._create_digest_map(skeleton)
             section_map = self._extract_bill_sections(bill_text)
@@ -76,18 +83,23 @@ class SectionMatcher:
     def _extract_bill_sections(self, bill_text: str) -> Dict[str, Dict[str, Any]]:
         """
         Extract SEC. 1, SEC. 2, etc., plus code references.
+        We'll store them keyed by the numeric section_id (string).
         """
         section_map = {}
-        pattern = r'(?:SECTION|SEC\.)\s+(?P<number>\d+(?:\.\d+)?)\.\s*(?P<text>(?:.*?)(?=(?:SECTION|SEC\.)\s+\d+|\Z))'
-        for match in re.finditer(pattern, bill_text, re.DOTALL | re.MULTILINE):
-            section_num = match.group('number')
-            section_text = match.group('text').strip()
-            code_refs = self._extract_code_references(section_text)
-            action_type = self._determine_action(section_text)
-            mod_sections = self._extract_modified_sections(section_text)
+        # Updated pattern to catch "SECTION 1." lines more easily
+        pattern = r'(?:^|\n)(SEC(?:TION)?\.?)\s+(\d+)(?:\.)?\s+(.*?)(?=\nSEC(?:TION)?\.?\s+\d+|\Z)'
+        matches = re.finditer(pattern, bill_text, flags=re.IGNORECASE | re.DOTALL)
 
-            section_map[section_num] = {
-                "text": section_text,
+        for match in matches:
+            label = match.group(1)  # "SEC." or "SECTION"
+            sec_num = match.group(2)  # "1", "2", ...
+            sec_text = match.group(3).strip()
+            code_refs = self._extract_code_references(sec_text)
+            action_type = self._determine_action(sec_text)
+            mod_sections = self._extract_modified_sections(sec_text)
+
+            section_map[sec_num] = {
+                "text": sec_text,
                 "code_refs": code_refs,
                 "action_type": action_type,
                 "code_sections": mod_sections
@@ -118,6 +130,9 @@ class SectionMatcher:
 
     def _match_by_section_numbers(self, digest_map: Dict[str, Dict[str, Any]],
                                   section_map: Dict[str, Dict[str, Any]]) -> List[MatchResult]:
+        """
+        If the digest text says 'SECTION 2' or 'SEC. 2', let's try direct matching.
+        """
         matches = []
         for digest_id, digest_info in digest_map.items():
             digest_secs = digest_info["section_refs"]
@@ -134,33 +149,34 @@ class SectionMatcher:
 
     async def _match_by_context(self, unmatched_digests, unmatched_sections, bill_text) -> List[MatchResult]:
         """
-        Use GPT to do context-based matching for any leftover items.
+        Use GPT to do context-based matching for leftover items.
+        We'll ask GPT which sections best match each digest item.
         """
         matches = []
         for digest_id, digest_info in unmatched_digests.items():
             prompt = self._build_context_prompt(digest_info, unmatched_sections)
             try:
-                completion = await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    lambda: self.client.ChatCompletion.create(
-                        model=self.model,
-                        messages=[
-                            {
-                                "role": "system",
-                                "content": (
-                                    "You are analyzing a California trailer bill to determine "
-                                    "which SEC. # sections implement or correspond to a given digest item. "
-                                    "Return a JSON object with matches and confidence scores."
-                                )
-                            },
-                            {"role": "user", "content": prompt}
-                        ],
-                        temperature=0
-                    )
+                completion = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are analyzing a California trailer bill to determine "
+                                "which SEC. # sections implement or correspond to a given digest item. "
+                                "Your entire response MUST be valid JSON, and nothing else. "
+                                "If uncertain, return an empty JSON object like `{}`."
+                            )
+                        },
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0
                 )
                 content = completion.choices[0].message.content
+                cleaned_content = self._extract_json(content)
+
                 try:
-                    data = json.loads(content)
+                    data = json.loads(cleaned_content)
                     for m in data.get("matches", []):
                         matches.append(MatchResult(
                             digest_id=digest_id,
@@ -176,43 +192,67 @@ class SectionMatcher:
                 self.logger.error(f"Error in AI context matching: {str(e)}")
         return matches
 
+    def _extract_json(self, text: str) -> str:
+        """
+        Attempt to isolate the JSON portion of the model's response.
+        """
+        if not text:
+            return "{}"
+
+        text = text.strip().strip("`")
+        first_brace_index = text.find("{")
+        if first_brace_index == -1:
+            return "{}"
+        text = text[first_brace_index:]
+        last_brace_index = text.rfind("}")
+        if last_brace_index == -1:
+            return "{}"
+        text = text[: last_brace_index + 1]
+        if text.strip() == "{}":
+            return "{}"
+        return text
+
     def _build_context_prompt(self, digest_info: Dict[str, Any], sections: Dict[str, Dict[str, Any]]) -> str:
         sec_texts = []
         for sid, sinfo in sections.items():
             sec_texts.append(f"SEC. {sid}:\n{sinfo['text']}\n")
+
         return (
-            f"Digest Item:\n{digest_info['text']}\n\n"
+            "Digest Item:\n"
+            f"{digest_info['text']}\n\n"
             f"Existing Law:\n{digest_info['existing_law']}\n\n"
             f"Proposed Change:\n{digest_info['proposed_change']}\n\n"
-            f"Here are the remaining SEC. # sections:\n{''.join(sec_texts)}\n\n"
-            "Based on context, which SEC. # sections correspond to the digest item? "
-            "Return JSON in the format:\n"
+            f"Remaining Bill Sections:\n{''.join(sec_texts)}\n\n"
+            "Return a JSON of the form:\n"
             "{\n"
-            '   "matches": [\n'
-            "       {\n"
-            '           "section_id": "the SEC. number",\n'
-            '           "confidence": 0.0 to 1.0,\n'
-            '           "evidence": {\n'
-            '               "key_terms": ["terms"],\n'
-            '               "thematic_match": "explanation"\n'
-            "           }\n"
-            "       }\n"
-            "   ]\n"
-            "}"
+            '  "matches": [\n'
+            "    {\n"
+            '      "section_id": "string",\n'
+            '      "confidence": 0.0,\n'
+            '      "evidence": {\n'
+            '          "key_terms": ["terms"],\n'
+            '          "thematic_match": "explanation"\n'
+            "      }\n"
+            "    }\n"
+            "  ]\n"
+            "}\n"
+            "If no matches, return:\n"
+            "{\n"
+            '  "matches": []\n'
+            "}\n"
         )
 
     def _validate_matches(self, matches: List[MatchResult]) -> List[MatchResult]:
+        """
+        Keep only the highest confidence match if there's a duplicate (digest_id, section_id).
+        """
         validated = []
-        # We'll keep the highest confidence match for each digest->section
-        # But it's possible a digest item can match multiple sections
-        # We'll store them but if there's a direct conflict, we keep the highest
         combined = defaultdict(list)
         for m in matches:
             key = (m.digest_id, m.section_id)
             combined[key].append(m)
 
         for k, result_list in combined.items():
-            # pick highest confidence
             best = max(result_list, key=lambda x: x.confidence)
             validated.append(best)
 
@@ -242,21 +282,15 @@ class SectionMatcher:
 
     def _extract_code_references(self, text: str) -> Set[str]:
         """
-        Convert code references into a set of "CodeName:section" strings
-        for easier matching.
+        Convert code references into a set of "CodeName:section" strings for easier matching.
         """
-        # We'll do a simpler approach: look for "XXXX Code Section NNN"
-        # or "Section NNN of the XXXX Code" or range forms:
-        # This is already done in base_parser, but we replicate a simpler approach
-        # for matching here.
-
-        # We'll unify patterns to catch typical references
-        pattern = r'(?i)([A-Za-z\s]+Code)\s+Section(?:s)?\s+([\d\.\-\,\s&and]+)|Section(?:s)?\s+([\d\.\-\,\s&and]+)\s+of\s+([A-Za-z\s]+Code)'
+        pattern = (
+            r'(?i)([A-Za-z\s]+Code)\s+Section(?:s)?\s+([\d\.\-\,\s&and]+)|'
+            r'Section(?:s)?\s+([\d\.\-\,\s&and]+)\s+of\s+([A-Za-z\s]+Code)'
+        )
         result = set()
-
         matches = re.finditer(pattern, text)
         for match in matches:
-            # match can have up to 4 groups, 2 for each side
             left_code = match.group(1)
             left_secs = match.group(2)
             right_secs = match.group(3)
@@ -264,25 +298,19 @@ class SectionMatcher:
 
             if left_code and left_secs:
                 code_name = left_code.strip()
-                sections_str = left_secs.strip()
-                # split on commas or 'and'
-                sections_list = self._split_sections(sections_str)
+                sections_list = self._split_sections(left_secs.strip())
                 for sec in sections_list:
                     result.add(f"{code_name}:{sec.strip()}")
 
             if right_secs and right_code:
                 code_name = right_code.strip()
-                sections_str = right_secs.strip()
-                sections_list = self._split_sections(sections_str)
+                sections_list = self._split_sections(right_secs.strip())
                 for sec in sections_list:
                     result.add(f"{code_name}:{sec.strip()}")
-
         return result
 
     def _split_sections(self, sections_str: str) -> List[str]:
-        # Replace 'and' with commas
         s = re.sub(r'\s+and\s+', ',', sections_str, flags=re.IGNORECASE)
-        # Split on commas
         parts = [x.strip() for x in s.split(',')]
         return [p for p in parts if p]
 
@@ -301,7 +329,21 @@ class SectionMatcher:
         return "UNKNOWN"
 
     def _extract_modified_sections(self, text: str) -> List[str]:
-        # E.g. "Section 8594.14 is amended"
-        # We'll do something simple for demonstration
         pattern = r'(?:amends|adds|repeals)\s+Section\s+(\d+(?:\.\d+)?)'
         return re.findall(pattern, text, flags=re.IGNORECASE)
+
+    def _extract_section_numbers(self, text: str) -> Set[str]:
+        """
+        Extract references to "SEC. X" or "SECTION X" from the digest text.
+        We'll store them as { "1", "2", ... } to see if they match any bill section numbers.
+        """
+        pattern = r'\b(?:SEC\.|SECTION)\s+(\d+)'
+        return set(re.findall(pattern, text, flags=re.IGNORECASE))
+
+    def _get_unmatched_digests(self, digest_map: Dict[str, Dict[str, Any]], matches: List[MatchResult]) -> Dict[str, Dict[str, Any]]:
+        matched = {m.digest_id for m in matches}
+        return {k: v for k, v in digest_map.items() if k not in matched}
+
+    def _get_unmatched_sections(self, section_map: Dict[str, Dict[str, Any]], matches: List[MatchResult]) -> Dict[str, Dict[str, Any]]:
+        matched = {m.section_id for m in matches}
+        return {k: v for k, v in section_map.items() if k not in matched}

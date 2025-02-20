@@ -3,15 +3,14 @@ import logging
 from jinja2 import Environment, FileSystemLoader
 import os
 from weasyprint import HTML, CSS
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from collections import defaultdict
 
 @dataclass
 class ReportSection:
     title: str
     content: Dict[str, Any]
-    section_type: str  # 'impact' or 'no_impact'
-    practice_group: Optional[str] = None
+    section_type: str  # 'local', 'state', or 'no_impact'
 
 class ReportGenerator:
     def __init__(self):
@@ -63,10 +62,6 @@ class ReportGenerator:
                 margin-bottom: 2rem;
             }
 
-            .practice-group-section {
-                margin-bottom: 2rem;
-            }
-
             .change-box {
                 background-color: #fff;
                 border: 1px solid #dee2e6;
@@ -98,15 +93,6 @@ class ReportGenerator:
                 margin-bottom: 5px;
             }
 
-            .agency-list {
-                margin: 0.5rem 0;
-                padding-left: 1.2rem;
-            }
-
-            .agency-list li {
-                list-style: disc;
-            }
-
             .action-items {
                 background-color: #f8f9fa;
                 padding: 0.8rem;
@@ -119,14 +105,14 @@ class ReportGenerator:
                 padding-left: 1.2rem;
             }
 
-            .no-impact-section {
-                margin-top: 3rem;
-                padding-top: 1rem;
-                border-top: 2px solid #dee2e6;
-            }
-
             h2, h3 {
                 break-after: avoid;
+            }
+
+            .report-section-title {
+                margin-top: 2rem;
+                border-bottom: 2px solid #dee2e6;
+                padding-bottom: 0.5rem;
             }
         """
 
@@ -137,10 +123,14 @@ class ReportGenerator:
         parsed_bill: Dict[str, Any],
         output_format: str = "html"
     ) -> Union[str, bytes]:
+        """
+        Generates either HTML or PDF based on the analyzed data.
+        """
 
         try:
-            report_sections = self._organize_report_sections(analyzed_data, parsed_bill)
-            template_data = self._prepare_template_data(analyzed_data, bill_info, report_sections)
+            # We'll create a structured breakdown:
+            sections = self._organize_report_sections(analyzed_data, parsed_bill)
+            template_data = self._prepare_template_data(analyzed_data, bill_info, sections)
 
             if output_format == "html":
                 return self._generate_html_report(template_data)
@@ -159,36 +149,45 @@ class ReportGenerator:
         analyzed_data: Dict[str, Any],
         parsed_bill: Dict[str, Any]
     ) -> List[ReportSection]:
+        """
+        We’ll group changes into 3 main categories:
+          1. Local Agency Impacts
+          2. State Agency Impacts
+          3. No Impact
+        Each group is represented as a ReportSection object.
+        """
+
+        local_changes = []
+        state_changes = []
+        no_impact_changes = []
+
+        for ch in analyzed_data.get("changes", []):
+            # If it has local AND state, we can put it in both categories; 
+            # but let's choose local if it's local; otherwise state if it's state
+            # If neither, no_impact
+            if ch.get("impacts_local_agencies"):
+                local_changes.append(ch)
+            elif ch.get("impacts_state_agencies"):
+                state_changes.append(ch)
+            else:
+                no_impact_changes.append(ch)
+
         sections = []
-        changes = analyzed_data.get("changes", [])
-
-        # Group changes that DO impact agencies by their primary practice groups
-        practice_group_changes = self._group_by_practice_group(changes, parsed_bill)
-
-        for group, group_changes in practice_group_changes.items():
-            content = {"changes": group_changes}
+        if local_changes:
             sections.append(ReportSection(
-                title=group,
-                content=content,
-                section_type="impact",
-                practice_group=group
+                title="Local Agency Impact",
+                content={"changes": local_changes},
+                section_type="local"
             ))
-
-        # general local agency
-        general_impacts = self._get_general_impacts(changes, parsed_bill)
-        if general_impacts:
+        if state_changes:
             sections.append(ReportSection(
-                title="General Local Agency Impact",
-                content={"changes": general_impacts},
-                section_type="impact",
-                practice_group=None
+                title="State Agency Impact",
+                content={"changes": state_changes},
+                section_type="state"
             ))
-
-        # no impact changes
-        no_impact_changes = self._get_no_impact_changes(changes, parsed_bill)
         if no_impact_changes:
             sections.append(ReportSection(
-                title="Changes with No Local Agency Impact",
+                title="Changes with No Local/State Agency Impact",
                 content={"changes": no_impact_changes},
                 section_type="no_impact"
             ))
@@ -202,131 +201,49 @@ class ReportGenerator:
         sections: List[ReportSection]
     ) -> Dict[str, Any]:
         total_changes = len(analyzed_data.get("changes", []))
-        impacting = [c for c in analyzed_data.get("changes", []) if c.get("impacts_local_agencies")]
-        impacting_count = len(impacting)
+        local_count = analyzed_data["metadata"].get("local_impacts_count", 0)
+        state_count = analyzed_data["metadata"].get("state_impacts_count", 0)
 
+        # Just pick out practice groups that appear with "primary" relevance
+        # in any of the changes. For illustration, we’ll keep it simple:
         practice_areas = set()
-        for c in impacting:
-            for pg in c.get("practice_groups", []):
+        for change in analyzed_data.get("changes", []):
+            for pg in change.get("practice_groups", []):
                 if pg.get("relevance") == "primary":
                     practice_areas.add(pg["name"])
 
-        grouped_changes = {}
-        general_local_agency_impact_changes = []
-        no_impact_changes = []
+        # Let's create a short summary text for the Executive Summary
+        # that is more descriptive:
+        local_summary = f"{local_count} changes potentially impact local agencies."
+        state_summary = f"{state_count} changes potentially impact state agencies."
 
-        for section in sections:
-            if section.section_type == "impact" and section.practice_group is not None:
-                grouped_changes.setdefault(section.title, []).extend(section.content["changes"])
-            elif section.section_type == "impact" and section.practice_group is None:
-                general_local_agency_impact_changes.extend(section.content["changes"])
-            elif section.section_type == "no_impact":
-                no_impact_changes.extend(section.content["changes"])
+        # If we want to highlight a few big bullet points, we can do so here.
+        # We'll keep it short for demonstration.
+        summary_notes = []
+        if local_count > 0:
+            summary_notes.append(
+                "Some changes provide funding opportunities or impose new compliance steps on cities, counties, or special districts."
+            )
+        if state_count > 0:
+            summary_notes.append(
+                "Certain provisions primarily affect state-level entities like Caltrans, DMV, or the High-Speed Rail Authority."
+            )
+        if not summary_notes:
+            summary_notes.append("No direct impacts on local or state agencies identified.")
+
+        summary_text = " ".join(summary_notes)
 
         template_data = {
             "bill_info": bill_info,
-            "date_approved": bill_info["date_approved"] if bill_info.get("date_approved") else "Not Available",
+            "date_approved": bill_info.get("date_approved", "Not Available"),
             "total_changes": total_changes,
-            "impacting_changes": impacting_count,
+            "local_summary": local_summary,
+            "state_summary": state_summary,
             "practice_areas": list(practice_areas),
-            "grouped_changes": grouped_changes,
-            "general_local_agency_impact_changes": general_local_agency_impact_changes,
-            "no_impact_changes": no_impact_changes,
-            "sections": sections
+            "report_sections": sections,
+            "summary_text": summary_text
         }
-
         return template_data
-
-    def _group_by_practice_group(
-        self,
-        changes: List[Dict[str, Any]],
-        parsed_bill: Dict[str, Any]
-    ) -> Dict[str, List[Dict[str, Any]]]:
-        grouped = {}
-        for ch in changes:
-            if ch.get("impacts_local_agencies"):
-                primary_groups = [
-                    gp["name"] for gp in ch.get("practice_groups", [])
-                    if gp.get("relevance") == "primary"
-                ]
-                if primary_groups:
-                    for pg in primary_groups:
-                        grouped.setdefault(pg, []).append(
-                            self._process_single_change(ch, parsed_bill)
-                        )
-        return grouped
-
-    def _get_general_impacts(
-        self,
-        changes: List[Dict[str, Any]],
-        parsed_bill: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
-        results = []
-        for ch in changes:
-            if ch.get("impacts_local_agencies"):
-                primary_groups = [
-                    gp for gp in ch.get("practice_groups", [])
-                    if gp.get("relevance") == "primary"
-                ]
-                if not primary_groups:
-                    results.append(self._process_single_change(ch, parsed_bill))
-        return results
-
-    def _get_no_impact_changes(
-        self,
-        changes: List[Dict[str, Any]],
-        parsed_bill: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
-        results = []
-        for ch in changes:
-            if not ch.get("impacts_local_agencies", False):
-                results.append(self._process_single_change(ch, parsed_bill))
-        return results
-
-    def _process_single_change(
-        self, change: Dict[str, Any], parsed_bill: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        processed_change = {
-            "id": change.get("id"),
-            "substantive_change": change.get("substantive_change", ""),
-            "local_agency_impact": change.get("local_agency_impact", ""),
-            "impacts_local_agencies": change.get("impacts_local_agencies", False),
-            "practice_groups": change.get("practice_groups", []),
-            "key_action_items": change.get("key_action_items", []),
-            "deadlines": change.get("deadlines", []),
-            "requirements": change.get("requirements", []),
-            "existing_law": change.get("existing_law", ""),
-            "proposed_change": change.get("proposed_change", ""),
-            "section_details": []
-        }
-
-        # We do want the 'existing_law' and 'proposed_change' from skeleton if present:
-        # The skeleton's structure stores them in each change as well.
-
-        bill_sections_dict = parsed_bill.get("bill_sections", {})
-        matched_sections = change.get("bill_sections", [])
-        for ms in matched_sections:
-            sid = ms["section_id"]
-            if sid in bill_sections_dict:
-                sec_obj = bill_sections_dict[sid]
-                section_details = {
-                    "number": sid,
-                    "text": sec_obj.get("text", ""),
-                    "code_modifications": sec_obj.get("code_modifications", []),
-                    "confidence": ms.get("confidence"),
-                    "match_type": ms.get("match_type")
-                }
-                processed_change["section_details"].append(section_details)
-
-        return processed_change
-
-    def _register_custom_filters(self) -> None:
-        self.jinja_env.filters.update({
-            "format_analysis": self._format_analysis
-        })
-
-    def _format_analysis(self, text: str) -> str:
-        return text
 
     def _generate_html_report(self, template_data: Dict[str, Any]) -> str:
         try:
@@ -353,3 +270,11 @@ class ReportGenerator:
         except Exception as e:
             self.logger.error(f"Error saving report: {str(e)}")
             raise
+
+    def _register_custom_filters(self) -> None:
+        self.jinja_env.filters.update({
+            "format_analysis": self._format_analysis
+        })
+
+    def _format_analysis(self, text: str) -> str:
+        return text
