@@ -22,9 +22,9 @@ class BillScraper:
         self.timeout = ClientTimeout(total=timeout)
 
         self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " \
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                           "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9," \
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,"
                       "image/avif,image/webp,image/apng,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
             "Accept-Encoding": "gzip, deflate, br",
@@ -90,6 +90,7 @@ class BillScraper:
                         self.logger.info(f"Contains 'Content not found': "
                                          f"{'Content not found' in html_content}")
 
+                        # parse again to ensure data is present
                         result = self._parse_bill_page(html_content)
                         self.logger.info(f"Successfully parsed bill text of length "
                                          f"{len(result.get('full_text', ''))}")

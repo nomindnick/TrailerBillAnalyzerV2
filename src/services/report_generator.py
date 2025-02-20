@@ -10,7 +10,7 @@ from collections import defaultdict
 class ReportSection:
     title: str
     content: Dict[str, Any]
-    section_type: str  # 'local', 'state', or 'no_impact'
+    section_type: str  # e.g. 'practice_group' or 'no_impact'
 
 class ReportGenerator:
     def __init__(self):
@@ -114,6 +114,10 @@ class ReportGenerator:
                 border-bottom: 2px solid #dee2e6;
                 padding-bottom: 0.5rem;
             }
+
+            .key-topics-list {
+                margin: 0.5rem 0 0.5rem 1.2rem;
+            }
         """
 
     def generate_report(
@@ -128,7 +132,6 @@ class ReportGenerator:
         """
 
         try:
-            # We'll create a structured breakdown:
             sections = self._organize_report_sections(analyzed_data, parsed_bill)
             template_data = self._prepare_template_data(analyzed_data, bill_info, sections)
 
@@ -150,45 +153,50 @@ class ReportGenerator:
         parsed_bill: Dict[str, Any]
     ) -> List[ReportSection]:
         """
-        We’ll group changes into 3 main categories:
-          1. Local Agency Impacts
-          2. State Agency Impacts
-          3. No Impact
-        Each group is represented as a ReportSection object.
+        Group changes by their *primary* practice group. Then gather any changes
+        that have no local agency impacts or no practice group into a separate
+        "No Direct Local Agency Impact" section.
         """
+        practice_group_map = defaultdict(list)
+        no_local_impact_changes = []
 
-        local_changes = []
-        state_changes = []
-        no_impact_changes = []
+        changes = analyzed_data.get("changes", [])
 
-        for ch in analyzed_data.get("changes", []):
-            # If it has local AND state, we can put it in both categories; 
-            # but let's choose local if it's local; otherwise state if it's state
-            # If neither, no_impact
-            if ch.get("impacts_local_agencies"):
-                local_changes.append(ch)
-            elif ch.get("impacts_state_agencies"):
-                state_changes.append(ch)
+        for ch in changes:
+            # If it doesn't impact local agencies at all, or if it has
+            # no recognized practice group, treat it as "No Direct Local Agency Impact".
+            if not ch.get("impacts_local_agencies", False):
+                no_local_impact_changes.append(ch)
+                continue
+
+            # Look for the "primary" practice group in ch["practice_groups"].
+            pgs = ch.get("practice_groups", [])
+            primary_pg = None
+            for pg in pgs:
+                if pg.get("relevance") == "primary":
+                    primary_pg = pg["name"]
+                    break
+
+            if not primary_pg:
+                # if no primary group is assigned, treat it as no local impact for grouping
+                no_local_impact_changes.append(ch)
             else:
-                no_impact_changes.append(ch)
+                practice_group_map[primary_pg].append(ch)
 
         sections = []
-        if local_changes:
+        # Create a section for each practice group that has changes
+        for pg_name, changes_list in practice_group_map.items():
             sections.append(ReportSection(
-                title="Local Agency Impact",
-                content={"changes": local_changes},
-                section_type="local"
+                title=f"{pg_name} Practice Group",
+                content={"changes": changes_list},
+                section_type="practice_group"
             ))
-        if state_changes:
+
+        # Finally, add a "No Direct Local Agency Impact" section if any
+        if no_local_impact_changes:
             sections.append(ReportSection(
-                title="State Agency Impact",
-                content={"changes": state_changes},
-                section_type="state"
-            ))
-        if no_impact_changes:
-            sections.append(ReportSection(
-                title="Changes with No Local/State Agency Impact",
-                content={"changes": no_impact_changes},
+                title="No Direct Local Agency Impact",
+                content={"changes": no_local_impact_changes},
                 section_type="no_impact"
             ))
 
@@ -200,38 +208,42 @@ class ReportGenerator:
         bill_info: Dict[str, Any],
         sections: List[ReportSection]
     ) -> Dict[str, Any]:
+
+        # Summaries for local and state
         total_changes = len(analyzed_data.get("changes", []))
         local_count = analyzed_data["metadata"].get("local_impacts_count", 0)
         state_count = analyzed_data["metadata"].get("state_impacts_count", 0)
 
-        # Just pick out practice groups that appear with "primary" relevance
-        # in any of the changes. For illustration, we’ll keep it simple:
+        # Gather short bullet items from each change's "substantive_change" as key topics
+        key_topics = []
+        for ch in analyzed_data.get("changes", []):
+            # We'll just take the first sentence or so
+            summ = ch.get("substantive_change", "")
+            if summ:
+                # Grab up to 150 chars
+                short_summ = (summ[:150] + '...') if len(summ) > 150 else summ
+                key_topics.append(short_summ.strip())
+
+        # Just pick out practice groups that appear as 'primary' in any of the changes
         practice_areas = set()
         for change in analyzed_data.get("changes", []):
             for pg in change.get("practice_groups", []):
                 if pg.get("relevance") == "primary":
                     practice_areas.add(pg["name"])
 
-        # Let's create a short summary text for the Executive Summary
-        # that is more descriptive:
+        # Build a short bullet-list of unique topics (limit to 6 for brevity)
+        unique_topics = list(dict.fromkeys(key_topics))  # preserve insertion order & remove dups
+        short_topic_list = unique_topics[:6]
+
+        # Executive summary text
         local_summary = f"{local_count} changes potentially impact local agencies."
         state_summary = f"{state_count} changes potentially impact state agencies."
-
-        # If we want to highlight a few big bullet points, we can do so here.
-        # We'll keep it short for demonstration.
-        summary_notes = []
-        if local_count > 0:
-            summary_notes.append(
-                "Some changes provide funding opportunities or impose new compliance steps on cities, counties, or special districts."
+        if local_count == 0 and state_count == 0:
+            summary_text = "No direct local or state agency impacts identified."
+        else:
+            summary_text = (
+                "Key funding, compliance, and operational changes may affect agencies at multiple levels."
             )
-        if state_count > 0:
-            summary_notes.append(
-                "Certain provisions primarily affect state-level entities like Caltrans, DMV, or the High-Speed Rail Authority."
-            )
-        if not summary_notes:
-            summary_notes.append("No direct impacts on local or state agencies identified.")
-
-        summary_text = " ".join(summary_notes)
 
         template_data = {
             "bill_info": bill_info,
@@ -241,7 +253,8 @@ class ReportGenerator:
             "state_summary": state_summary,
             "practice_areas": list(practice_areas),
             "report_sections": sections,
-            "summary_text": summary_text
+            "summary_text": summary_text,
+            "key_topics": short_topic_list
         }
         return template_data
 

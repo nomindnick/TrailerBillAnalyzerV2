@@ -31,9 +31,18 @@
             {% endif %}
         </p>
         <p><strong>Key Takeaways:</strong> {{ summary_text }}</p>
+
+        {% if key_topics %}
+        <p><strong>Key Topics:</strong></p>
+        <ul class="key-topics-list">
+            {% for topic in key_topics %}
+            <li>{{ topic }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
     </div>
 
-    <!-- Sections by Impact Type -->
+    <!-- Sections by Practice Group or No Local Impact -->
     {% for section in report_sections %}
     <div class="report-section">
         <h2 class="report-section-title">{{ section.title }}</h2>
@@ -59,19 +68,6 @@
             </div>
 
             <p>{{ change.substantive_change }}</p>
-
-            <!-- Show Existing Law / Proposed Changes if desired
-                 (We have them in the skeleton, but not displayed by default.
-                 You can uncomment if you want them shown):
-            {% if change.existing_law %}
-            <h4>Existing Law</h4>
-            <p>{{ change.existing_law }}</p>
-            {% endif %}
-            {% if change.proposed_change %}
-            <h4>Proposed Changes</h4>
-            <p>{{ change.proposed_change }}</p>
-            {% endif %}
-            -->
 
             <h4>Agencies Impacted</h4>
             <p>{{ change.local_agency_impact_summary }}</p>
@@ -121,7 +117,10 @@
                 <ul>
                     {% for pg in change.practice_groups %}
                     <li>
-                        {{ pg.name }} ({{ pg.relevance }}) - {{ pg.justification }}
+                        {{ pg.name }} ({{ pg.relevance }})
+                        {% if pg.justification %}
+                          - {{ pg.justification }}
+                        {% endif %}
                     </li>
                     {% endfor %}
                 </ul>

@@ -22,7 +22,6 @@ class ChangeAnalysis:
     action_items: List[str]
     deadlines: List[Dict[str, Any]]
     requirements: List[str]
-    # New flags for local/state impacts
     impacts_local: bool = False
     impacts_state: bool = False
 
@@ -30,8 +29,7 @@ class ImpactAnalyzer:
     """
     Analyzer for determining local agency impacts, deadlines, and other
     practical considerations using GPT. We instruct GPT to parse
-    local agencies if possible, but we also do a final check to override
-    obvious misclassifications.
+    local agencies specifically. We also do a final check to refine practice group assignments.
     """
 
     def __init__(self, openai_client, practice_groups_data):
@@ -65,9 +63,10 @@ class ImpactAnalyzer:
                             "You are a legal expert analyzing legislative changes affecting "
                             "California local public agencies (cities, counties, special districts, "
                             "school districts, law enforcement agencies, etc.) OR state agencies. "
-                            "Focus on practical implications, compliance requirements, "
-                            "deadlines/effective dates, and agency types impacted. "
-                            "Identify relevant practice groups from the provided list, if any. "
+                            "Focus on practical implications, compliance requirements, deadlines/effective dates, "
+                            "and *specifically name which local agencies are impacted.* Identify relevant "
+                            "practice groups from the provided list, if any. Indicate only one group as 'primary' "
+                            "if it is most applicable, and label others 'secondary' if needed. "
                             "Your entire response MUST be valid JSON, and nothing else. "
                             "If you are not sure or it doesn't apply, return an empty JSON object like {}."
                         )
@@ -92,7 +91,6 @@ class ImpactAnalyzer:
             # fallback empty
             analysis_data = {}
 
-        # Now parse the AI's data
         summary = analysis_data.get("summary", "")
         ai_impacts = analysis_data.get("agency_impacts", [])
         practice_groups_raw = analysis_data.get("practice_groups", [])
@@ -100,7 +98,6 @@ class ImpactAnalyzer:
         deadlines = analysis_data.get("deadlines", [])
         requirements = analysis_data.get("requirements", [])
 
-        # Convert agency impacts
         impacts = []
         for impact in ai_impacts:
             ag_type = impact.get("agency_type", "").strip()
@@ -114,28 +111,22 @@ class ImpactAnalyzer:
                 requirements=impact.get("requirements", [])
             ))
 
-        # Validate practice groups
-        validated_groups = self._validate_practice_groups(practice_groups_raw)
+        # refine practice groups
+        refined_groups = self._refine_practice_groups(practice_groups_raw)
 
-        # Basic classification for local or state agency
-        # We'll look at the agency_type fields from the AI and see if it's local or state
         impacts_local = False
         impacts_state = False
-
         for imp in impacts:
-            # Simple check for local-agency terms
             l = imp.agency_type.lower()
             if any(x in l for x in ["city", "county", "counties", "local", "school district", "special district", "law enforcement"]):
                 impacts_local = True
-            # Simple check for state-agency terms
             if any(x in l for x in ["state", "department", "caltrans", "dmv", "high-speed rail", "transportation agency"]):
                 impacts_state = True
 
-        # If GPT didn't mention any local or state, fallback to False/False
         analysis = ChangeAnalysis(
             summary=summary,
             impacts=impacts,
-            practice_groups=validated_groups,
+            practice_groups=refined_groups,
             action_items=action_items,
             deadlines=deadlines,
             requirements=requirements,
@@ -143,6 +134,44 @@ class ImpactAnalyzer:
             impacts_state=impacts_state
         )
         return analysis
+
+    def _refine_practice_groups(self, raw_groups: List[Dict[str,str]]) -> List[Dict[str,str]]:
+        """
+        Ensures exactly one group is 'primary' if any are indicated. 
+        If multiple claim 'primary', only the first remains primary; 
+        the rest are set to 'secondary'.
+        If none is primary, the first group is assigned primary.
+        """
+        seen_primary = False
+        refined = []
+        known_names = self.practice_groups.group_names
+
+        for g in raw_groups:
+            name = g.get("name", "").strip()
+            # Only keep if it's in known practice group names
+            if name not in known_names:
+                continue
+
+            relevance = g.get("relevance", "").lower()
+            justification = g.get("justification", "")
+
+            if relevance == "primary":
+                if seen_primary:
+                    relevance = "secondary"
+                else:
+                    seen_primary = True
+
+            refined.append({
+                "name": name,
+                "relevance": relevance,
+                "justification": justification
+            })
+
+        # If no primary found but we do have at least one group, make the first primary
+        if refined and not any(pg["relevance"] == "primary" for pg in refined):
+            refined[0]["relevance"] = "primary"
+
+        return refined
 
     def _extract_json(self, text: str) -> str:
         if not text:
@@ -185,18 +214,17 @@ class ImpactAnalyzer:
         return f"""
 Analyze the following trailer bill digest change. Identify:
 - A concise summary
-- Which agencies (local or state) are impacted
+- Which agencies (local agencies - specify which types, and/or state agencies) are impacted
 - Deadlines/effective dates
 - Key action items
 - Additional requirements
-- Relevant practice groups from the list
-
+- Relevant practice groups from the list (indicate one primary if it clearly applies)
 Return JSON with fields exactly:
 {{
   "summary": "...",
   "agency_impacts": [
     {{
-      "agency_type": "e.g. counties, cities, state agencies, etc.",
+      "agency_type": "e.g. counties, cities, special districts, state, etc.",
       "impact_type": "compliance, operational, etc.",
       "description": "Short explanation",
       "deadline": "YYYY-MM-DD or null",
@@ -247,15 +275,6 @@ Practice Group Definitions (brief):
             return datetime.strptime(date_str.strip(), "%Y-%m-%d")
         except (ValueError, TypeError):
             return None
-
-    def _validate_practice_groups(self, groups: List[Dict[str, str]]) -> List[Dict[str, str]]:
-        valid = []
-        known_names = self.practice_groups.group_names
-        for g in groups:
-            gname = g.get("name", "")
-            if gname in known_names:
-                valid.append(g)
-        return valid
 
     def _update_change_with_analysis(self, change: Dict[str, Any], analysis: ChangeAnalysis) -> None:
         if analysis.impacts:
@@ -313,5 +332,5 @@ Practice Group Definitions (brief):
         return out
 
     def _get_code_modifications(self, change: Dict[str, Any], parsed_bill: TrailerBill) -> List[Dict[str, Any]]:
-        # We can cross-check code references from the digest or just return an empty list for now
+        # Currently returns empty or a placeholder. You could expand if needed.
         return []

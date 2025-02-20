@@ -24,39 +24,39 @@ class PracticeGroups:
     """
     def __init__(self):
         self._groups: Dict[str, PracticeGroup] = {
-            "special_education": PracticeGroup(
+            "Special Education": PracticeGroup(
                 name="Special Education",
                 description="Focuses on IDEA, Section 504, SELPA governance, IEP compliance, etc."
             ),
-            "student_services": PracticeGroup(
+            "Student Services": PracticeGroup(
                 name="Student Services",
                 description="Addresses laws governing student rights, discipline, Title IX, etc."
             ),
-            "charter_schools": PracticeGroup(
+            "Charter Schools": PracticeGroup(
                 name="Charter Schools",
                 description="Focuses on charter school authorization and oversight."
             ),
-            "business_facilities": PracticeGroup(
+            "Business and Facilities": PracticeGroup(
                 name="Business and Facilities",
                 description="Handles public agency business operations, procurement, construction, CEQA, etc."
             ),
-            "board_governance": PracticeGroup(
+            "Board Governance": PracticeGroup(
                 name="Board Governance",
                 description="Advises on the Brown Act, Public Records Act, elections, conflicts of interest."
             ),
-            "labor_employment": PracticeGroup(
+            "Labor and Employment": PracticeGroup(
                 name="Labor and Employment",
                 description="Collective bargaining, employee discipline, Title VII compliance, etc."
             ),
-            "litigation": PracticeGroup(
+            "Litigation": PracticeGroup(
                 name="Litigation",
                 description="Handles civil litigation in state/federal courts, construction disputes, etc."
             ),
-            "public_finance": PracticeGroup(
+            "Public Finance": PracticeGroup(
                 name="Public Finance",
                 description="Public agency financing, bonds, tax/revenue anticipation notes, developer fees."
             ),
-            "technology_privacy": PracticeGroup(
+            "Technology and Privacy": PracticeGroup(
                 name="Technology and Privacy",
                 description="Data privacy, cybersecurity compliance, technology procurement, e-records."
             )
@@ -77,7 +77,6 @@ class PracticeGroups:
         )
 
     def validate_groups(self, groups):
-        # Not used at the moment in detail
         return [g for g in groups if g in self.group_names]
 
     def get_group_by_name(self, name: str) -> Optional[PracticeGroup]:

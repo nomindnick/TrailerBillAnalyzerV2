@@ -54,6 +54,7 @@ def after_request(response):
 
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
+
 class AnalysisProgressHandler:
     def __init__(self, socket):
         self.socket = socket
@@ -75,6 +76,7 @@ class AnalysisProgressHandler:
             'current_substep': self.current_substep,
             'total_substeps': self.total_substeps
         })
+
 
 def trailer_bill_to_dict(bill: TrailerBill) -> dict:
     """
@@ -99,12 +101,14 @@ def trailer_bill_to_dict(bill: TrailerBill) -> dict:
         "bill_sections": sections_dict
     }
 
+
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve(path):
     if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
         return send_from_directory(app.static_folder, path)
     return send_from_directory(app.static_folder, 'index.html')
+
 
 @app.route('/api/analyze', methods=['POST'])
 def analyze_bill():
@@ -137,18 +141,22 @@ def analyze_bill():
         logger.error(f"Error in analyze_bill: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+
 @app.route('/api/reports/<filename>')
 def serve_report(filename):
     reports_dir = os.path.join(app.root_path, 'reports')
     return send_from_directory(reports_dir, filename)
 
+
 @app.errorhandler(404)
 def not_found_error(error):
     return jsonify({'error': 'Not found'}), 404
 
+
 @app.errorhandler(500)
 def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
+
 
 async def process_bill_analysis(bill_number):
     progress = AnalysisProgressHandler(socketio)
@@ -217,6 +225,7 @@ async def process_bill_analysis(bill_number):
             'billNumber': bill_number
         })
 
+
 @app.route('/api/reports/<filename>.pdf')
 def serve_pdf_report(filename):
     try:
@@ -248,6 +257,7 @@ def serve_pdf_report(filename):
         logger.error(f"Error in PDF endpoint: {str(e)}")
         logger.exception("Full traceback:")
         return jsonify({'error': 'Failed to generate PDF'}), 500
+
 
 if __name__ == '__main__':
     os.makedirs('reports', exist_ok=True)

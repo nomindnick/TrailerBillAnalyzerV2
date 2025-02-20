@@ -246,6 +246,7 @@ class SectionMatcher:
         """
         Keep only the highest confidence match if there's a duplicate (digest_id, section_id).
         """
+        from collections import defaultdict
         validated = []
         combined = defaultdict(list)
         for m in matches:
@@ -259,6 +260,7 @@ class SectionMatcher:
         return validated
 
     def _update_skeleton_with_matches(self, skeleton: Dict[str, Any], matches: List[MatchResult]) -> Dict[str, Any]:
+        from collections import defaultdict
         digest_to_sections = defaultdict(list)
         for m in matches:
             digest_to_sections[m.digest_id].append({
@@ -310,6 +312,7 @@ class SectionMatcher:
         return result
 
     def _split_sections(self, sections_str: str) -> List[str]:
+        import re
         s = re.sub(r'\s+and\s+', ',', sections_str, flags=re.IGNORECASE)
         parts = [x.strip() for x in s.split(',')]
         return [p for p in parts if p]
