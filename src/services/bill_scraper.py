@@ -77,6 +77,10 @@ class BillScraper:
 
                         if not html_content:
                             raise ValueError("Empty response received")
+                        
+                        result = self._parse_bill_page(html_content)
+                        if not result or not result.get('full_text'):
+                            raise ValueError("Failed to extract bill text from HTML")
 
                         self.logger.info(f"Response content length: {len(html_content)}")
                         self.logger.info(f"Contains 'Bill Text' tag: {'Bill Text' in html_content}")
