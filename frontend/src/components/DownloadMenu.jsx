@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
 import { cn } from '@/lib/utils';
-import { Download, FileText, FilePdf, Check, Loader2 } from 'lucide-react';
+import { Download, FileText, FileIcon, Check, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTheme } from '../lib/ThemeProvider';
 
@@ -132,7 +132,7 @@ const DownloadMenu = ({ reportUrl }) => {
             </>
           ) : (
             <>
-              <FilePdf className="mr-2 h-4 w-4" />
+              <FileIcon className="mr-2 h-4 w-4" />
               <span>Download PDF</span>
             </>
           )}
