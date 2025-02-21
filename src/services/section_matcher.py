@@ -1,8 +1,9 @@
-from typing import Dict, List, Any, Optional, Set, Tuple, Union
+from typing import Dict, List, Any, Set
 import re
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from collections import defaultdict
+import json
 
 @dataclass
 class MatchResult:
@@ -16,7 +17,7 @@ class MatchResult:
 class SectionMatcher:
     """Enhanced matcher using multiple strategies to link digest items to bill sections"""
 
-    def __init__(self, openai_client, model="gpt-4"):
+    def __init__(self, openai_client, model="gpt-4o-2024-08-06"):
         self.logger = logging.getLogger(__name__)
         self.client = openai_client
         self.model = model
@@ -155,10 +156,18 @@ class SectionMatcher:
             bill_text
         )
 
+        # Use `create(...)` as an async call
         response = await self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": "You are analyzing bill sections to determine which sections implement specific digest items. Return a JSON object with matches and confidence scores."},
+                {
+                    "role": "system", 
+                    "content": (
+                        "You are analyzing bill sections to determine which sections "
+                        "implement specific digest items. Return a JSON object "
+                        "with matches and confidence scores."
+                    )
+                },
                 {"role": "user", "content": context_prompt}
             ],
             temperature=0,
@@ -230,7 +239,6 @@ class SectionMatcher:
     def _extract_modified_sections(self, text: str) -> List[Dict[str, str]]:
         """Extract information about modified code sections"""
         modified_sections = []
-        # Basic pattern to identify code sections being modified
         pattern = r'Section\s+(\d+(?:\.\d+)?)\s+of\s+the\s+([A-Za-z\s]+Code)'
 
         for match in re.finditer(pattern, text):
@@ -266,7 +274,10 @@ class SectionMatcher:
                 common_refs = digest_refs.intersection(section_refs)
 
                 if common_refs:
-                    confidence = min(0.9, 0.5 + (len(common_refs) / max(len(digest_refs), 1) * 0.4))
+                    confidence = min(
+                        0.9, 
+                        0.5 + (len(common_refs) / max(len(digest_refs), 1) * 0.4)
+                    )
 
                     matches.append(MatchResult(
                         digest_id=digest_id,
@@ -356,9 +367,9 @@ Analyze the text and return matches in this JSON format:
     "matches": [
         {{
             "section_id": "section number",
-            "confidence": float between 0-1,
+            "confidence": float,
             "evidence": {{
-                "key_terms": [matched terms],
+                "key_terms": ["matched terms"],
                 "thematic_match": "explanation",
                 "action_alignment": "explanation"
             }}
@@ -373,7 +384,6 @@ Analyze the text and return matches in this JSON format:
         """Format sections for inclusion in the prompt"""
         formatted = []
         for section_id, info in sections.items():
-            # Limit text to first 200 chars to avoid token limits
             preview = info["text"][:200] + ("..." if len(info["text"]) > 200 else "")
             formatted.append(f"Section {section_id}:\n{preview}\n")
         return "\n".join(formatted)
@@ -381,7 +391,6 @@ Analyze the text and return matches in this JSON format:
     def _parse_ai_matches(self, content: str) -> List[Dict[str, Any]]:
         """Parse matches from AI response"""
         try:
-            import json
             data = json.loads(content)
             return data.get("matches", [])
         except Exception as e:
@@ -392,14 +401,11 @@ Analyze the text and return matches in this JSON format:
         """Extract code references with improved pattern matching"""
         references = set()
 
-        # Multiple patterns to catch different reference formats
         patterns = [
             # Standard format: "Section 123 of the Education Code"
             r'Section(?:s)?\s+(\d+(?:\.\d+)?(?:\s*,\s*\d+(?:\.\d+)?)*)\s+of\s+(?:the\s+)?([A-Za-z\s]+Code)',
-
             # Reverse format: "Education Code Section 123"
             r'([A-Za-z\s]+Code)\s+Section(?:s)?\s+(\d+(?:\.\d+)?(?:\s*,\s*\d+(?:\.\d+)?)*)',
-
             # Range format: "Sections 123-128 of the Education Code"
             r'Section(?:s)?\s+(\d+(?:\.\d+)?)\s*(?:to|through|-)\s*(\d+(?:\.\d+)?)\s+of\s+(?:the\s+)?([A-Za-z\s]+Code)'
         ]
@@ -470,21 +476,16 @@ Analyze the text and return matches in this JSON format:
         matches: List[MatchResult]
     ) -> Dict[str, Any]:
         """Update the skeleton with match information"""
-        # Group matches by digest ID
         digest_matches = defaultdict(list)
         for match in matches:
             digest_matches[match.digest_id].append(match)
 
-        # Update each change in the skeleton
         for change in skeleton["changes"]:
             change_matches = digest_matches.get(change["id"], [])
-            change["bill_sections"] = [match.section_id for match in change_matches]
+            change["bill_sections"] = [m.section_id for m in change_matches]
 
             if change_matches:
-                # Add confidence information
-                change["matching_confidence"] = max(match.confidence for match in change_matches)
-
-                # Add evidence for highest confidence match
+                change["matching_confidence"] = max(m.confidence for m in change_matches)
                 best_match = max(change_matches, key=lambda m: m.confidence)
                 change["matching_evidence"] = {
                     "type": best_match.match_type,

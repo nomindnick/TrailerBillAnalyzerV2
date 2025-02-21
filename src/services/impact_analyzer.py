@@ -1,10 +1,9 @@
-from typing import Dict, List, Any, Optional, Set, Union
+from typing import Dict, List, Any, Optional
 import logging
 import json
 from datetime import datetime
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from collections import defaultdict
-import re
 
 @dataclass
 class AgencyImpact:
@@ -40,13 +39,6 @@ class ImpactAnalyzer:
     ) -> Dict[str, Any]:
         """
         Analyze changes with enhanced impact detection and progress reporting
-
-        Args:
-            skeleton: The analysis skeleton structure
-            progress_handler: Optional progress handler for reporting status
-
-        Returns:
-            Updated skeleton with analysis results
         """
         try:
             total_changes = len(skeleton["changes"])
@@ -55,45 +47,31 @@ class ImpactAnalyzer:
                 progress_handler.update_progress(
                     4, 
                     "Starting impact analysis for local agencies",
-                    total_changes // 3,  # Starting from approximately 1/3 through step 4
+                    total_changes // 3, 
                     total_changes
                 )
 
-            # Process each change with detailed progress updates
             for i, change in enumerate(skeleton["changes"]):
-                # Update progress
                 if progress_handler:
                     progress_handler.update_substep(
                         min(total_changes // 3 + i, total_changes),
                         f"Analyzing impacts for change {i+1} of {total_changes}"
                     )
 
-                # Get linked sections and code modifications
                 sections = self._get_linked_sections(change, skeleton)
                 code_mods = self._get_code_modifications(change, skeleton)
 
-                # Generate comprehensive analysis
-                analysis = await self._analyze_change(
-                    change,
-                    sections,
-                    code_mods,
-                    skeleton
-                )
-
-                # Update change with analysis results
+                analysis = await self._analyze_change(change, sections, code_mods, skeleton)
                 self._update_change_with_analysis(change, analysis)
 
-                # Report progress after each change
                 if progress_handler and i < total_changes - 1:
                     progress_handler.update_substep(
                         min(total_changes // 3 + i + 1, total_changes),
                         f"Completed analysis for change {i+1}"
                     )
 
-            # Update metadata
             self._update_skeleton_metadata(skeleton)
 
-            # Final progress update
             if progress_handler:
                 progress_handler.update_substep(
                     total_changes,
@@ -114,17 +92,10 @@ class ImpactAnalyzer:
         skeleton: Dict[str, Any]
     ) -> ChangeAnalysis:
         """Generate comprehensive analysis of a change"""
-        # Build detailed prompt for AI analysis
-        prompt = self._build_analysis_prompt(
-            change,
-            sections,
-            code_mods,
-            skeleton
-        )
+        prompt = self._build_analysis_prompt(change, sections, code_mods, skeleton)
 
-        # Get AI analysis
         response = await self.client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o-2024-08-06",
             messages=[
                 {
                     "role": "system",
@@ -138,15 +109,35 @@ class ImpactAnalyzer:
             response_format={"type": "json_object"}
         )
 
-        # Parse and structure the analysis
         analysis_data = json.loads(response.choices[0].message.content)
+
+        # Convert "deadline" from str to datetime (if it's valid/exists)
+        impacts_list = []
+        for impact_dict in analysis_data["agency_impacts"]:
+            raw_deadline = impact_dict.get("deadline")
+            parsed_deadline = None
+            if raw_deadline and isinstance(raw_deadline, str):
+                try:
+                    # Expected format is "YYYY-MM-DD"
+                    parsed_deadline = datetime.strptime(raw_deadline, "%Y-%m-%d")
+                except ValueError:
+                    # If we can't parse, we leave it as None or store as string if you prefer
+                    self.logger.warning(f"Unable to parse deadline '{raw_deadline}' as YYYY-MM-DD.")
+                    parsed_deadline = None
+
+            impacts_list.append(
+                AgencyImpact(
+                    agency_type=impact_dict["agency_type"],
+                    impact_type=impact_dict["impact_type"],
+                    description=impact_dict["description"],
+                    deadline=parsed_deadline,
+                    requirements=impact_dict.get("requirements", [])
+                )
+            )
 
         return ChangeAnalysis(
             summary=analysis_data["summary"],
-            impacts=[
-                AgencyImpact(**impact)
-                for impact in analysis_data["agency_impacts"]
-            ],
+            impacts=impacts_list,
             practice_groups=self._validate_practice_groups(
                 analysis_data["practice_groups"]
             ),
@@ -155,14 +146,7 @@ class ImpactAnalyzer:
             requirements=analysis_data["requirements"]
         )
 
-    def _build_analysis_prompt(
-        self,
-        change: Dict[str, Any],
-        sections: List[Dict[str, Any]],
-        code_mods: List[Dict[str, Any]],
-        skeleton: Dict[str, Any]
-    ) -> str:
-        """Build comprehensive prompt for change analysis"""
+    def _build_analysis_prompt(self, change, sections, code_mods, skeleton) -> str:
         return f"""Analyze this legislative change and its impact on local public agencies:
 
 Digest Text:
@@ -220,7 +204,6 @@ Provide analysis in this JSON format:
 }}"""
 
     def _format_sections(self, sections: List[Dict[str, Any]]) -> str:
-        """Format bill sections for prompt"""
         formatted = []
         for section in sections:
             text = f"Section {section['number']}:\n"
@@ -233,7 +216,6 @@ Provide analysis in this JSON format:
         return "\n".join(formatted)
 
     def _format_code_mods(self, mods: List[Dict[str, Any]]) -> str:
-        """Format code modifications for prompt"""
         formatted = []
         for mod in mods:
             text = f"{mod['code_name']} Section {mod['section']}:\n"
@@ -243,18 +225,13 @@ Provide analysis in this JSON format:
         return "\n".join(formatted)
 
     def _format_practice_groups(self) -> str:
-        """Format practice group information for prompt"""
         formatted = []
         for group in self.practice_groups.groups.values():
             text = f"{group.name}:\n{group.description}\n"
             formatted.append(text)
         return "\n".join(formatted)
 
-    def _validate_practice_groups(
-        self,
-        groups: List[Dict[str, str]]
-    ) -> List[Dict[str, str]]:
-        """Validate and normalize practice group assignments"""
+    def _validate_practice_groups(self, groups: List[Dict[str, str]]) -> List[Dict[str, str]]:
         validated = []
         valid_group_names = {group.name for group in self.practice_groups.groups.values()}
 
@@ -267,12 +244,7 @@ Provide analysis in this JSON format:
                     })
         return validated
 
-    def _update_change_with_analysis(
-        self,
-        change: Dict[str, Any],
-        analysis: ChangeAnalysis
-    ) -> None:
-        """Update change dictionary with analysis results"""
+    def _update_change_with_analysis(self, change: Dict[str, Any], analysis: ChangeAnalysis) -> None:
         change.update({
             "substantive_change": analysis.summary,
             "local_agency_impact": self._format_agency_impacts(analysis.impacts),
@@ -284,7 +256,6 @@ Provide analysis in this JSON format:
         })
 
     def _format_agency_impacts(self, impacts: List[AgencyImpact]) -> str:
-        """Format agency impacts into readable text"""
         if not impacts:
             return "No direct impact on local agencies."
 
@@ -292,13 +263,13 @@ Provide analysis in this JSON format:
         for impact in impacts:
             text = f"{impact.agency_type}: {impact.description}"
             if impact.deadline:
+                # Here, impact.deadline is a datetime or None
                 text += f" (Deadline: {impact.deadline.strftime('%B %d, %Y')})"
             formatted.append(text)
 
         return "\n".join(formatted)
 
     def _update_skeleton_metadata(self, skeleton: Dict[str, Any]) -> None:
-        """Update skeleton metadata with impact analysis results"""
         impacting_changes = [
             c for c in skeleton["changes"]
             if c.get("impacts_local_agencies")
@@ -316,35 +287,20 @@ Provide analysis in this JSON format:
             "practice_groups_affected": sorted(primary_groups)
         })
 
-    def _get_linked_sections(
-        self,
-        change: Dict[str, Any],
-        skeleton: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
-        """Get bill sections linked to this change"""
+    def _get_linked_sections(self, change: Dict[str, Any], skeleton: Dict[str, Any]) -> List[Dict[str, Any]]:
         sections = []
         for section_num in change.get("bill_sections", []):
-            # Find this section in the bill_sections of skeleton
             for section in skeleton.get("bill_sections", []):
                 if section.get("number") == section_num:
                     sections.append(section)
                     break
         return sections
 
-    def _get_code_modifications(
-        self,
-        change: Dict[str, Any],
-        skeleton: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
-        """Get code modifications related to this change"""
+    def _get_code_modifications(self, change: Dict[str, Any], skeleton: Dict[str, Any]) -> List[Dict[str, Any]]:
         mods = []
-
-        # Get all code references from the bill sections linked to this change
         for section_num in change.get("bill_sections", []):
             for section in skeleton.get("bill_sections", []):
                 if section.get("number") == section_num:
-                    # Add all code modifications from this section
                     for mod in section.get("code_modifications", []):
                         mods.append(mod)
-
         return mods

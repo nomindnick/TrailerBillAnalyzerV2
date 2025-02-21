@@ -1,16 +1,17 @@
 import eventlet
-
 eventlet.monkey_patch()
 
 from flask import Flask, send_from_directory, request, jsonify, make_response
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO
 from openai import AsyncOpenAI
 from flask_cors import CORS
 import os
 from dotenv import load_dotenv
 import logging
+import sys
 import asyncio
 from weasyprint import HTML, CSS
+
 from src.services.bill_scraper import BillScraper
 from src.services.base_parser import BaseParser
 from src.services.json_builder import JsonBuilder
@@ -19,7 +20,6 @@ from src.services.impact_analyzer import ImpactAnalyzer
 from src.services.report_generator import ReportGenerator
 from src.models.practice_groups import PracticeGroups
 from src.models.bill_components import TrailerBill
-import sys
 
 # Load environment variables
 load_dotenv()
@@ -36,7 +36,6 @@ logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 logger = logging.getLogger(__name__)
 logger.info("Environment variables loaded")
 
-# Initialize Flask app and extensions
 app = Flask(__name__, static_folder='frontend/dist', static_url_path='')
 CORS(app, resources={
     r"/api/*": {
@@ -68,12 +67,6 @@ class AnalysisProgressHandler:
     def update_progress(self, step, message, substep=None, total_substeps=None):
         """
         Update progress information and emit to client
-
-        Args:
-            step: Current step number (1-5)
-            message: Descriptive message about current operation
-            substep: Current substep number (if applicable)
-            total_substeps: Total number of substeps (if applicable)
         """
         self.current_step = step
         self.last_message = message
@@ -93,13 +86,8 @@ class AnalysisProgressHandler:
     def update_substep(self, substep, message=None):
         """
         Update just the substep progress without changing the main step
-
-        Args:
-            substep: Current substep number
-            message: Optional message override
         """
         self.current_substep = substep
-
         update_message = message if message else self.last_message
 
         logger.info(f"Substep progress: {substep}/{self.total_substeps} - {update_message}")
@@ -205,7 +193,10 @@ async def process_bill_analysis(bill_number):
         progress.update_progress(2, "Parsing bill components and structure")
         parser = BaseParser()
         parsed_bill = parser.parse_bill(bill_text)
-        progress.update_progress(2, f"Identified {len(parsed_bill.digest_sections)} digest sections and {len(parsed_bill.bill_sections)} bill sections")
+        progress.update_progress(
+            2, 
+            f"Identified {len(parsed_bill.digest_sections)} digest sections and {len(parsed_bill.bill_sections)} bill sections"
+        )
 
         # Step 3: Build analysis structure
         progress.update_progress(3, "Building analysis structure")
@@ -215,7 +206,8 @@ async def process_bill_analysis(bill_number):
 
         # Step 4: AI Analysis with substeps
         progress.update_progress(4, "Starting AI analysis", 0, len(parsed_bill.digest_sections))
-        client = OpenAI()
+
+        # Use the global AsyncOpenAI client
         matcher = SectionMatcher(openai_client=client)
         practice_groups = PracticeGroups()
         analyzer = ImpactAnalyzer(openai_client=client, practice_groups_data=practice_groups)
@@ -224,7 +216,7 @@ async def process_bill_analysis(bill_number):
         progress.update_progress(4, "Matching digest items to bill sections", 1, len(parsed_bill.digest_sections))
         skeleton = await matcher.match_sections(skeleton, bill_text, progress_handler=progress)
 
-        # Then analyze impacts (with detailed progress handling in the analyzer)
+        # Then analyze impacts
         progress.update_progress(4, "Analyzing impacts on local agencies", 2, len(parsed_bill.digest_sections))
         analyzed_skeleton = await analyzer.analyze_changes(skeleton, progress_handler=progress)
         progress.update_progress(4, "Impact analysis complete", len(parsed_bill.digest_sections), len(parsed_bill.digest_sections))
@@ -240,7 +232,7 @@ async def process_bill_analysis(bill_number):
                 'chapter_number': parsed_bill.chapter_number,
                 'date_approved': parsed_bill.date_approved
             },
-            bill_text  # Pass the bill text here
+            bill_text
         )
 
         # Save report
