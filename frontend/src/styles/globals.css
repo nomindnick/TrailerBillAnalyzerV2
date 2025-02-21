@@ -7,17 +7,71 @@
     /* Light mode vars: (white background, dark text) */
     --background: 0 0% 100%;       /* hsl(0,0%,100%) => white */
     --foreground: 222.2 84% 4.9%;  /* a dark hue for text */
+
+    --primary: 221.2 83.2% 53.3%;  /* Color for primary elements */
+    --primary-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;   /* Border color */
+
+    --popover: 0 0% 100%;          /* Popover/dropdown background */
+    --popover-foreground: 222.2 84% 4.9%;
   }
 
   /* When .dark is on <html>, use these instead: */
   .dark {
     --background: 222.2 84% 4.9%;   /* a near-black/dark navy color */
     --foreground: 210 40% 98%;      /* very light text color */
+
+    --primary: 217.2 91.2% 59.8%;   /* Brighter primary for dark mode */
+    --primary-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;    /* Darker border for dark mode */
+
+    --popover: 222.2 84% 4.9%;      /* Dark popover background */
+    --popover-foreground: 210 40% 98%;
   }
 
   body {
     @apply bg-background text-foreground; /* Pulls from --background & --foreground */
     margin: 0; /* Ensure no default margin */
     padding: 0;
+  }
+}
+
+@layer utilities {
+  /* Animation utilities */
+  .animate-fade-in {
+    animation: fade-in 0.3s ease-in-out;
+  }
+
+  .animate-slide-up {
+    animation: slide-up 0.4s ease-out;
+  }
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slide-up {
+    from { 
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to { 
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* For text gradients */
+  .bg-clip-text {
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+
+  /* Improved focus styles */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900;
   }
 }

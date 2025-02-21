@@ -56,24 +56,57 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 
 class AnalysisProgressHandler:
+    """Enhanced progress handler with more detailed progress reporting"""
     def __init__(self, socket):
         self.socket = socket
         self.current_step = 0
         self.total_steps = 5
         self.current_substep = 0
         self.total_substeps = 0
+        self.last_message = ""
 
     def update_progress(self, step, message, substep=None, total_substeps=None):
+        """
+        Update progress information and emit to client
+
+        Args:
+            step: Current step number (1-5)
+            message: Descriptive message about current operation
+            substep: Current substep number (if applicable)
+            total_substeps: Total number of substeps (if applicable)
+        """
         self.current_step = step
+        self.last_message = message
+
         if substep is not None:
             self.current_substep = substep
-            self.total_substeps = total_substeps if total_substeps else 0
+            self.total_substeps = total_substeps
 
         logger.info(f"Progress: Step {step} - {message}")
         self.socket.emit('analysis_progress', {
             'step': step,
             'message': message,
             'current_substep': self.current_substep,
+            'total_substeps': self.total_substeps
+        })
+
+    def update_substep(self, substep, message=None):
+        """
+        Update just the substep progress without changing the main step
+
+        Args:
+            substep: Current substep number
+            message: Optional message override
+        """
+        self.current_substep = substep
+
+        update_message = message if message else self.last_message
+
+        logger.info(f"Substep progress: {substep}/{self.total_substeps} - {update_message}")
+        self.socket.emit('analysis_progress', {
+            'step': self.current_step,
+            'message': update_message,
+            'current_substep': substep,
             'total_substeps': self.total_substeps
         })
 
@@ -162,50 +195,56 @@ async def process_bill_analysis(bill_number):
     progress = AnalysisProgressHandler(socketio)
     try:
         # Step 1: Fetch bill text
-        progress.update_progress(1, "Fetching bill text")
+        progress.update_progress(1, "Fetching bill text from legislative website")
         bill_scraper = BillScraper(max_retries=3, timeout=30)
         bill_text_response = await bill_scraper.get_bill_text(bill_number, 2024)
-        bill_text = bill_text_response['full_text']
+        bill_text = bill_text_response['full_text']  # Store the full text
+        progress.update_progress(1, "Bill text successfully retrieved")
 
         # Step 2: Initial parsing
-        progress.update_progress(2, "Parsing bill components")
+        progress.update_progress(2, "Parsing bill components and structure")
         parser = BaseParser()
         parsed_bill = parser.parse_bill(bill_text)
+        progress.update_progress(2, f"Identified {len(parsed_bill.digest_sections)} digest sections and {len(parsed_bill.bill_sections)} bill sections")
 
         # Step 3: Build analysis structure
         progress.update_progress(3, "Building analysis structure")
         json_builder = JsonBuilder()
         skeleton = json_builder.create_skeleton(parsed_bill.digest_sections)
+        progress.update_progress(3, f"Analysis framework created with {len(skeleton['changes'])} change items")
 
-        # Step 4: AI Analysis
+        # Step 4: AI Analysis with substeps
         progress.update_progress(4, "Starting AI analysis", 0, len(parsed_bill.digest_sections))
+        client = OpenAI()
         matcher = SectionMatcher(openai_client=client)
         practice_groups = PracticeGroups()
         analyzer = ImpactAnalyzer(openai_client=client, practice_groups_data=practice_groups)
 
-        # Match sections
-        skeleton = await matcher.match_sections(skeleton, bill_text)
+        # First match sections
+        progress.update_progress(4, "Matching digest items to bill sections", 1, len(parsed_bill.digest_sections))
+        skeleton = await matcher.match_sections(skeleton, bill_text, progress_handler=progress)
 
-        # Analyze changes
-        analyzed_skeleton = await analyzer.analyze_changes(parsed_bill, skeleton)
+        # Then analyze impacts (with detailed progress handling in the analyzer)
+        progress.update_progress(4, "Analyzing impacts on local agencies", 2, len(parsed_bill.digest_sections))
+        analyzed_skeleton = await analyzer.analyze_changes(skeleton, progress_handler=progress)
+        progress.update_progress(4, "Impact analysis complete", len(parsed_bill.digest_sections), len(parsed_bill.digest_sections))
 
         # Step 5: Generate report
         progress.update_progress(5, "Generating final report")
         report_gen = ReportGenerator()
-
-        parsed_bill_dict = trailer_bill_to_dict(parsed_bill)
-
         report = report_gen.generate_report(
-            analyzed_skeleton,
+            analyzed_skeleton, 
             {
                 'bill_number': bill_number,
                 'title': parsed_bill.title,
                 'chapter_number': parsed_bill.chapter_number,
-                'date_approved': parsed_bill.date_approved.isoformat() if parsed_bill.date_approved else None
+                'date_approved': parsed_bill.date_approved
             },
-            parsed_bill_dict
+            bill_text  # Pass the bill text here
         )
 
+        # Save report
+        progress.update_progress(5, "Finalizing and saving report")
         report_filename = f"bill_analysis_{bill_number}.html"
         os.makedirs('reports', exist_ok=True)
         report_path = os.path.join('reports', report_filename)
@@ -220,6 +259,7 @@ async def process_bill_analysis(bill_number):
 
     except Exception as e:
         logger.error(f"Error in process_bill_analysis: {str(e)}")
+        logger.exception("Full traceback:")
         socketio.emit('analysis_error', {
             'error': str(e),
             'billNumber': bill_number

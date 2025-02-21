@@ -2,19 +2,22 @@
 
 import React, { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
-import { Sun, Moon, AlertTriangle } from 'lucide-react';
+import { Sun, Moon, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import DownloadMenu from './dropdown-menu.jsx'; 
+import DownloadMenu from './DownloadMenu';
 import { useTheme } from '../lib/ThemeProvider';
+import AnalysisProgress from './AnalysisProgress';
 
 const BillAnalyzer = () => {
   const [billNumber, setBillNumber] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
+  const [stepMessage, setStepMessage] = useState('');
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [error, setError] = useState(null);
   const [reportUrl, setReportUrl] = useState(null);
   const [socket, setSocket] = useState(null);
+  const [notification, setNotification] = useState(null);
 
   // Use the global theme from ThemeProvider
   const { theme, toggleTheme } = useTheme();
@@ -54,6 +57,8 @@ const BillAnalyzer = () => {
     // Set up socket event listeners
     newSocket.on('analysis_progress', (data) => {
       setCurrentStep(data.step);
+      setStepMessage(data.message || '');
+
       if (data.total_substeps > 0) {
         setProgress({
           current: data.current_substep,
@@ -65,6 +70,13 @@ const BillAnalyzer = () => {
     newSocket.on('analysis_complete', (data) => {
       setIsProcessing(false);
       setReportUrl(data.report_url);
+      setNotification({
+        type: 'success',
+        message: 'Analysis completed successfully!'
+      });
+
+      // Clear notification after 5 seconds
+      setTimeout(() => setNotification(null), 5000);
     });
 
     newSocket.on('analysis_error', (data) => {
@@ -84,6 +96,7 @@ const BillAnalyzer = () => {
     setCurrentStep(1);
     setError(null);
     setReportUrl(null);
+    setNotification(null);
 
     try {
       console.log('Sending request to analyze bill:', billNumber);
@@ -113,22 +126,36 @@ const BillAnalyzer = () => {
   };
 
   return (
-    // We do NOT forcibly add "dark" class here. The <html> element is toggled in ThemeProvider.
     <div className="min-h-screen p-8 bg-background text-foreground transition-colors duration-200">
       <div className="max-w-4xl mx-auto">
-
         {/* Header with theme toggle button */}
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold">Trailer Bill Analyzer</h1>
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-blue-400 bg-clip-text text-transparent">
+              Trailer Bill Analyzer
+            </h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Analyze California trailer bills for local agency impacts
+            </p>
+          </div>
           <button
             onClick={toggleTheme}
-            className={`p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 ${
+            className={`p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors ${
               theme === 'dark' ? 'text-gray-200' : 'text-gray-700'
             }`}
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           >
             {theme === 'dark' ? <Sun size={24} /> : <Moon size={24} />}
           </button>
         </div>
+
+        {/* Success notification */}
+        {notification && notification.type === 'success' && (
+          <div className="mb-6 p-4 bg-green-100 dark:bg-green-900 border border-green-200 dark:border-green-800 rounded-lg flex items-center text-green-800 dark:text-green-200 animate-fade-in">
+            <CheckCircle2 className="h-5 w-5 mr-2" />
+            <span>{notification.message}</span>
+          </div>
+        )}
 
         {/* Error alert */}
         {error && (
@@ -139,85 +166,45 @@ const BillAnalyzer = () => {
         )}
 
         {/* Input form */}
-        <form onSubmit={handleSubmit} className="mb-8">
-          <div className="flex gap-4">
-            <input
-              type="text"
-              value={billNumber}
-              onChange={(e) => setBillNumber(e.target.value)}
-              placeholder="Enter Bill Number (e.g., AB173)"
-              className="flex-1 p-3 border rounded-lg text-gray-900"
-              disabled={isProcessing}
-            />
-            <button
-              type="submit"
-              disabled={isProcessing || !billNumber}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-            >
-              Analyze Bill
-            </button>
-          </div>
-        </form>
-
-        {/* Progress steps */}
-        {isProcessing && (
-          <div className="space-y-6">
-            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg">
-              <ol className="relative border-l border-gray-300 dark:border-gray-700 ml-3">
-                {steps.map((step) => {
-                  const isActive = currentStep === step.id;
-                  const isComplete = currentStep > step.id;
-                  return (
-                    <li key={step.id} className="mb-6 ml-4">
-                      <div className="absolute w-3 h-3 rounded-full mt-1.5 -left-1.5 border border-gray-300 dark:border-gray-700">
-                        <div
-                          className={`w-full h-full rounded-full ${
-                            isComplete
-                              ? 'bg-green-500'
-                              : isActive
-                              ? 'bg-blue-500 animate-pulse'
-                              : 'bg-gray-300 dark:bg-gray-700'
-                          }`}
-                        />
-                      </div>
-                      <div
-                        className={`${
-                          isActive
-                            ? 'text-blue-600 dark:text-blue-400'
-                            : isComplete
-                            ? 'text-green-600 dark:text-green-400'
-                            : 'text-gray-500 dark:text-gray-400'
-                        }`}
-                      >
-                        <h3 className="font-semibold">{step.name}</h3>
-                        <p className="text-sm">{step.description}</p>
-                        {isActive && step.id === 4 && progress.total > 0 && (
-                          <div className="mt-2">
-                            <div className="text-sm mb-1">
-                              Analyzing section {progress.current} of {progress.total}
-                            </div>
-                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
-                              <div
-                                className="bg-blue-600 h-2.5 rounded-full transition-all duration-500"
-                                style={{
-                                  width: `${(progress.current / progress.total) * 100}%`,
-                                }}
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
+        <div className="mb-8 bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg transition-all">
+          <form onSubmit={handleSubmit}>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <input
+                type="text"
+                value={billNumber}
+                onChange={(e) => setBillNumber(e.target.value)}
+                placeholder="Enter Bill Number (e.g., AB173)"
+                className="flex-1 p-3 border rounded-lg text-gray-900 dark:text-gray-100 dark:bg-gray-700 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                disabled={isProcessing}
+              />
+              <button
+                type="submit"
+                disabled={isProcessing || !billNumber}
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 shadow-md hover:shadow-lg"
+              >
+                {isProcessing ? 'Analyzing...' : 'Analyze Bill'}
+              </button>
             </div>
-          </div>
+          </form>
+        </div>
+
+        {/* Progress display */}
+        {isProcessing && (
+          <AnalysisProgress 
+            currentStep={currentStep}
+            stepMessage={stepMessage}
+            steps={steps}
+            progress={progress}
+          />
         )}
 
-        {/* Report download dropdown when analysis completes */}
+        {/* Report download section when analysis completes */}
         {reportUrl && (
-          <div className="flex justify-center mt-6">
+          <div className="mt-6 p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg flex flex-col items-center text-center animate-fade-in">
+            <h3 className="text-xl font-semibold mb-4">Analysis Complete!</h3>
+            <p className="mb-6 text-gray-600 dark:text-gray-300">
+              Your bill analysis is ready for review and download.
+            </p>
             <DownloadMenu reportUrl={reportUrl} />
           </div>
         )}
