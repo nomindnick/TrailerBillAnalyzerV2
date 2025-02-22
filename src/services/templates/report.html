@@ -43,24 +43,42 @@
                 Substantive Change
             </div>
 
-            <!-- Show the Bill Section references -->
+            <!-- Show the Bill Sections with full text -->
             <div class="section-list">
-                <strong>Trailer Bill Sections:</strong>
-                {% if change.bill_sections %}
-                    {% for sec in change.bill_sections %}
-                        <span class="section-item">
-                            SEC. {{ sec.section_id }}
-                        </span>
+                <strong>Trailer Bill Sections Referenced:</strong>
+                {% if change.bill_section_details %}
+                    {% for sec in change.bill_section_details %}
+                        <div class="section-item">
+                            <strong>Section {{ sec.number }}</strong><br>
+                            {{ sec.text }}
+                        </div>
                     {% endfor %}
                 {% else %}
                     <span>No specific sections found.</span>
                 {% endif %}
             </div>
 
-            <p>{{ change.substantive_change }}</p>
+            <!-- AI-generated summary per instructions (1) (2) (3) -->
+            <p><strong>Summary:</strong><br>
+               {{ change.substantive_change }}
+            </p>
 
-            <h4>Agencies Impacted</h4>
-            <p>{{ change.local_agency_impact_summary }}</p>
+            <!-- Local agencies impacted: explicit heading -->
+            <h4>Local Agencies Impacted</h4>
+            {% if change.local_agencies_impacted and change.local_agencies_impacted|length > 0 %}
+                <ul>
+                {% for agency in change.local_agencies_impacted %}
+                    <li>{{ agency }}</li>
+                {% endfor %}
+                </ul>
+            {% else %}
+                <p>No local agencies identified.</p>
+            {% endif %}
+
+            <!-- Impact Description -->
+            <p><strong>Impact Description:</strong><br>
+               {{ change.local_agency_impact }}
+            </p>
 
             {% if change.key_action_items %}
             <div class="action-items">

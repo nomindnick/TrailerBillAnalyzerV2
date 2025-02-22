@@ -1,7 +1,7 @@
-from typing import List, Tuple, Optional
-import logging
 import re
+import logging
 from datetime import datetime
+from typing import List, Tuple, Optional
 from src.models.bill_components import (
     TrailerBill,
     DigestSection,
@@ -24,10 +24,10 @@ class BaseParser:
             r'(Assembly|Senate)\s+Bill\s+(?:No\.?\s+)?(\d+)\s+CHAPTER\s*(\d+)\s*'
         )
         self.digest_section_pattern = r'\((\d+)\)\s+([^(]+)(?=\(\d+\)|$)'
-        # Updated pattern to better capture "SECTION X." lines:
+
+        # We capture: group(1) = "SECTION" or "SEC.", group(2) = the numeric portion, group(3) = remainder of the text
         self.bill_section_pattern = (
-            r'(?:^|\n)(SEC(?:TION)?\.?)\s+(\d+)(?:\.)?\s+(.*?)'
-            r'(?=\nSEC(?:TION)?\.?\s+\d+|\Z)'
+            r'(?:^|\r?\n)(SEC(?:TION)?\.?)\s+(\d+)(?:\.)?\s*(.*?)(?=\r?\nSEC(?:TION)?\.?\s+\d+|\Z)'
         )
         self.date_pattern = (
             r'Approved by Governor\s+([^.]+)\.\s+Filed with Secretary of State\s+([^.]+)\.'
@@ -123,24 +123,34 @@ class BaseParser:
 
         if matches:
             for match in matches:
-                # e.g. match for "SECTION 1. ..." or "SEC. 12 ..."
-                section_label = match.group(1)  # e.g. "SEC." or "SECTION"
-                section_num = match.group(2).strip()  # e.g. "1", "2"
+                section_label_word = match.group(1)  # e.g. "SECTION" or "SEC."
+                section_num_str = match.group(2).strip()  # e.g. "1", "2"
                 section_body = match.group(3).strip()
+
+                # We'll store the original combined label: e.g. "SECTION 1." or "SEC. 2."
+                # (We add the period if we want it, but we can also detect if the text originally had it.)
+                # For simplicity, let's just always reformat as "SECTION X." if user wants. 
+                # Or better, replicate exactly what we found (minus trailing whitespace):
+                raw_label = f"{section_label_word} {section_num_str}."
 
                 code_refs, action = self._parse_section_header(section_body)
                 bs = BillSection(
-                    number=section_num,  # only numeric
+                    number=section_num_str,        # purely numeric portion
+                    original_label=raw_label,      # the literal label
                     text=section_body,
                     code_references=code_refs
                 )
+                if action:
+                    bs.section_type = action
                 sections.append(bs)
         else:
+            # Fallback if no structured matches found
             fallback_refs = self._extract_code_references(bill_portion)
             if fallback_refs:
                 for i, ref in enumerate(fallback_refs, start=1):
                     bs = BillSection(
                         number=str(i),
+                        original_label=f"SECTION {i}.",
                         text=f"Reference to {ref.code_name} section {ref.section}.",
                         code_references=[ref]
                     )
@@ -150,6 +160,7 @@ class BaseParser:
                 if leftover:
                     bs = BillSection(
                         number="1",
+                        original_label="SECTION 1.",
                         text=leftover,
                         code_references=[]
                     )
@@ -171,7 +182,6 @@ class BaseParser:
             r"(?i)([A-Za-z\s]+Code)\s+Sections?\s+([\d\.\-\,\s&and]+)",
             r"(?i)Sections?\s+(\d+(?:\.\d+)?)(?:\s*(?:to|through|-)\s*(\d+(?:\.\d+)?))?\s+of\s+(?:the\s+)?([A-Za-z\s]+Code)",
         ]
-        # Format for single section references:
         single_section_pattern = r"(?i)Section\s+(\d+(?:\.\d+)?)(?:\s+of\s+(?:the\s+)?([A-Za-z\s]+Code))?"
         single_rev_pattern = r"(?i)([A-Za-z\s]+Code)\s+Section\s+(\d+(?:\.\d+)?)"
 
@@ -201,7 +211,6 @@ class BaseParser:
                     for sec in self._split_section_list(sections_str):
                         unique_refs.add((code_name, sec))
             elif len(groups) == 3:
-                # e.g. (start, maybe_end, code_name)
                 start = groups[0]
                 maybe_end = groups[1]
                 code_name = groups[2]
@@ -218,9 +227,6 @@ class BaseParser:
                 else:
                     for sec in self._split_section_list(start):
                         unique_refs.add((code_name, sec))
-            else:
-                # handle single section patterns, etc.
-                pass
 
         code_refs = []
         for (code, sec) in unique_refs:
@@ -259,9 +265,6 @@ class BaseParser:
         return CodeAction.UNKNOWN
 
     def _split_existing_and_changes(self, text: str) -> Tuple[str, str]:
-        """
-        Attempt to separate 'Existing law' and 'This bill would' from text
-        """
         if not text or not isinstance(text, str):
             return "", ""
 

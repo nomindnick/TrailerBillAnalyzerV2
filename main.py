@@ -19,6 +19,7 @@ from src.services.section_matcher import SectionMatcher
 from src.services.impact_analyzer import ImpactAnalyzer
 from src.services.report_generator import ReportGenerator
 from src.models.practice_groups import PracticeGroups
+
 from src.models.bill_components import TrailerBill
 
 # Load environment variables
@@ -194,7 +195,7 @@ async def process_bill_analysis(bill_number):
         parser = BaseParser()
         parsed_bill = parser.parse_bill(bill_text)
         progress.update_progress(
-            2, 
+            2,
             f"Identified {len(parsed_bill.digest_sections)} digest sections and {len(parsed_bill.bill_sections)} bill sections"
         )
 
@@ -225,7 +226,7 @@ async def process_bill_analysis(bill_number):
         progress.update_progress(5, "Generating final report")
         report_gen = ReportGenerator()
         report = report_gen.generate_report(
-            analyzed_skeleton, 
+            analyzed_skeleton,
             {
                 'bill_number': bill_number,
                 'title': parsed_bill.title,

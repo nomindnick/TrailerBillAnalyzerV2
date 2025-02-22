@@ -1,7 +1,7 @@
-from typing import Dict, Any, List, Union, Optional
-import logging
-from jinja2 import Environment, FileSystemLoader
 import os
+import logging
+from typing import Dict, Any, List, Union
+from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML, CSS
 from dataclasses import dataclass
 from collections import defaultdict
@@ -23,7 +23,6 @@ class ReportGenerator:
 
         self._register_custom_filters()
 
-        # Updated CSS for improved readability
         self.css_styles = """
             @page {
                 margin: 1in;
@@ -92,11 +91,10 @@ class ReportGenerator:
 
             .section-item {
                 background-color: #f8f9fa;
-                display: inline-block;
-                margin-right: 5px;
-                padding: 4px 6px;
+                display: block;
+                margin: 5px 0;
+                padding: 6px;
                 border-radius: 3px;
-                margin-bottom: 5px;
             }
 
             .action-items {
@@ -127,17 +125,12 @@ class ReportGenerator:
         self,
         analyzed_data: Dict[str, Any],
         bill_info: Dict[str, Any],
-        parsed_bill: Dict[str, Any],
+        parsed_bill: str,
         output_format: str = "html"
     ) -> Union[str, bytes]:
-        """
-        Generates either HTML or PDF based on the analyzed data.
-        """
-
         try:
-            sections = self._organize_report_sections(analyzed_data, parsed_bill)
+            sections = self._organize_report_sections(analyzed_data)
             template_data = self._prepare_template_data(analyzed_data, bill_info, sections)
-
             if output_format == "html":
                 return self._generate_html_report(template_data)
             elif output_format == "pdf":
@@ -145,34 +138,24 @@ class ReportGenerator:
                 return self._convert_to_pdf(html_content)
             else:
                 raise ValueError(f"Unsupported output format: {output_format}")
-
         except Exception as e:
             self.logger.error(f"Error generating report: {str(e)}")
             raise
 
     def _organize_report_sections(
         self,
-        analyzed_data: Dict[str, Any],
-        parsed_bill: Dict[str, Any]
+        analyzed_data: Dict[str, Any]
     ) -> List[ReportSection]:
-        """
-        Group changes by their *primary* practice group. Then gather any changes
-        that have no local agency impacts or no practice group into a separate
-        'No Direct Local Agency Impact' section.
-        """
         practice_group_map = defaultdict(list)
         no_local_impact_changes = []
 
         changes = analyzed_data.get("changes", [])
 
         for ch in changes:
-            # If it doesn't impact local agencies at all, or if it has
-            # no recognized practice group, treat it as "No Direct Local Agency Impact".
             if not ch.get("impacts_local_agencies", False):
                 no_local_impact_changes.append(ch)
                 continue
 
-            # Look for the "primary" practice group in ch["practice_groups"].
             pgs = ch.get("practice_groups", [])
             primary_pg = None
             for pg in pgs:
@@ -181,13 +164,11 @@ class ReportGenerator:
                     break
 
             if not primary_pg:
-                # if no primary group is assigned, treat as no local impact group
-                no_local_impact_changes.append(ch)
+                practice_group_map["(No Practice Group Specified)"].append(ch)
             else:
                 practice_group_map[primary_pg].append(ch)
 
         sections = []
-        # Create a section for each practice group that has changes
         for pg_name, changes_list in practice_group_map.items():
             sections.append(ReportSection(
                 title=f"{pg_name} Practice Group",
@@ -195,10 +176,9 @@ class ReportGenerator:
                 section_type="practice_group"
             ))
 
-        # Finally, add a "No Direct Local Agency Impact" section if any
         if no_local_impact_changes:
             sections.append(ReportSection(
-                title="No Direct Local Agency Impact",
+                title="No Local Agency Impacts",
                 content={"changes": no_local_impact_changes},
                 section_type="no_impact"
             ))
@@ -211,31 +191,16 @@ class ReportGenerator:
         bill_info: Dict[str, Any],
         sections: List[ReportSection]
     ) -> Dict[str, Any]:
-
         total_changes = len(analyzed_data.get("changes", []))
-        local_count = analyzed_data["metadata"].get("local_impacts_count", 0)
-        state_count = analyzed_data["metadata"].get("state_impacts_count", 0)
-
-        # Just pick out practice groups that appear as 'primary' in any of the changes
-        practice_areas = set()
-        for change in analyzed_data.get("changes", []):
-            for pg in change.get("practice_groups", []):
-                if pg.get("relevance") == "primary":
-                    practice_areas.add(pg["name"])
-
-        # Provide a simple short summary for the executive summary:
-        local_summary = f"{local_count} changes potentially impact local agencies."
-        state_summary = f"{state_count} changes potentially impact state agencies."
-
-        # If you want to remove 'Key Topics' or 'Key Takeaways,' we do not generate them here
+        local_summary = f"{analyzed_data['metadata'].get('impacting_changes_count', 0)} changes potentially impact local agencies."
 
         template_data = {
             "bill_info": bill_info,
             "date_approved": bill_info.get("date_approved", "Not Available"),
             "total_changes": total_changes,
             "local_summary": local_summary,
-            "state_summary": state_summary,
-            "practice_areas": list(practice_areas),
+            "state_summary": "N/A",
+            "practice_areas": analyzed_data["metadata"].get("practice_groups_affected", []),
             "report_sections": sections
         }
         return template_data
