@@ -335,39 +335,30 @@ Practice Group Information:
         })
 
     def _get_linked_sections(self, change: Dict[str, Any], skeleton: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Get all bill sections that are linked to this change."""
+        """Get bill sections linked to this change."""
         sections = []
-
-        # Get the bill section numbers from the change, and normalize format
         section_nums = change.get("bill_sections", [])
-        normalized_nums = []
 
-        for sec_num in section_nums:
-            # Extract just the numeric part if it contains "Section" prefix
-            if isinstance(sec_num, str) and re.search(r'(?:SECTION|SEC\.)', sec_num, re.IGNORECASE):
-                # Extract just the number
-                num_match = re.search(r'(\d+(?:\.\d+)?)', sec_num, re.IGNORECASE)
-                if num_match:
-                    normalized_nums.append(num_match.group(1))
-            else:
-                normalized_nums.append(str(sec_num))
+        # No need for complex normalization now that we have precise section numbers
+        self.logger.info(f"Change {change.get('id')} has section numbers: {section_nums}")
 
-        self.logger.info(f"Change {change.get('id')} has normalized section numbers: {normalized_nums}")
-
-        # Look up each section in the bill_sections from the skeleton
+        # Look up each section in the skeleton
         bill_sections = skeleton.get("bill_sections", [])
 
-        for section_num in normalized_nums:
+        for section_num in section_nums:
+            section_num = str(section_num)  # Ensure string comparison
             found_section = False
+
             for section in bill_sections:
                 if str(section.get("number")) == section_num:
                     sections.append({
                         "number": section.get("number"),
                         "text": section.get("text", ""),
-                        "original_label": section.get("original_label", f"SECTION {section_num}."),
+                        "original_label": section.get("original_label"),
                         "code_modifications": section.get("code_modifications", [])
                     })
                     found_section = True
+                    self.logger.info(f"Found section {section_num} with label '{section.get('original_label')}'")
                     break
 
             if not found_section:

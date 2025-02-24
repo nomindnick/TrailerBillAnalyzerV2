@@ -426,25 +426,22 @@ Analyze the text and return matches in this JSON format:
         return references
 
     def _extract_section_numbers(self, text: str) -> Set[str]:
-        """Extract section numbers from text using regex patterns"""
+        """Extract bill section numbers from text using precise patterns"""
         numbers = set()
-        patterns = [
-            r'(?:SECTION|SEC\.)\s+(\d+(?:\.\d+)?)',  # Match SECTION/SEC. followed by number
-            r'(?:SECTION|SEC\.)\s+(\d+(?:\.\d+)?)\s*(?:to|through|-)\s*(\d+(?:\.\d+)?)'  # Range
+
+        # Precisely match "SECTION 1." and "SEC. X." references
+        section_patterns = [
+            r'SECTION\s+1\.', 
+            r'SEC\.\s+(\d+)\.'
         ]
 
-        for pattern in patterns:
-            matches = re.finditer(pattern, text, re.IGNORECASE)
-            for match in matches:
-                if len(match.groups()) == 1:
-                    # Single section 
-                    numbers.add(match.group(1))
-                elif len(match.groups()) == 2:
-                    # Range of sections
-                    start, end = match.groups()
-                    start_num = float(start)
-                    end_num = float(end)
-                    numbers.update(str(num) for num in range(int(start_num), int(end_num) + 1))
+        # Match first section
+        if re.search(section_patterns[0], text, re.IGNORECASE):
+            numbers.add("1")
+
+        # Match other sections
+        for match in re.finditer(section_patterns[1], text, re.IGNORECASE):
+            numbers.add(match.group(1))
 
         return numbers
 

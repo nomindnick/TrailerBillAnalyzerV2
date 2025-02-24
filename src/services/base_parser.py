@@ -118,39 +118,45 @@ class BaseParser:
 
     def _parse_bill_sections(self, bill_portion: str) -> List[BillSection]:
         sections = []
-        # Enhanced pattern to better match both "SECTION 1." and "SEC. 2." formats
-        pattern = re.compile(r'((?:SECTION|SEC\.)\s+\d+(?:\.\d+)?)\.\s*(.*?)(?=(?:SECTION|SEC\.)\s+\d+|\Z)', 
-                            flags=re.IGNORECASE | re.DOTALL)
 
-        matches = list(pattern.finditer(bill_portion))
+        # Precisely match first section that starts with "SECTION 1."
+        first_section_pattern = re.compile(r'SECTION\s+1\.\s*(.*?)(?=SEC\.\s+\d+\.|$)', re.DOTALL)
+        other_sections_pattern = re.compile(r'SEC\.\s+(\d+)\.\s*(.*?)(?=SEC\.\s+\d+\.|$)', re.DOTALL)
 
-        if matches:
-            for match in matches:
-                section_label = match.group(1).strip()  # e.g. "SECTION 1" or "SEC. 2"
-                section_body = match.group(2).strip()
+        # Extract first section
+        first_section_match = first_section_pattern.search(bill_portion)
+        if first_section_match:
+            section_body = first_section_match.group(1).strip()
+            code_refs, action = self._parse_section_header(section_body)
+            bs = BillSection(
+                number="1",
+                original_label="SECTION 1.",
+                text=section_body,
+                code_references=code_refs
+            )
+            if action:
+                bs.section_type = action
+            sections.append(bs)
+            self.logger.info(f"Found first section with label 'SECTION 1.'")
 
-                # Extract just the number part for the internal ID
-                num_match = re.search(r'(\d+(?:\.\d+)?)', section_label, re.IGNORECASE)
-                section_num_str = num_match.group(1) if num_match else ""
+        # Extract all other sections
+        for match in other_sections_pattern.finditer(bill_portion):
+            section_num = match.group(1)
+            section_body = match.group(2).strip()
+            code_refs, action = self._parse_section_header(section_body)
+            bs = BillSection(
+                number=section_num,
+                original_label=f"SEC. {section_num}.",
+                text=section_body,
+                code_references=code_refs
+            )
+            if action:
+                bs.section_type = action
+            sections.append(bs)
+            self.logger.info(f"Found section with label 'SEC. {section_num}.'")
 
-                # Keep the original label with its period
-                original_label = f"{section_label}."
-
-                code_refs, action = self._parse_section_header(section_body)
-                bs = BillSection(
-                    number=section_num_str,
-                    original_label=original_label,
-                    text=section_body,
-                    code_references=code_refs
-                )
-                if action:
-                    bs.section_type = action
-                sections.append(bs)
-
-            # Log the sections found for debugging
-            self.logger.info(f"Parsed {len(sections)} bill sections: {[s.original_label for s in sections]}")
-        else:
-            self.logger.warning("No structured bill sections found using regex pattern")
+        # Log the sections found for debugging
+        self.logger.info(f"Parsed {len(sections)} bill sections: {[s.original_label for s in sections]}")
 
         return sections
 
