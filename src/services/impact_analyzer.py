@@ -355,6 +355,7 @@ Practice Group Information:
                 if str(section.get("number")) == str(section_num):
                     sections.append({
                         "number": section.get("number"),
+                        "original_label": section.get("original_label", f"SECTION {section_num}."),
                         "text": section.get("text", ""),
                         "code_modifications": section.get("code_modifications", [])
                     })

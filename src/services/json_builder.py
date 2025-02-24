@@ -68,6 +68,7 @@ class JsonBuilder:
                         })
                     bill_sections_list.append({
                         "number": bs.number,
+                        "original_label": bs.original_label,  # Include the original label
                         "text": bs.text,
                         "code_modifications": code_mods
                     })

@@ -505,3 +505,44 @@ Analyze the text and return matches in this JSON format:
 
         if unmatched:
             self.logger.warning(f"Unmatched digest items: {', '.join(unmatched)}")
+
+    def _get_linked_sections(self, change: Dict[str, Any], skeleton: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Get all bill sections that are linked to this change."""
+        sections = []
+
+        # Get the bill section numbers from the change, and normalize format
+        section_nums = change.get("bill_sections", [])
+        normalized_nums = []
+
+        for sec_num in section_nums:
+            # Extract just the numeric part if it contains "Section" prefix
+            if isinstance(sec_num, str) and "section" in sec_num.lower():
+                # Extract just the number
+                num_match = re.search(r'(\d+(?:\.\d+)?)', sec_num, re.IGNORECASE)
+                if num_match:
+                    normalized_nums.append(num_match.group(1))
+            else:
+                normalized_nums.append(str(sec_num))
+
+        self.logger.info(f"Change {change.get('id')} has normalized section numbers: {normalized_nums}")
+
+        # Look up each section in the bill_sections from the skeleton
+        bill_sections = skeleton.get("bill_sections", [])
+
+        for section_num in normalized_nums:
+            found_section = False
+            for section in bill_sections:
+                if str(section.get("number")) == section_num:
+                    sections.append({
+                        "number": section.get("number"),
+                        "text": section.get("text", ""),
+                        "original_label": section.get("original_label", f"SECTION {section_num}."),
+                        "code_modifications": section.get("code_modifications", [])
+                    })
+                    found_section = True
+                    break
+
+            if not found_section:
+                self.logger.warning(f"Could not find section {section_num} in bill_sections")
+
+        return sections
