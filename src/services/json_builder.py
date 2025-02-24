@@ -1,6 +1,6 @@
 from typing import List, Dict, Any
 import logging
-from src.models.bill_components import DigestSection
+from src.models.bill_components import DigestSection, BillSection
 
 class JsonBuilder:
     """
@@ -11,9 +11,9 @@ class JsonBuilder:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
 
-    def create_skeleton(self, digest_sections: List[DigestSection]) -> Dict[str, Any]:
+    def create_skeleton(self, digest_sections: List[DigestSection], bill_sections: List[BillSection] = None) -> Dict[str, Any]:
         """
-        Create initial JSON structure from parsed digest sections.
+        Create initial JSON structure from parsed digest sections and bill sections.
         Each digest section becomes a distinct change object in the JSON.
         """
         try:
@@ -29,7 +29,6 @@ class JsonBuilder:
                 ]
 
                 # Determine preliminary action type from the text
-                # (This is a placeholder; actual detail might be refined later)
                 action_type = self._determine_action_type(section.proposed_changes)
 
                 change = {
@@ -47,7 +46,7 @@ class JsonBuilder:
 
                 changes.append(change)
 
-            return {
+            skeleton = {
                 "changes": changes,
                 "metadata": {
                     "total_changes": len(changes),
@@ -56,6 +55,25 @@ class JsonBuilder:
                 }
             }
 
+            # Add bill sections to the skeleton
+            if bill_sections:
+                bill_sections_list = []
+                for bs in bill_sections:
+                    code_mods = []
+                    for ref in bs.code_references:
+                        code_mods.append({
+                            "code_name": ref.code_name,
+                            "section": ref.section,
+                            "action": getattr(ref, "action", None)
+                        })
+                    bill_sections_list.append({
+                        "number": bs.number,
+                        "text": bs.text,
+                        "code_modifications": code_mods
+                    })
+                skeleton["bill_sections"] = bill_sections_list
+
+            return skeleton
         except Exception as e:
             self.logger.error(f"Error creating JSON skeleton: {str(e)}")
             raise

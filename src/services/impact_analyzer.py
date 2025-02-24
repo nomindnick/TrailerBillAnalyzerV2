@@ -339,18 +339,29 @@ Practice Group Information:
 
         # Get the bill section numbers from the change
         section_nums = change.get("bill_sections", [])
+        self.logger.debug(f"Change {change.get('id')} has section numbers: {section_nums}")
 
         # Look up each section in the bill_sections from the skeleton
+        bill_sections = skeleton.get("bill_sections", [])
+        self.logger.debug(f"Skeleton has {len(bill_sections)} bill sections")
+
         for section_num in section_nums:
-            for section in skeleton.get("bill_sections", []):
+            found_section = False
+            for section in bill_sections:
                 if str(section.get("number")) == str(section_num):
                     sections.append({
                         "number": section.get("number"),
                         "text": section.get("text", ""),
                         "code_modifications": section.get("code_modifications", [])
                     })
+                    found_section = True
+                    self.logger.debug(f"Found section {section_num}")
                     break
 
+            if not found_section:
+                self.logger.warning(f"Could not find section {section_num} in bill_sections")
+
+        self.logger.debug(f"Linked {len(sections)} sections to change {change.get('id')}")
         return sections
 
     def _get_code_modifications(self, change: Dict[str, Any], skeleton: Dict[str, Any]) -> List[Dict[str, Any]]:

@@ -202,7 +202,7 @@ async def process_bill_analysis(bill_number):
         # Step 3: Build analysis structure
         progress.update_progress(3, "Building analysis structure")
         json_builder = JsonBuilder()
-        skeleton = json_builder.create_skeleton(parsed_bill.digest_sections)
+        skeleton = json_builder.create_skeleton(parsed_bill.digest_sections, parsed_bill.bill_sections)
         progress.update_progress(3, f"Analysis framework created with {len(skeleton['changes'])} change items")
 
         # Step 4: AI Analysis with substeps
