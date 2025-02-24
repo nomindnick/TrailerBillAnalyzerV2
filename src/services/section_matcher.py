@@ -341,41 +341,38 @@ class SectionMatcher:
             if section_id not in matched_section_ids
         }
 
-    def _build_context_prompt(
-        self,
-        digest_info: Dict[str, Any],
-        sections: Dict[str, Dict[str, Any]],
-        bill_text: str
-    ) -> str:
+    def _build_context_prompt(self, digest_info: Dict[str, Any], sections: Dict[str, Dict[str, Any]], bill_text: str) -> str:
         """Build detailed prompt for context matching"""
         return f"""Analyze which bill sections implement this digest item:
 
-Digest Item:
-{digest_info['text']}
+    Digest Item:
+    {digest_info['text']}
 
-Existing Law:
-{digest_info['existing_law']}
+    Existing Law:
+    {digest_info['existing_law']}
 
-Proposed Change:
-{digest_info['proposed_change']}
+    Proposed Change:
+    {digest_info['proposed_change']}
 
-Available Bill Sections:
-{self._format_sections_for_prompt(sections)}
+    Available Bill Sections:
+    {self._format_sections_for_prompt(sections)}
 
-Analyze the text and return matches in this JSON format:
-{{
-    "matches": [
-        {{
-            "section_id": "section number",
-            "confidence": float,
-            "evidence": {{
-                "key_terms": ["matched terms"],
-                "thematic_match": "explanation",
-                "action_alignment": "explanation"
+    IMPORTANT: When referring to sections, use just the number (e.g., "1", "7") not the full label.
+
+    Analyze the text and return matches in this JSON format:
+    {{
+        "matches": [
+            {{
+                "section_id": "section number (just the number, e.g. '7')",
+                "confidence": float,
+                "evidence": {{
+                    "key_terms": ["matched terms"],
+                    "thematic_match": "explanation",
+                    "action_alignment": "explanation"
+                }}
             }}
-        }}
-    ]
-}}"""
+        ]
+    }}"""
 
     def _format_sections_for_prompt(
         self, 
@@ -437,11 +434,11 @@ Analyze the text and return matches in this JSON format:
 
         # Match first section
         if re.search(section_patterns[0], text, re.IGNORECASE):
-            numbers.add("1")
+            numbers.add("1")  # Return just the number
 
         # Match other sections
         for match in re.finditer(section_patterns[1], text, re.IGNORECASE):
-            numbers.add(match.group(1))
+            numbers.add(match.group(1))  # Return just the number
 
         return numbers
 
@@ -465,11 +462,7 @@ Analyze the text and return matches in this JSON format:
 
         return validated
 
-    def _update_skeleton_with_matches(
-        self, 
-        skeleton: Dict[str, Any], 
-        matches: List[MatchResult]
-    ) -> Dict[str, Any]:
+    def _update_skeleton_with_matches(self, skeleton: Dict[str, Any], matches: List[MatchResult]) -> Dict[str, Any]:
         """Update the skeleton with match information"""
         digest_matches = defaultdict(list)
         for match in matches:
@@ -477,8 +470,13 @@ Analyze the text and return matches in this JSON format:
 
         for change in skeleton["changes"]:
             change_matches = digest_matches.get(change["id"], [])
-            # Store the section IDs in the bill_sections field
-            change["bill_sections"] = [m.section_id for m in change_matches]
+            # Store just the section numbers in the bill_sections field
+            section_ids = []
+            for m in change_matches:
+                # Make sure we're storing just the number, not 'Section X'
+                section_ids.append(m.section_id)
+
+            change["bill_sections"] = section_ids
 
             # Additional information can be stored here
             if change_matches:

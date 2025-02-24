@@ -337,40 +337,74 @@ Practice Group Information:
     def _get_linked_sections(self, change: Dict[str, Any], skeleton: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Get bill sections linked to this change."""
         sections = []
-        section_nums = change.get("bill_sections", [])
 
-        # No need for complex normalization now that we have precise section numbers
-        self.logger.info(f"Change {change.get('id')} has section numbers: {section_nums}")
+        # Get and normalize section numbers
+        section_refs = change.get("bill_sections", [])
+        normalized_nums = []
 
-        # Look up each section in the skeleton
+        for ref in section_refs:
+            # If it's a string like "Section 7", extract just the number
+            if isinstance(ref, str) and "section" in ref.lower():
+                match = re.search(r'(\d+)', ref, re.IGNORECASE)
+                if match:
+                    normalized_nums.append(match.group(1))
+            else:
+                # If it's already just the number or another format
+                normalized_nums.append(str(ref))
+
+        self.logger.info(f"Change {change.get('id')} has normalized section numbers: {normalized_nums}")
+
+        # Get bill sections from skeleton
         bill_sections = skeleton.get("bill_sections", [])
 
-        for section_num in section_nums:
-            section_num = str(section_num)  # Ensure string comparison
-            found_section = False
-
+        # For each normalized section number, find matching bill section
+        for section_num in normalized_nums:
+            found = False
             for section in bill_sections:
                 if str(section.get("number")) == section_num:
+                    self.logger.info(f"Found section {section_num} with label: {section.get('original_label')}")
                     sections.append({
                         "number": section.get("number"),
                         "text": section.get("text", ""),
                         "original_label": section.get("original_label"),
                         "code_modifications": section.get("code_modifications", [])
                     })
-                    found_section = True
-                    self.logger.info(f"Found section {section_num} with label '{section.get('original_label')}'")
+                    found = True
                     break
 
-            if not found_section:
+            if not found:
                 self.logger.warning(f"Could not find section {section_num} in bill_sections")
 
         return sections
 
     def _get_code_modifications(self, change: Dict[str, Any], skeleton: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Extract code modifications from bill sections associated with a change
+        """
         mods = []
-        for section_num in change.get("bill_sections", []):
+
+        # Get and normalize section numbers from the change
+        section_refs = change.get("bill_sections", [])
+        normalized_nums = []
+
+        for ref in section_refs:
+            # If it's a string like "Section 7", extract just the number
+            if isinstance(ref, str) and "section" in ref.lower():
+                match = re.search(r'(\d+)', ref, re.IGNORECASE)
+                if match:
+                    normalized_nums.append(match.group(1))
+            else:
+                # If it's already just the number or another format
+                normalized_nums.append(str(ref))
+
+        # For each normalized section number, find associated code modifications
+        for section_num in normalized_nums:
             for section in skeleton.get("bill_sections", []):
-                if section.get("number") == section_num:
+                if str(section.get("number")) == section_num:
                     for mod in section.get("code_modifications", []):
-                        mods.append(mod)
+                        # Include section text with the modification for context
+                        mod_with_context = mod.copy()
+                        mod_with_context["text"] = section.get("text", "")[:200]  # First 200 chars for context
+                        mods.append(mod_with_context)
+
         return mods
