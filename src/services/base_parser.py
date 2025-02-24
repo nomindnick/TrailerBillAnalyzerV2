@@ -119,23 +119,27 @@ class BaseParser:
     def _parse_bill_sections(self, bill_portion: str) -> List[BillSection]:
         sections = []
         # Enhanced pattern to better match both "SECTION 1." and "SEC. 2." formats
-        pattern = re.compile(r'(?:SECTION|SEC\.)\s+(\d+(?:\.\d+)?)\.\s*(.*?)(?=(?:SECTION|SEC\.)\s+\d+|\Z)', 
+        pattern = re.compile(r'((?:SECTION|SEC\.)\s+\d+(?:\.\d+)?)\.\s*(.*?)(?=(?:SECTION|SEC\.)\s+\d+|\Z)', 
                             flags=re.IGNORECASE | re.DOTALL)
 
         matches = list(pattern.finditer(bill_portion))
 
         if matches:
             for match in matches:
-                section_num_str = match.group(1).strip()  # e.g. "1", "2"
+                section_label = match.group(1).strip()  # e.g. "SECTION 1" or "SEC. 2"
                 section_body = match.group(2).strip()
 
-                # Create standard format for the label (e.g., "SECTION 1." or "SEC. 2.")
-                raw_label = f"SECTION {section_num_str}."
+                # Extract just the number part for the internal ID
+                num_match = re.search(r'(\d+(?:\.\d+)?)', section_label, re.IGNORECASE)
+                section_num_str = num_match.group(1) if num_match else ""
+
+                # Keep the original label with its period
+                original_label = f"{section_label}."
 
                 code_refs, action = self._parse_section_header(section_body)
                 bs = BillSection(
                     number=section_num_str,
-                    original_label=raw_label,
+                    original_label=original_label,
                     text=section_body,
                     code_references=code_refs
                 )
@@ -144,10 +148,9 @@ class BaseParser:
                 sections.append(bs)
 
             # Log the sections found for debugging
-            self.logger.info(f"Parsed {len(sections)} bill sections: {[s.number for s in sections]}")
+            self.logger.info(f"Parsed {len(sections)} bill sections: {[s.original_label for s in sections]}")
         else:
             self.logger.warning("No structured bill sections found using regex pattern")
-            # Add fallback parsing logic here if needed
 
         return sections
 

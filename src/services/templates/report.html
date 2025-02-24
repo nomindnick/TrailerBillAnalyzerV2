@@ -49,7 +49,7 @@
                 {% if change.bill_section_details and change.bill_section_details|length > 0 %}
                     {% for sec in change.bill_section_details %}
                         <div class="section-item">
-                            <strong>{{ sec.original_label|default('SECTION ' + sec.number + '.') }}</strong><br>
+                            <strong>{{ sec.original_label }}</strong><br>
                             {{ sec.text }}
                         </div>
                     {% endfor %}

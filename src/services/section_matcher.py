@@ -429,18 +429,16 @@ Analyze the text and return matches in this JSON format:
         """Extract section numbers from text using regex patterns"""
         numbers = set()
         patterns = [
-            r'Section\s+(\d+(?:\.\d+)?)',
-            r'Sections\s+(\d+(?:\.\d+)?(?:\s*(?:,|and)\s*\d+(?:\.\d+)?)*)',
-            r'Sections\s+(\d+(?:\.\d+)?)\s*(?:to|through|-)\s*(\d+(?:\.\d+)?)'
+            r'(?:SECTION|SEC\.)\s+(\d+(?:\.\d+)?)',  # Match SECTION/SEC. followed by number
+            r'(?:SECTION|SEC\.)\s+(\d+(?:\.\d+)?)\s*(?:to|through|-)\s*(\d+(?:\.\d+)?)'  # Range
         ]
 
         for pattern in patterns:
             matches = re.finditer(pattern, text, re.IGNORECASE)
             for match in matches:
                 if len(match.groups()) == 1:
-                    # Single section or comma-separated list
-                    sections = re.split(r'[,\s]+and\s+|\s*,\s*', match.group(1))
-                    numbers.update(sections)
+                    # Single section 
+                    numbers.add(match.group(1))
                 elif len(match.groups()) == 2:
                     # Range of sections
                     start, end = match.groups()
