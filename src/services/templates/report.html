@@ -45,8 +45,8 @@
 
             <!-- Show the Bill Sections with full text -->
             <div class="section-list">
-                <strong>Trailer Bill Sections Referenced:</strong>
-                {% if change.bill_section_details %}
+                <strong>Trailer Bill Sections:</strong>
+                {% if change.bill_section_details and change.bill_section_details|length > 0 %}
                     {% for sec in change.bill_section_details %}
                         <div class="section-item">
                             <strong>Section {{ sec.number }}</strong><br>
@@ -54,7 +54,11 @@
                         </div>
                     {% endfor %}
                 {% else %}
-                    <span>No specific sections found.</span>
+                    <span>No specific sections found. 
+                    {% if change.bill_sections %}
+                        (Referenced sections: {{ change.bill_sections|join(', ') }} could not be matched)
+                    {% endif %}
+                    </span>
                 {% endif %}
             </div>
 

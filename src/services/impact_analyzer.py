@@ -339,11 +339,15 @@ Practice Group Information:
 
         # Get the bill section numbers from the change
         section_nums = change.get("bill_sections", [])
-        self.logger.debug(f"Change {change.get('id')} has section numbers: {section_nums}")
+        self.logger.info(f"Change {change.get('id')} has section numbers: {section_nums}")
 
         # Look up each section in the bill_sections from the skeleton
         bill_sections = skeleton.get("bill_sections", [])
-        self.logger.debug(f"Skeleton has {len(bill_sections)} bill sections")
+        self.logger.info(f"Skeleton has {len(bill_sections)} bill sections")
+
+        # Debug: Print all section numbers in the skeleton for comparison
+        all_section_nums = [str(s.get("number")) for s in bill_sections]
+        self.logger.info(f"Available section numbers in skeleton: {all_section_nums}")
 
         for section_num in section_nums:
             found_section = False
@@ -355,13 +359,19 @@ Practice Group Information:
                         "code_modifications": section.get("code_modifications", [])
                     })
                     found_section = True
-                    self.logger.debug(f"Found section {section_num}")
+                    self.logger.info(f"Found section {section_num}")
                     break
 
             if not found_section:
                 self.logger.warning(f"Could not find section {section_num} in bill_sections")
 
-        self.logger.debug(f"Linked {len(sections)} sections to change {change.get('id')}")
+        self.logger.info(f"Linked {len(sections)} sections to change {change.get('id')}")
+
+        # Important: If no sections were found, add debugging info
+        if not sections:
+            self.logger.error(f"No sections linked to change {change.get('id')}. "
+                              f"Section nums: {section_nums}, Available: {all_section_nums}")
+
         return sections
 
     def _get_code_modifications(self, change: Dict[str, Any], skeleton: Dict[str, Any]) -> List[Dict[str, Any]]:

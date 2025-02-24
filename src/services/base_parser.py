@@ -118,53 +118,36 @@ class BaseParser:
 
     def _parse_bill_sections(self, bill_portion: str) -> List[BillSection]:
         sections = []
-        pattern = re.compile(self.bill_section_pattern, flags=re.IGNORECASE | re.DOTALL)
+        # Enhanced pattern to better match both "SECTION 1." and "SEC. 2." formats
+        pattern = re.compile(r'(?:SECTION|SEC\.)\s+(\d+(?:\.\d+)?)\.\s*(.*?)(?=(?:SECTION|SEC\.)\s+\d+|\Z)', 
+                            flags=re.IGNORECASE | re.DOTALL)
+
         matches = list(pattern.finditer(bill_portion))
 
         if matches:
             for match in matches:
-                section_label_word = match.group(1)  # e.g. "SECTION" or "SEC."
-                section_num_str = match.group(2).strip()  # e.g. "1", "2"
-                section_body = match.group(3).strip()
+                section_num_str = match.group(1).strip()  # e.g. "1", "2"
+                section_body = match.group(2).strip()
 
-                # We'll store the original combined label: e.g. "SECTION 1." or "SEC. 2."
-                # (We add the period if we want it, but we can also detect if the text originally had it.)
-                # For simplicity, let's just always reformat as "SECTION X." if user wants. 
-                # Or better, replicate exactly what we found (minus trailing whitespace):
-                raw_label = f"{section_label_word} {section_num_str}."
+                # Create standard format for the label (e.g., "SECTION 1." or "SEC. 2.")
+                raw_label = f"SECTION {section_num_str}."
 
                 code_refs, action = self._parse_section_header(section_body)
                 bs = BillSection(
-                    number=section_num_str,        # purely numeric portion
-                    original_label=raw_label,      # the literal label
+                    number=section_num_str,
+                    original_label=raw_label,
                     text=section_body,
                     code_references=code_refs
                 )
                 if action:
                     bs.section_type = action
                 sections.append(bs)
+
+            # Log the sections found for debugging
+            self.logger.info(f"Parsed {len(sections)} bill sections: {[s.number for s in sections]}")
         else:
-            # Fallback if no structured matches found
-            fallback_refs = self._extract_code_references(bill_portion)
-            if fallback_refs:
-                for i, ref in enumerate(fallback_refs, start=1):
-                    bs = BillSection(
-                        number=str(i),
-                        original_label=f"SECTION {i}.",
-                        text=f"Reference to {ref.code_name} section {ref.section}.",
-                        code_references=[ref]
-                    )
-                    sections.append(bs)
-            else:
-                leftover = bill_portion.strip()
-                if leftover:
-                    bs = BillSection(
-                        number="1",
-                        original_label="SECTION 1.",
-                        text=leftover,
-                        code_references=[]
-                    )
-                    sections.append(bs)
+            self.logger.warning("No structured bill sections found using regex pattern")
+            # Add fallback parsing logic here if needed
 
         return sections
 
@@ -284,13 +267,23 @@ class BaseParser:
         """
         Match up digest sections to bill sections that share code references
         """
+        matches_found = 0
         for dsec in bill.digest_sections:
             digest_refs = {f"{ref.code_name}:{ref.section}" for ref in dsec.code_references}
+            self.logger.info(f"Digest section {dsec.number} has refs: {digest_refs}")
+
             for bsec in bill.bill_sections:
                 bill_refs = {f"{ref.code_name}:{ref.section}" for ref in bsec.code_references}
-                if digest_refs & bill_refs:
+                self.logger.info(f"Bill section {bsec.number} has refs: {bill_refs}")
+
+                overlap = digest_refs & bill_refs
+                if overlap:
                     dsec.bill_sections.append(bsec.number)
                     bsec.digest_reference = dsec.number
+                    matches_found += 1
+                    self.logger.info(f"Matched digest {dsec.number} to bill section {bsec.number} via refs: {overlap}")
+
+        self.logger.info(f"Total section matches found: {matches_found}")
 
     def _extract_title(self, text: str) -> str:
         pattern = r'An act to .*?(?=\[|LEGISLATIVE COUNSEL|$)'
