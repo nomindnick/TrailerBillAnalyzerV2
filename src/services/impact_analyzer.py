@@ -114,6 +114,8 @@ class ImpactAnalyzer:
         skeleton: Dict[str, Any]
     ) -> ChangeAnalysis:
         """Generate comprehensive analysis of a change"""
+        # Store the bill section details directly in the change object
+        change["bill_section_details"] = sections
         prompt = self._build_analysis_prompt(change, sections, code_mods, skeleton)
 
         response = await self.client.chat.completions.create(
@@ -332,12 +334,23 @@ Practice Group Information:
         })
 
     def _get_linked_sections(self, change: Dict[str, Any], skeleton: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Get all bill sections that are linked to this change."""
         sections = []
-        for section_num in change.get("bill_sections", []):
+
+        # Get the bill section numbers from the change
+        section_nums = change.get("bill_sections", [])
+
+        # Look up each section in the bill_sections from the skeleton
+        for section_num in section_nums:
             for section in skeleton.get("bill_sections", []):
-                if section.get("number") == section_num:
-                    sections.append(section)
+                if str(section.get("number")) == str(section_num):
+                    sections.append({
+                        "number": section.get("number"),
+                        "text": section.get("text", ""),
+                        "code_modifications": section.get("code_modifications", [])
+                    })
                     break
+
         return sections
 
     def _get_code_modifications(self, change: Dict[str, Any], skeleton: Dict[str, Any]) -> List[Dict[str, Any]]:

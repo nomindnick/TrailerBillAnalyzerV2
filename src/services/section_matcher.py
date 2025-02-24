@@ -482,8 +482,10 @@ Analyze the text and return matches in this JSON format:
 
         for change in skeleton["changes"]:
             change_matches = digest_matches.get(change["id"], [])
+            # Store the section IDs in the bill_sections field
             change["bill_sections"] = [m.section_id for m in change_matches]
 
+            # Additional information can be stored here
             if change_matches:
                 change["matching_confidence"] = max(m.confidence for m in change_matches)
                 best_match = max(change_matches, key=lambda m: m.confidence)
