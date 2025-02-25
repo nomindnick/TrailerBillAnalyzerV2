@@ -43,15 +43,12 @@
                 Substantive Change
             </div>
 
-            <!-- Show the Bill Sections with full text -->
+            <!-- Show ONLY the Bill Section REFERENCES (not full text) -->
             <div class="section-list">
                 <strong>Trailer Bill Sections:</strong>
                 {% if change.bill_section_details and change.bill_section_details|length > 0 %}
                     {% for sec in change.bill_section_details %}
-                        <div class="section-item">
-                            <strong>{{ sec.original_label }}</strong><br>
-                            {{ sec.text }}
-                        </div>
+                        <span class="section-reference">{{ sec.original_label }}</span>{% if not loop.last %}, {% endif %}
                     {% endfor %}
                 {% else %}
                     <span>No specific sections found. 
@@ -136,6 +133,19 @@
                     </li>
                     {% endfor %}
                 </ul>
+            </div>
+            {% endif %}
+
+            <!-- NEW SECTION: Full Bill Text at the end of each change box -->
+            {% if change.bill_section_details and change.bill_section_details|length > 0 %}
+            <div class="full-bill-text">
+                <h4>Bill Text</h4>
+                {% for sec in change.bill_section_details %}
+                <div class="section-item">
+                    <strong>{{ sec.original_label }}</strong><br>
+                    {{ sec.text }}
+                </div>
+                {% endfor %}
             </div>
             {% endif %}
         </div>

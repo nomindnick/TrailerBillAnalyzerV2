@@ -89,12 +89,23 @@ class ReportGenerator:
                 font-size: 0.9rem;
             }
 
+            .section-reference {
+                display: inline-block;
+                background-color: #f0f4f8;
+                padding: 0.25rem 0.5rem;
+                border-radius: 3px;
+                margin-right: 0.25rem;
+                margin-bottom: 0.25rem;
+                border: 1px solid #dee2e6;
+            }
+
             .section-item {
                 background-color: #f8f9fa;
                 display: block;
                 margin: 5px 0;
                 padding: 6px;
                 border-radius: 3px;
+                border-left: 3px solid #1a5f7a;
             }
 
             .action-items {
@@ -118,6 +129,18 @@ class ReportGenerator:
                 border-bottom: 2px solid #dee2e6;
                 padding-bottom: 0.5rem;
                 color: #444;
+            }
+
+            .full-bill-text {
+                margin-top: 1.5rem;
+                padding-top: 1.5rem;
+                border-top: 1px dashed #ccc;
+            }
+
+            .full-bill-text h4 {
+                color: #1a5f7a;
+                margin-top: 0;
+                margin-bottom: 0.75rem;
             }
         """
 
