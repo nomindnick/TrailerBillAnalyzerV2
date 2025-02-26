@@ -21,6 +21,7 @@ class SectionMatcher:
         self.logger = logging.getLogger(__name__)
         self.client = openai_client
         self.model = model
+        self.logger.info(f"Initialized SectionMatcher with model: {model}")
 
     async def match_sections(self, skeleton: Dict[str, Any], bill_text: str, progress_handler=None) -> Dict[str, Any]:
         """

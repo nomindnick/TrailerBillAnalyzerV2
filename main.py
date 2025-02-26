@@ -144,6 +144,7 @@ def analyze_bill():
 
         bill_number = data.get('billNumber')
         session_year = data.get('sessionYear', '2025-2026')  # Default to current session if not provided
+        selected_model = data.get('model', 'gpt-4o-2024-08-06')  # Default to GPT-4o if not provided
 
         if not bill_number:
             logger.error("Bill number is missing from request")
@@ -152,20 +153,21 @@ def analyze_bill():
         # Extract the year from the session year string (e.g., "2025-2026" -> 2025)
         try:
             year = int(session_year.split('-')[0])
-            logger.info(f"Starting analysis for bill {bill_number} from session {session_year} (year {year})")
+            logger.info(f"Starting analysis for bill {bill_number} from session {session_year} (year {year}) using model {selected_model}")
         except (ValueError, IndexError):
             logger.error(f"Invalid session year format: {session_year}")
             return jsonify({'error': 'Invalid session year format'}), 400
 
         # Start async analysis in background
         socketio.start_background_task(
-            target=lambda: asyncio.run(process_bill_analysis(bill_number, year))
+            target=lambda: asyncio.run(process_bill_analysis(bill_number, year, selected_model))
         )
 
         return jsonify({
             'status': 'processing',
             'billNumber': bill_number,
-            'sessionYear': session_year
+            'sessionYear': session_year,
+            'model': selected_model
         })
 
     except Exception as e:
@@ -189,7 +191,7 @@ def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
 
 
-async def process_bill_analysis(bill_number, year=2025):  # Default to 2025 for current session
+async def process_bill_analysis(bill_number, year=2025, model="gpt-4o-2024-08-06"):  # Default to 2025 for current session and GPT-4o model
     progress = AnalysisProgressHandler(socketio)
     try:
         # Step 1: Fetch bill text
@@ -215,12 +217,12 @@ async def process_bill_analysis(bill_number, year=2025):  # Default to 2025 for 
         progress.update_progress(3, f"Analysis framework created with {len(skeleton['changes'])} change items")
 
         # Step 4: AI Analysis with substeps
-        progress.update_progress(4, "Starting AI analysis", 0, len(parsed_bill.digest_sections))
+        progress.update_progress(4, f"Starting AI analysis using model: {model}", 0, len(parsed_bill.digest_sections))
 
         # Use the global AsyncOpenAI client
-        matcher = SectionMatcher(openai_client=client)
+        matcher = SectionMatcher(openai_client=client, model=model)
         practice_groups = PracticeGroups()
-        analyzer = ImpactAnalyzer(openai_client=client, practice_groups_data=practice_groups)
+        analyzer = ImpactAnalyzer(openai_client=client, practice_groups_data=practice_groups, model=model)
 
         # First match sections
         progress.update_progress(4, "Matching digest items to bill sections", 1, len(parsed_bill.digest_sections))
@@ -240,7 +242,8 @@ async def process_bill_analysis(bill_number, year=2025):  # Default to 2025 for 
                 'bill_number': bill_number,
                 'title': parsed_bill.title,
                 'chapter_number': parsed_bill.chapter_number,
-                'date_approved': parsed_bill.date_approved
+                'date_approved': parsed_bill.date_approved,
+                'model': model  # Add model info to the report
             },
             bill_text
         )
