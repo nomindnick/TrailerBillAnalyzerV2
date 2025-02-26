@@ -51,6 +51,11 @@ class BillScraper:
         try:
             bill_number = bill_number.replace(" ", "").upper()
             session_str = self.get_session_year_range(year)
+
+            # Format checks for bill number
+            if not any(bill_number.startswith(prefix) for prefix in ['AB', 'SB', 'ACA', 'SCA', 'ACR', 'SCR', 'AJR', 'SJR']):
+                self.logger.warning(f"Bill number '{bill_number}' doesn't start with a recognized prefix")
+
             url = f"{self.bill_url}?bill_id={session_str}0{bill_number}"
 
             self.logger.info(f"Attempting to fetch bill from {url}")
@@ -81,6 +86,10 @@ class BillScraper:
 
                         self.logger.debug(f"First 500 chars of response: {html_content[:500]}")
 
+                        # Check if content appears to contain a "bill not found" message
+                        if "bill not available" in html_content.lower() or "not found" in html_content.lower():
+                            raise ValueError(f"Bill {bill_number} from session {year}-{year+1} was not found")
+
                         result = self._parse_bill_page(html_content)
                         if not result or not result.get('full_text'):
                             raise ValueError("Failed to extract bill text from HTML")
@@ -100,7 +109,7 @@ class BillScraper:
                     response.raise_for_status()
 
         except Exception as e:
-            self.logger.error(f"Error fetching bill: {str(e)}")
+            self.logger.error(f"Error fetching bill {bill_number} from session {year}-{year+1}: {str(e)}")
             raise
 
     def _parse_bill_page(self, html_content: str) -> Dict[str, Any]:

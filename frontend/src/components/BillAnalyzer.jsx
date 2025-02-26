@@ -10,6 +10,7 @@ import AnalysisProgress from './AnalysisProgress';
 
 const BillAnalyzer = () => {
   const [billNumber, setBillNumber] = useState('');
+  const [sessionYear, setSessionYear] = useState('2025-2026'); // Default to current session
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [stepMessage, setStepMessage] = useState('');
@@ -18,6 +19,16 @@ const BillAnalyzer = () => {
   const [reportUrl, setReportUrl] = useState(null);
   const [socket, setSocket] = useState(null);
   const [notification, setNotification] = useState(null);
+
+  // Available session years - add new ones at the top as they become available
+  const availableSessionYears = [
+    "2025-2026",
+    "2023-2024",
+    "2021-2022",
+    "2019-2020",
+    "2017-2018",
+    "2015-2016"
+  ];
 
   // Use the global theme from ThemeProvider
   const { theme, toggleTheme } = useTheme();
@@ -99,13 +110,16 @@ const BillAnalyzer = () => {
     setNotification(null);
 
     try {
-      console.log('Sending request to analyze bill:', billNumber);
+      console.log('Sending request to analyze bill:', billNumber, 'from session:', sessionYear);
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ billNumber })
+        body: JSON.stringify({ 
+          billNumber,
+          sessionYear 
+        })
       });
 
       console.log('Response status:', response.status);
@@ -168,15 +182,41 @@ const BillAnalyzer = () => {
         {/* Input form */}
         <div className="mb-8 bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg transition-all">
           <form onSubmit={handleSubmit}>
-            <div className="flex flex-col sm:flex-row gap-4">
-              <input
-                type="text"
-                value={billNumber}
-                onChange={(e) => setBillNumber(e.target.value)}
-                placeholder="Enter Bill Number (e.g., AB173)"
-                className="flex-1 p-3 border rounded-lg text-gray-900 dark:text-gray-100 dark:bg-gray-700 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                disabled={isProcessing}
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+              <div className="sm:col-span-2">
+                <label htmlFor="billNumber" className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+                  Bill Number
+                </label>
+                <input
+                  id="billNumber"
+                  type="text"
+                  value={billNumber}
+                  onChange={(e) => setBillNumber(e.target.value)}
+                  placeholder="e.g., AB173"
+                  className="w-full p-3 border rounded-lg text-gray-900 dark:text-gray-100 dark:bg-gray-700 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                  disabled={isProcessing}
+                />
+              </div>
+              <div>
+                <label htmlFor="sessionYear" className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+                  Session Year
+                </label>
+                <select
+                  id="sessionYear"
+                  value={sessionYear}
+                  onChange={(e) => setSessionYear(e.target.value)}
+                  className="w-full p-3 border rounded-lg text-gray-900 dark:text-gray-100 dark:bg-gray-700 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                  disabled={isProcessing}
+                >
+                  {availableSessionYears.map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end">
               <button
                 type="submit"
                 disabled={isProcessing || !billNumber}

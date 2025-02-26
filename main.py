@@ -143,20 +143,29 @@ def analyze_bill():
         logger.info(f"Parsed JSON data: {data}")
 
         bill_number = data.get('billNumber')
+        session_year = data.get('sessionYear', '2025-2026')  # Default to current session if not provided
+
         if not bill_number:
             logger.error("Bill number is missing from request")
             return jsonify({'error': 'Bill number is required'}), 400
 
-        logger.info(f"Starting analysis for bill {bill_number}")
+        # Extract the year from the session year string (e.g., "2025-2026" -> 2025)
+        try:
+            year = int(session_year.split('-')[0])
+            logger.info(f"Starting analysis for bill {bill_number} from session {session_year} (year {year})")
+        except (ValueError, IndexError):
+            logger.error(f"Invalid session year format: {session_year}")
+            return jsonify({'error': 'Invalid session year format'}), 400
 
         # Start async analysis in background
         socketio.start_background_task(
-            target=lambda: asyncio.run(process_bill_analysis(bill_number))
+            target=lambda: asyncio.run(process_bill_analysis(bill_number, year))
         )
 
         return jsonify({
             'status': 'processing',
-            'billNumber': bill_number
+            'billNumber': bill_number,
+            'sessionYear': session_year
         })
 
     except Exception as e:
@@ -180,13 +189,13 @@ def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
 
 
-async def process_bill_analysis(bill_number):
+async def process_bill_analysis(bill_number, year=2025):  # Default to 2025 for current session
     progress = AnalysisProgressHandler(socketio)
     try:
         # Step 1: Fetch bill text
-        progress.update_progress(1, "Fetching bill text from legislative website")
+        progress.update_progress(1, f"Fetching bill text from legislative website (Session {year}-{year+1})")
         bill_scraper = BillScraper(max_retries=3, timeout=30)
-        bill_text_response = await bill_scraper.get_bill_text(bill_number, 2024)
+        bill_text_response = await bill_scraper.get_bill_text(bill_number, year)
         bill_text = bill_text_response['full_text']  # Store the full text
         progress.update_progress(1, "Bill text successfully retrieved")
 
