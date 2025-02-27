@@ -25,122 +25,214 @@ class ReportGenerator:
 
         self.css_styles = """
             @page {
-                margin: 1in;
+                margin: 0.75in;
+                size: letter;
                 @top-right {
                     content: "Page " counter(page) " of " counter(pages);
+                    font-size: 9pt;
+                    font-family: 'Helvetica Neue', Arial, sans-serif;
+                    color: #666;
+                }
+                @bottom-left {
+                    content: "TrailerBillAnalyzer Report";
+                    font-size: 9pt;
+                    font-family: 'Helvetica Neue', Arial, sans-serif;
+                    color: #666;
+                }
+                @bottom-right {
+                    content: "Generated: " attr(data-date);
+                    font-size: 9pt;
+                    font-family: 'Helvetica Neue', Arial, sans-serif;
+                    color: #666;
                 }
             }
 
             body {
                 font-family: 'Helvetica Neue', Arial, sans-serif;
-                line-height: 1.6;
+                line-height: 1.4;
                 color: #333;
                 max-width: 1000px;
                 margin: 0 auto;
-                padding: 2rem;
+                padding: 0;
+                font-size: 10pt;
             }
 
+            /* Report Header Section */
             .report-header {
-                background-color: #f0f4f8;
-                padding: 1.5rem;
-                border-radius: 5px;
-                margin-bottom: 2rem;
-                border: 1px solid #dee2e6;
+                background-color: #f6f9fc;
+                padding: 1.2rem;
+                border-radius: 4px;
+                margin-bottom: 1.5rem;
+                border: 1px solid #e1e7ef;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.05);
             }
 
             .report-header h1 {
                 color: #1a5f7a;
                 margin: 0 0 0.5rem 0;
                 padding-bottom: 0.5rem;
+                font-size: 20pt;
+                border-bottom: 2px solid #1a5f7a;
             }
 
             .report-header p {
                 margin: 0.2rem 0;
+                font-size: 10pt;
             }
 
+            /* Executive Summary Section */
             .executive-summary {
-                background-color: #fafafa;
-                padding: 1.5rem;
-                border: 1px solid #ccc;
-                border-radius: 5px;
-                margin-bottom: 2rem;
+                background-color: #f8fafc;
+                padding: 1.2rem;
+                border: 1px solid #e1e7ef;
+                border-radius: 4px;
+                margin-bottom: 1.5rem;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.05);
             }
 
+            .executive-summary h2 {
+                color: #2c3e50;
+                margin-top: 0;
+                font-size: 14pt;
+                border-bottom: 1px solid #e1e7ef;
+                padding-bottom: 0.4rem;
+            }
+
+            /* Change Boxes */
             .change-box {
                 background-color: #fff;
-                border: 1px solid #dee2e6;
-                border-radius: 5px;
+                border: 1px solid #e1e7ef;
+                border-radius: 4px;
                 margin-bottom: 1.5rem;
-                padding: 1rem;
+                padding: 0;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                page-break-inside: avoid;
             }
 
             .change-header {
                 background-color: #1a5f7a;
                 color: #fff;
-                margin: -1rem -1rem 1rem -1rem;
-                padding: 1rem;
-                border-top-left-radius: 5px;
-                border-top-right-radius: 5px;
+                padding: 0.8rem;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
                 font-weight: bold;
+                font-size: 11pt;
+                display: flex;
+                justify-content: space-between;
             }
 
+            .change-content {
+                padding: 1rem;
+            }
+
+            /* Section References */
             .section-list {
                 margin-bottom: 1rem;
-                font-size: 0.9rem;
-            }
-
-            .section-reference {
-                display: inline-block;
-                background-color: #f0f4f8;
-                padding: 0.25rem 0.5rem;
-                border-radius: 3px;
-                margin-right: 0.25rem;
-                margin-bottom: 0.25rem;
-                border: 1px solid #dee2e6;
-            }
-
-            .section-item {
+                font-size: 9pt;
+                padding: 0.6rem;
                 background-color: #f8f9fa;
-                display: block;
-                margin: 5px 0;
-                padding: 6px;
                 border-radius: 3px;
                 border-left: 3px solid #1a5f7a;
             }
 
+            .section-reference {
+                display: inline-block;
+                background-color: #e9f0f6;
+                padding: 0.2rem 0.4rem;
+                border-radius: 3px;
+                margin-right: 0.25rem;
+                margin-bottom: 0.25rem;
+                border: 1px solid #d1dde6;
+                font-size: 9pt;
+                font-family: 'Courier New', monospace;
+            }
+
+            /* Content sections */
+            .section-item {
+                background-color: #f8f9fa;
+                display: block;
+                margin: 8px 0;
+                padding: 8px;
+                border-radius: 3px;
+                border-left: 3px solid #1a5f7a;
+                font-size: 9pt;
+            }
+
+            /* Action Items */
             .action-items {
                 background-color: #f8f9fa;
-                padding: 0.8rem;
-                margin-top: 1rem;
+                padding: 0.7rem;
+                margin-top: 0.8rem;
                 border-radius: 4px;
+                border-left: 3px solid #e67e22;
+            }
+
+            .action-items strong {
+                color: #e67e22;
+                display: block;
+                margin-bottom: 0.4rem;
+                font-size: 10pt;
             }
 
             .action-items ul {
-                margin: 0.5rem 0;
+                margin: 0.4rem 0;
                 padding-left: 1.2rem;
+                font-size: 9pt;
             }
 
-            h2, h3 {
+            /* Headings */
+            h2, h3, h4 {
                 break-after: avoid;
+                color: #2c3e50;
             }
 
+            h4 {
+                font-size: 11pt;
+                margin: 1rem 0 0.4rem 0;
+                color: #1a5f7a;
+            }
+
+            /* Section titles */
             .report-section-title {
-                margin-top: 2rem;
-                border-bottom: 2px solid #dee2e6;
-                padding-bottom: 0.5rem;
-                color: #444;
+                margin-top: 1.8rem;
+                border-bottom: 2px solid #1a5f7a;
+                padding-bottom: 0.4rem;
+                color: #2c3e50;
+                font-size: 14pt;
+                page-break-after: avoid;
             }
 
+            /* Bill Text Section */
             .full-bill-text {
-                margin-top: 1.5rem;
-                padding-top: 1.5rem;
+                margin-top: 1.2rem;
+                padding-top: 1.2rem;
                 border-top: 1px dashed #ccc;
             }
 
             .full-bill-text h4 {
                 color: #1a5f7a;
                 margin-top: 0;
-                margin-bottom: 0.75rem;
+                margin-bottom: 0.6rem;
+                font-size: 11pt;
+            }
+
+            /* Paragraphs */
+            p {
+                margin: 0.5rem 0;
+                font-size: 10pt;
+            }
+
+            ul, ol {
+                margin: 0.5rem 0;
+                padding-left: 1.2rem;
+            }
+
+            li {
+                margin-bottom: 0.25rem;
+            }
+
+            strong {
+                color: #2c3e50;
             }
         """
 
@@ -214,6 +306,8 @@ class ReportGenerator:
         bill_info: Dict[str, Any],
         sections: List[ReportSection]
     ) -> Dict[str, Any]:
+        from datetime import datetime
+        
         total_changes = len(analyzed_data.get("changes", []))
         local_summary = f"{analyzed_data['metadata'].get('impacting_changes_count', 0)} changes potentially impact local agencies."
 
@@ -224,7 +318,8 @@ class ReportGenerator:
             "local_summary": local_summary,
             "state_summary": "N/A",
             "practice_areas": analyzed_data["metadata"].get("practice_groups_affected", []),
-            "report_sections": sections
+            "report_sections": sections,
+            "now": datetime.now().strftime("%B %d, %Y")
         }
         return template_data
 
