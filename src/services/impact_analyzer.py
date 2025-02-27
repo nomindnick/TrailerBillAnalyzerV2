@@ -28,10 +28,12 @@ class ChangeAnalysis:
 class ImpactAnalyzer:
     """Enhanced analyzer for determining local agency impacts with detailed progress reporting"""
 
-    def __init__(self, openai_client, practice_groups_data):
+    def __init__(self, openai_client, practice_groups_data, model="gpt-4o-2024-08-06"):
         self.logger = logging.getLogger(__name__)
         self.client = openai_client
         self.practice_groups = practice_groups_data
+        self.model = model
+        self.logger.info(f"Initialized ImpactAnalyzer with model: {model}")
 
         # Expanded keywords to catch local agency references from the AI response
         self.local_agency_keywords = {
@@ -119,9 +121,10 @@ class ImpactAnalyzer:
         change["bill_section_details"] = sections
         prompt = self._build_analysis_prompt(change, sections, code_mods, skeleton)
 
-        response = await self.client.chat.completions.create(
-            model="gpt-4o-2024-08-06",
-            messages=[
+        # Base parameters
+        params = {
+            "model": "gpt-4o-2024-08-06",  # default model, should be configurable
+            "messages": [
                 {
                     "role": "system",
                     "content": (
@@ -135,9 +138,17 @@ class ImpactAnalyzer:
                     "content": prompt
                 }
             ],
-            temperature=0,
-            response_format={"type": "json_object"}
-        )
+            "response_format": {"type": "json_object"}
+        }
+
+        # Add model-specific parameters
+        model = params["model"]
+        if model.startswith("o"):  # o3-mini or o1 reasoning models
+            params["reasoning_effort"] = "high"
+        else:  # gpt-4o and other models
+            params["temperature"] = 0
+
+        response = await self.client.chat.completions.create(**params)
 
         analysis_data = json.loads(response.choices[0].message.content)
 

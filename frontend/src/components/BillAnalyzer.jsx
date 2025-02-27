@@ -11,6 +11,7 @@ import AnalysisProgress from './AnalysisProgress';
 const BillAnalyzer = () => {
   const [billNumber, setBillNumber] = useState('');
   const [sessionYear, setSessionYear] = useState('2025-2026'); // Default to current session
+  const [selectedModel, setSelectedModel] = useState('gpt-4o-2024-08-06'); // Default to GPT-4o
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [stepMessage, setStepMessage] = useState('');
@@ -28,6 +29,12 @@ const BillAnalyzer = () => {
     "2019-2020",
     "2017-2018",
     "2015-2016"
+  ];
+  
+  // Available AI models - add new models here as they become available
+  const availableModels = [
+    { id: "gpt-4o-2024-08-06", name: "GPT-4o (Default)" },
+    { id: "o3-mini-2025-01-31", name: "o3-mini (Reasoning)" }
   ];
 
   // Use the global theme from ThemeProvider
@@ -110,7 +117,7 @@ const BillAnalyzer = () => {
     setNotification(null);
 
     try {
-      console.log('Sending request to analyze bill:', billNumber, 'from session:', sessionYear);
+      console.log('Sending request to analyze bill:', billNumber, 'from session:', sessionYear, 'using model:', selectedModel);
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: {
@@ -118,7 +125,8 @@ const BillAnalyzer = () => {
         },
         body: JSON.stringify({ 
           billNumber,
-          sessionYear 
+          sessionYear,
+          model: selectedModel
         })
       });
 
@@ -215,6 +223,27 @@ const BillAnalyzer = () => {
                   ))}
                 </select>
               </div>
+            </div>
+            <div className="mb-4">
+              <label htmlFor="aiModel" className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+                AI Model
+              </label>
+              <select
+                id="aiModel"
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="w-full p-3 border rounded-lg text-gray-900 dark:text-gray-100 dark:bg-gray-700 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                disabled={isProcessing}
+              >
+                {availableModels.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Select different models to compare analysis quality and performance
+              </p>
             </div>
             <div className="flex justify-end">
               <button
