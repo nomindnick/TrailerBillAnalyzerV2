@@ -217,7 +217,7 @@ async def process_bill_analysis(bill_number, year=2025, model="gpt-4o-2024-08-06
         progress.update_progress(3, f"Analysis framework created with {len(skeleton['changes'])} change items")
 
         # Step 4: AI Analysis with substeps
-        progress.update_progress(4, f"Starting AI analysis using model: {model}", 0, len(parsed_bill.digest_sections))
+        progress.update_progress(4, f"Starting AI analysis with {model} model", 0, len(parsed_bill.digest_sections))
 
         # Use the global AsyncOpenAI client
         matcher = SectionMatcher(openai_client=client, model=model)
@@ -231,7 +231,7 @@ async def process_bill_analysis(bill_number, year=2025, model="gpt-4o-2024-08-06
         # Then analyze impacts
         progress.update_progress(4, "Analyzing impacts on local agencies", 2, len(parsed_bill.digest_sections))
         analyzed_skeleton = await analyzer.analyze_changes(skeleton, progress_handler=progress)
-        progress.update_progress(4, "Impact analysis complete", len(parsed_bill.digest_sections), len(parsed_bill.digest_sections))
+
 
         # Step 5: Generate report
         progress.update_progress(5, "Generating final report")
