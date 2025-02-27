@@ -38,7 +38,7 @@
     <div class="report-section">
         <h2 class="report-section-title">{{ section.title }}</h2>
 
-        {% for change in section.content.changes %}
+        {% for change in section.content["changes"] %}
         <div class="change-box">
             <div class="change-header">
                 Substantive Change
