@@ -212,13 +212,23 @@ class ReportGenerator:
             model_display_name = self._get_model_display_name(model_name)
 
             # Render the template with all required data
+            # Create a report_sections list with proper structure including content key
+            formatted_sections = []
+            for section in sections:
+                formatted_sections.append({
+                    "number": section["number"],
+                    "text": section["text"],
+                    "original_label": section.get("original_label", f"Section {section['number']}"),
+                    "content": {"changes": analyzed_data["changes"]}  # Add the content key with changes
+                })
+                
             rendered = template.render(
                 bill_info=bill_info,
                 metadata=analyzed_data["metadata"],
                 changes=analyzed_data["changes"],
                 state_summary="N/A",
                 practice_areas=analyzed_data["metadata"].get("practice_groups_affected", []),
-                report_sections=sections,
+                report_sections=formatted_sections,
                 now=datetime.now().strftime("%B %d, %Y"),
                 ai_model=model_display_name
             )
