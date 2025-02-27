@@ -21,6 +21,7 @@ class SectionMatcher:
         self.logger = logging.getLogger(__name__)
         self.client = openai_client
         self.model = model
+        self.logger.info(f"Initialized SectionMatcher with model: {model}")
 
     async def match_sections(self, skeleton: Dict[str, Any], bill_text: str, progress_handler=None) -> Dict[str, Any]:
         """
@@ -156,10 +157,10 @@ class SectionMatcher:
             bill_text
         )
 
-        # Use `create(...)` as an async call
-        response = await self.client.chat.completions.create(
-            model=self.model,
-            messages=[
+        # Base parameters
+        params = {
+            "model": self.model,
+            "messages": [
                 {
                     "role": "system", 
                     "content": (
@@ -170,9 +171,17 @@ class SectionMatcher:
                 },
                 {"role": "user", "content": context_prompt}
             ],
-            temperature=0,
-            response_format={"type": "json_object"}
-        )
+            "response_format": {"type": "json_object"}
+        }
+
+        # Add model-specific parameters
+        if self.model.startswith("o"):  # o3-mini or o1 reasoning models
+            params["reasoning_effort"] = "high"
+        else:  # gpt-4o and other models
+            params["temperature"] = 0
+
+        # Use `create(...)` as an async call with the parameters
+        response = await self.client.chat.completions.create(**params)
 
         matches_data = self._parse_ai_matches(response.choices[0].message.content)
         results = []

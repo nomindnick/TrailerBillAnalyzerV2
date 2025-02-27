@@ -311,6 +311,16 @@ class ReportGenerator:
         total_changes = len(analyzed_data.get("changes", []))
         local_summary = f"{analyzed_data['metadata'].get('impacting_changes_count', 0)} changes potentially impact local agencies."
 
+        # Get the AI model used for analysis
+        ai_model = bill_info.get("model", "gpt-4o-2024-08-06")
+        
+        # Format the model name for display
+        model_display_name = ai_model
+        if ai_model == "gpt-4o-2024-08-06":
+            model_display_name = "GPT-4o"
+        elif ai_model == "o3-mini-2025-01-31":
+            model_display_name = "OpenAI o3-mini"
+
         template_data = {
             "bill_info": bill_info,
             "date_approved": bill_info.get("date_approved", "Not Available"),
@@ -319,7 +329,11 @@ class ReportGenerator:
             "state_summary": "N/A",
             "practice_areas": analyzed_data["metadata"].get("practice_groups_affected", []),
             "report_sections": sections,
-            "now": datetime.now().strftime("%B %d, %Y")
+            "now": datetime.now().strftime("%B %d, %Y"),
+            "ai_model": model_display_name
+=======
+            "ai_model": model_display_name
+>>>>>>> origin/feature/model-picker
         }
         return template_data
 
