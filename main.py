@@ -13,6 +13,15 @@ import sys
 import asyncio
 from weasyprint import HTML, CSS
 
+# Configure logging first, before using logger anywhere
+logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+logger = logging.getLogger(__name__)
+logger.info("Starting application")
+
+# Load environment variables
+load_dotenv()
+logger.info("Environment variables loaded")
+
 from src.services.bill_scraper import BillScraper
 from src.services.base_parser import BaseParser
 from src.services.json_builder import JsonBuilder
@@ -23,18 +32,13 @@ from src.models.practice_groups import PracticeGroups
 
 from src.models.bill_components import TrailerBill
 
-# Load environment variables
-load_dotenv()
-
 # Verify critical environment variables
 if not os.getenv('OPENAI_API_KEY'):
     raise ValueError("OPENAI_API_KEY environment variable is not set")
 
 # Instantiate the async OpenAI client
 # Initialize without custom http_client to fix compatibility issues
-openai_client = AsyncOpenAI(
-    api_key=os.getenv("OPENAI_API_KEY")
-)
+openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Check for Anthropic API key and instantiate client if present
 anthropic_client = None
