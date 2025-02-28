@@ -28,12 +28,16 @@ class ChangeAnalysis:
 class ImpactAnalyzer:
     """Enhanced analyzer for determining local agency impacts with detailed progress reporting"""
 
-    def __init__(self, openai_client, practice_groups_data, model="gpt-4o-2024-08-06"):
+    def __init__(self, openai_client, practice_groups_data, model="gpt-4o-2024-08-06", anthropic_client=None):
         self.logger = logging.getLogger(__name__)
-        self.client = openai_client
+        self.openai_client = openai_client
+        self.anthropic_client = anthropic_client
         self.practice_groups = practice_groups_data
         self.model = model
         self.logger.info(f"Initialized ImpactAnalyzer with model: {model}")
+        
+        # Determine which API to use based on model name
+        self.use_anthropic = model.startswith("claude")
 
         # Expanded keywords to catch local agency references from the AI response
         self.local_agency_keywords = {
@@ -121,36 +125,81 @@ class ImpactAnalyzer:
         change["bill_section_details"] = sections
         prompt = self._build_analysis_prompt(change, sections, code_mods, skeleton)
 
-        # Base parameters
-        params = {
-            "model": "gpt-4o-2024-08-06",  # default model, should be configurable
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a legal expert analyzing legislative changes affecting local public agencies. "
-                        "Focus on practical implications, compliance requirements, and deadlines. "
-                        "Provide concise, action-oriented analysis in JSON format."
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            "response_format": {"type": "json_object"}
-        }
+        # Determine which API to use
+        if self.use_anthropic:
+            # Using Anthropic API
+            system_prompt = (
+                "You are a legal expert analyzing legislative changes affecting local public agencies. "
+                "Focus on practical implications, compliance requirements, and deadlines. "
+                "Provide concise, action-oriented analysis in JSON format."
+            )
+            
+            # Claude-specific parameters
+            params = {
+                "model": self.model,
+                "max_tokens": 4000,
+                "system": system_prompt,
+                "messages": [
+                    {"role": "user", "content": prompt}
+                ]
+            }
+            
+            # Add thinking mode with maximum effort for Claude 3.7
+            if self.model == "claude-3-7-sonnet-20250219":
+                params["thinking"] = {"enabled": True, "verbosity": "high"}
+            
+            self.logger.info(f"Using Anthropic API with model {self.model}")
+            response = await self.anthropic_client.messages.create(**params)
+            response_content = response.content[0].text
+            
+            # Parse the JSON response from the text
+            try:
+                analysis_data = json.loads(response_content)
+            except json.JSONDecodeError:
+                # Handle case where response isn't valid JSON
+                self.logger.error(f"Invalid JSON response from Claude: {response_content[:200]}...")
+                # Try to extract JSON from text response
+                json_start = response_content.find('{')
+                json_end = response_content.rfind('}') + 1
+                if json_start >= 0 and json_end > json_start:
+                    try:
+                        clean_json = response_content[json_start:json_end]
+                        analysis_data = json.loads(clean_json)
+                    except:
+                        self.logger.error("Failed to extract JSON from Claude response")
+                        raise
+                else:
+                    raise ValueError("Failed to parse JSON response from Claude")
+        else:
+            # Using OpenAI API
+            params = {
+                "model": self.model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a legal expert analyzing legislative changes affecting local public agencies. "
+                            "Focus on practical implications, compliance requirements, and deadlines. "
+                            "Provide concise, action-oriented analysis in JSON format."
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "response_format": {"type": "json_object"}
+            }
 
-        # Add model-specific parameters
-        model = params["model"]
-        if model.startswith("o"):  # o3-mini or o1 reasoning models
-            params["reasoning_effort"] = "high"
-        else:  # gpt-4o and other models
-            params["temperature"] = 0
+            # Add model-specific parameters for OpenAI models
+            if self.model.startswith("o"):  # o3-mini or o1 reasoning models
+                params["reasoning_effort"] = "high"
+            else:  # gpt-4o and other models
+                params["temperature"] = 0
 
-        response = await self.client.chat.completions.create(**params)
-
-        analysis_data = json.loads(response.choices[0].message.content)
+            self.logger.info(f"Using OpenAI API with model {self.model}")
+            response = await self.openai_client.chat.completions.create(**params)
+            analysis_data = json.loads(response.choices[0].message.content)
 
         impacts_list = []
         for impact_dict in analysis_data["agency_impacts"]:

@@ -17,11 +17,15 @@ class MatchResult:
 class SectionMatcher:
     """Enhanced matcher using multiple strategies to link digest items to bill sections"""
 
-    def __init__(self, openai_client, model="gpt-4o-2024-08-06"):
+    def __init__(self, openai_client, model="gpt-4o-2024-08-06", anthropic_client=None):
         self.logger = logging.getLogger(__name__)
-        self.client = openai_client
+        self.openai_client = openai_client
+        self.anthropic_client = anthropic_client
         self.model = model
         self.logger.info(f"Initialized SectionMatcher with model: {model}")
+        
+        # Determine which API to use based on model name
+        self.use_anthropic = model.startswith("claude")
 
     async def match_sections(self, skeleton: Dict[str, Any], bill_text: str, progress_handler=None) -> Dict[str, Any]:
         """
@@ -157,33 +161,62 @@ class SectionMatcher:
             bill_text
         )
 
-        # Base parameters
-        params = {
-            "model": self.model,
-            "messages": [
-                {
-                    "role": "system", 
-                    "content": (
-                        "You are analyzing bill sections to determine which sections "
-                        "implement specific digest items. Return a JSON object "
-                        "with matches and confidence scores."
-                    )
-                },
-                {"role": "user", "content": context_prompt}
-            ],
-            "response_format": {"type": "json_object"}
-        }
+        # Determine which API to use
+        if self.use_anthropic:
+            # Using Anthropic API
+            system_prompt = (
+                "You are analyzing bill sections to determine which sections "
+                "implement specific digest items. Return a JSON object "
+                "with matches and confidence scores."
+            )
+            
+            # Claude-specific parameters
+            params = {
+                "model": self.model,
+                "max_tokens": 4000,
+                "system": system_prompt,
+                "messages": [
+                    {"role": "user", "content": context_prompt}
+                ]
+            }
+            
+            # Add thinking mode with maximum effort for Claude 3.7
+            if self.model == "claude-3-7-sonnet-20250219":
+                params["thinking"] = {"enabled": True, "verbosity": "high"}
+            
+            self.logger.info(f"Using Anthropic API with model {self.model}")
+            response = await self.anthropic_client.messages.create(**params)
+            response_content = response.content[0].text
+            
+            # Parse the JSON response from the text
+            matches_data = self._parse_ai_matches(response_content)
+        else:
+            # Using OpenAI API
+            params = {
+                "model": self.model,
+                "messages": [
+                    {
+                        "role": "system", 
+                        "content": (
+                            "You are analyzing bill sections to determine which sections "
+                            "implement specific digest items. Return a JSON object "
+                            "with matches and confidence scores."
+                        )
+                    },
+                    {"role": "user", "content": context_prompt}
+                ],
+                "response_format": {"type": "json_object"}
+            }
 
-        # Add model-specific parameters
-        if self.model.startswith("o"):  # o3-mini or o1 reasoning models
-            params["reasoning_effort"] = "high"
-        else:  # gpt-4o and other models
-            params["temperature"] = 0
+            # Add model-specific parameters for OpenAI models
+            if self.model.startswith("o"):  # o3-mini or o1 reasoning models
+                params["reasoning_effort"] = "high"
+            else:  # gpt-4o and other models
+                params["temperature"] = 0
 
-        # Use `create(...)` as an async call with the parameters
-        response = await self.client.chat.completions.create(**params)
-
-        matches_data = self._parse_ai_matches(response.choices[0].message.content)
+            self.logger.info(f"Using OpenAI API with model {self.model}")
+            response = await self.openai_client.chat.completions.create(**params)
+            matches_data = self._parse_ai_matches(response.choices[0].message.content)
         results = []
 
         for match in matches_data:
@@ -397,7 +430,25 @@ class SectionMatcher:
     def _parse_ai_matches(self, content: str) -> List[Dict[str, Any]]:
         """Parse matches from AI response"""
         try:
-            data = json.loads(content)
+            # For Claude responses, we may need to extract JSON from a text response
+            if self.use_anthropic:
+                # First try direct JSON loading
+                try:
+                    data = json.loads(content)
+                except json.JSONDecodeError:
+                    # Try to extract JSON from text
+                    self.logger.warning(f"Invalid JSON from Claude, attempting to extract JSON: {content[:200]}...")
+                    json_start = content.find('{')
+                    json_end = content.rfind('}') + 1
+                    if json_start >= 0 and json_end > json_start:
+                        clean_json = content[json_start:json_end]
+                        data = json.loads(clean_json)
+                    else:
+                        raise ValueError("Cannot extract JSON from Claude response")
+            else:
+                # For OpenAI, we expect clean JSON
+                data = json.loads(content)
+            
             return data.get("matches", [])
         except Exception as e:
             self.logger.error(f"Error parsing AI matches: {str(e)}")
