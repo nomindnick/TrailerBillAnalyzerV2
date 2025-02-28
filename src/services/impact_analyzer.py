@@ -133,24 +133,26 @@ class ImpactAnalyzer:
                 "Focus on practical implications, compliance requirements, and deadlines. "
                 "Provide concise, action-oriented analysis in JSON format."
             )
-            
+
             # Claude-specific parameters
             params = {
                 "model": self.model,
-                "max_tokens": 4000,
+                "max_tokens": 64000,
                 "system": system_prompt,
                 "messages": [
                     {"role": "user", "content": prompt}
                 ]
             }
-            
-            # Add thinking mode with maximum effort for Claude 3.7
+
+            # Add thinking parameter for Claude 3.7 Sonnet
             if self.model == "claude-3-7-sonnet-20250219":
-                params["thinking"] = {"enabled": True, "verbosity": "high"}
-            
+                params["thinking"] = {
+                    "type": "enabled", 
+                    "budget_tokens": 16000
+                }
+
             self.logger.info(f"Using Anthropic API with model {self.model}")
             response = await self.anthropic_client.messages.create(**params)
-            response_content = response.content[0].text
             
             # Parse the JSON response from the text
             try:
