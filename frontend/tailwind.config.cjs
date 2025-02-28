@@ -29,7 +29,10 @@ module.exports = {
         'fade-in': 'fade-in 0.3s ease-in-out',
         'slide-up': 'slide-up 0.4s ease-out',
         'pulse': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'spin': 'spin 1s linear infinite'
+        'pulse-subtle': 'pulse-subtle 3s ease-in-out infinite',
+        'ping-once': 'ping-once 0.8s cubic-bezier(0, 0, 0.2, 1)',
+        'spin': 'spin 1s linear infinite',
+        'bounce-in': 'bounce-in 0.7s ease-out',
       },
       keyframes: {
         'fade-in': {
@@ -52,6 +55,44 @@ module.exports = {
           },
           '50%': { 
             opacity: '0.5' 
+          }
+        },
+        'pulse-subtle': {
+          '0%, 100%': { 
+            opacity: '1',
+            transform: 'scale(1)' 
+          },
+          '50%': { 
+            opacity: '0.95',
+            transform: 'scale(0.98)' 
+          }
+        },
+        'ping-once': {
+          '0%': {
+            opacity: '1',
+            transform: 'scale(0.8)'
+          },
+          '80%': {
+            opacity: '0.8',
+            transform: 'scale(1.5)'
+          },
+          '100%': {
+            opacity: '0',
+            transform: 'scale(2)'
+          }
+        },
+        'bounce-in': {
+          '0%': {
+            opacity: '0',
+            transform: 'scale(0.8)'
+          },
+          '70%': {
+            opacity: '1',
+            transform: 'scale(1.05)'
+          },
+          '100%': {
+            opacity: '1',
+            transform: 'scale(1)'
           }
         },
         'spin': {
@@ -80,6 +121,10 @@ module.exports = {
         '200': '200ms',
         '300': '300ms',
         '500': '500ms',
+        '700': '700ms',
+      },
+      transitionTimingFunction: {
+        'bounce': 'cubic-bezier(0.68, -0.6, 0.32, 1.6)',
       }
     }
   },

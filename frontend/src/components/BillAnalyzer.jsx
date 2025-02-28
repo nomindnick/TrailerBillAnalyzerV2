@@ -32,11 +32,13 @@ const BillAnalyzer = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [stepMessage, setStepMessage] = useState('');
   const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [stepProgress, setStepProgress] = useState({});
   const [error, setError] = useState(null);
   const [reportUrl, setReportUrl] = useState(null);
   const [socket, setSocket] = useState(null);
   const [notification, setNotification] = useState(null);
   const [startTime, setStartTime] = useState(null);
+  const [expandedStepId, setExpandedStepId] = useState(null);
 
   // Available session years - add new ones at the top as they become available
   const availableSessionYears = [
@@ -91,15 +93,57 @@ const BillAnalyzer = () => {
 
     // Set up socket event listeners
     newSocket.on('analysis_progress', (data) => {
-      setCurrentStep(data.step);
+      const prevStep = currentStep;
+      const newStep = data.step;
+      
+      setCurrentStep(newStep);
       setStepMessage(data.message || '');
 
+      // Update progress for the current step
+      setStepProgress(prev => {
+        const updatedProgress = { ...prev };
+        
+        // Calculate percentage for the current step
+        if (data.step_progress) {
+          updatedProgress[newStep] = data.step_progress; // If server provides direct step progress
+        } else {
+          // Estimate progress based on message or substeps
+          if (!updatedProgress[newStep]) {
+            updatedProgress[newStep] = 0;
+          }
+          
+          // Increment progress based on activity
+          updatedProgress[newStep] = Math.min(
+            updatedProgress[newStep] + (data.message ? 10 : 5), 
+            newStep === prevStep ? 95 : 100 // Cap at 95% until next step starts
+          );
+        }
+        
+        // Mark previous step as complete (100%)
+        if (newStep > prevStep && prevStep > 0) {
+          updatedProgress[prevStep] = 100;
+        }
+        
+        return updatedProgress;
+      });
+
+      // Handle AI analysis substeps (step 4)
       if (data.total_substeps > 0) {
         setProgress({
           current: data.current_substep,
           total: data.total_substeps
         });
+        
+        // Calculate percentage for AI analysis step
+        const percentage = Math.round((data.current_substep / data.total_substeps) * 100);
+        setStepProgress(prev => ({
+          ...prev,
+          4: percentage
+        }));
       }
+      
+      // Auto-expand the current step for better visibility
+      setExpandedStepId(newStep);
     });
 
     newSocket.on('analysis_complete', (data) => {
@@ -136,6 +180,8 @@ const BillAnalyzer = () => {
     setReportUrl(null);
     setNotification(null);
     setStartTime(new Date());
+    setStepProgress({});
+    setExpandedStepId(null);
 
     try {
       console.log('Sending request to analyze bill:', billNumber, 'from session:', sessionYear, 'using model:', selectedModel);
@@ -286,6 +332,9 @@ const BillAnalyzer = () => {
             steps={steps}
             progress={progress}
             startTime={startTime}
+            stepProgress={stepProgress}
+            expandedStepId={expandedStepId}
+            onToggleExpand={(stepId) => setExpandedStepId(stepId === expandedStepId ? null : stepId)}
           />
         )}
 
