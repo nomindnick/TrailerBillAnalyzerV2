@@ -157,6 +157,31 @@ class ReportGenerator:
                 color: #d32f2f;
                 font-weight: bold;
             }
+            .report-section {
+                margin-bottom: 3rem;
+            }
+            .report-section-title {
+                background-color: #2c3e50;
+                color: white;
+                padding: 1rem;
+                margin-top: 2rem;
+                margin-bottom: 1.5rem;
+                border-radius: 5px;
+                font-size: 1.4rem;
+                box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+                position: relative;
+            }
+            .report-section-title::after {
+                content: '';
+                position: absolute;
+                bottom: -10px;
+                left: 30px;
+                width: 0;
+                height: 0;
+                border-left: 10px solid transparent;
+                border-right: 10px solid transparent;
+                border-top: 10px solid #2c3e50;
+            }
             @media print {
                 body {
                     padding: 0;
@@ -167,6 +192,9 @@ class ReportGenerator:
                     margin-bottom: 1.5rem;
                 }
                 .header, .metadata, .summary-section {
+                    break-after: avoid;
+                }
+                .report-section-title {
                     break-after: avoid;
                 }
             }
@@ -211,15 +239,47 @@ class ReportGenerator:
             model_name = bill_info.get("model", "gpt-4o")
             model_display_name = self._get_model_display_name(model_name)
 
-            # Render the template with all required data
-            # Create a report_sections list with proper structure including content key
+            # Group changes by practice group
+            practice_group_changes = {}
+            no_local_impact_changes = []
+            
+            for change in analyzed_data["changes"]:
+                # Check if change has practice groups
+                if "practice_groups" in change and change["practice_groups"]:
+                    # Find primary practice group
+                    primary_group = None
+                    for pg in change["practice_groups"]:
+                        if pg["relevance"].lower() == "primary":
+                            primary_group = pg["name"]
+                            break
+                    
+                    # If found a primary group, add to that group's changes
+                    if primary_group:
+                        if primary_group not in practice_group_changes:
+                            practice_group_changes[primary_group] = []
+                        practice_group_changes[primary_group].append(change)
+                    else:
+                        # If no primary practice group found, add to no impact
+                        no_local_impact_changes.append(change)
+                else:
+                    # If no practice groups at all, add to no impact
+                    no_local_impact_changes.append(change)
+            
+            # Create report sections organized by practice group
             formatted_sections = []
-            for section in sections:
+            
+            # Add practice group sections first
+            for group_name, changes in practice_group_changes.items():
                 formatted_sections.append({
-                    "number": section["number"],
-                    "text": section["text"],
-                    "original_label": section.get("original_label", f"Section {section['number']}"),
-                    "content": {"changes": analyzed_data["changes"]}  # Add the content key with changes
+                    "title": f"Practice Group: {group_name}",
+                    "content": {"changes": changes}
+                })
+            
+            # Add "No Local Government Impacts" section at the end
+            if no_local_impact_changes:
+                formatted_sections.append({
+                    "title": "No Local Government Impacts",
+                    "content": {"changes": no_local_impact_changes}
                 })
                 
             rendered = template.render(
@@ -230,7 +290,8 @@ class ReportGenerator:
                 practice_areas=analyzed_data["metadata"].get("practice_groups_affected", []),
                 report_sections=formatted_sections,
                 now=datetime.now().strftime("%B %d, %Y"),
-                ai_model=model_display_name
+                ai_model=model_display_name,
+                css_styles=self.css_styles
             )
 
             return rendered
