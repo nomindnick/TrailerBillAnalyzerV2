@@ -8,6 +8,22 @@ import DownloadMenu from './DownloadMenu';
 import { useTheme } from '../lib/ThemeProvider';
 import AnalysisProgress from './AnalysisProgress';
 
+// Helper function to format elapsed time
+const formatElapsedTime = (start, now) => {
+  const elapsedMs = now - start;
+  const seconds = Math.floor(elapsedMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  
+  if (hours > 0) {
+    return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+  } else if (minutes > 0) {
+    return `${minutes}m ${seconds % 60}s`;
+  } else {
+    return `${seconds}s`;
+  }
+};
+
 const BillAnalyzer = () => {
   const [billNumber, setBillNumber] = useState('');
   const [sessionYear, setSessionYear] = useState('2025-2026'); // Default to current session
@@ -20,6 +36,7 @@ const BillAnalyzer = () => {
   const [reportUrl, setReportUrl] = useState(null);
   const [socket, setSocket] = useState(null);
   const [notification, setNotification] = useState(null);
+  const [startTime, setStartTime] = useState(null);
 
   // Available session years - add new ones at the top as they become available
   const availableSessionYears = [
@@ -92,6 +109,9 @@ const BillAnalyzer = () => {
         type: 'success',
         message: 'Analysis completed successfully!'
       });
+      
+      // Keep startTime for final duration display
+      // Don't reset startTime here so we can show final duration in the report section
 
       // Clear notification after 5 seconds
       setTimeout(() => setNotification(null), 5000);
@@ -115,6 +135,7 @@ const BillAnalyzer = () => {
     setError(null);
     setReportUrl(null);
     setNotification(null);
+    setStartTime(new Date());
 
     try {
       console.log('Sending request to analyze bill:', billNumber, 'from session:', sessionYear, 'using model:', selectedModel);
@@ -264,6 +285,7 @@ const BillAnalyzer = () => {
             stepMessage={stepMessage}
             steps={steps}
             progress={progress}
+            startTime={startTime}
           />
         )}
 
@@ -273,6 +295,11 @@ const BillAnalyzer = () => {
             <h3 className="text-xl font-semibold mb-4">Analysis Complete!</h3>
             <p className="mb-6 text-gray-600 dark:text-gray-300">
               Your bill analysis is ready for review and download.
+              {startTime && (
+                <span className="block mt-2 text-sm font-medium text-blue-600 dark:text-blue-400">
+                  Total time: {formatElapsedTime(startTime, new Date())}
+                </span>
+              )}
             </p>
             <DownloadMenu reportUrl={reportUrl} />
           </div>

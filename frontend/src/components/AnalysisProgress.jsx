@@ -1,13 +1,55 @@
 // src/components/AnalysisProgress.jsx
 
-import React from 'react';
-import { CheckCircle, Circle, Loader2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { CheckCircle, Circle, Loader2, Clock } from 'lucide-react';
 
-const AnalysisProgress = ({ currentStep, stepMessage, steps, progress }) => {
+const AnalysisProgress = ({ currentStep, stepMessage, steps, progress, startTime }) => {
+  const [elapsedTime, setElapsedTime] = useState('0s');
+  
+  // Update elapsed time every second
+  useEffect(() => {
+    if (!startTime) return;
+    
+    const formatTime = (start) => {
+      const now = new Date();
+      const elapsedMs = now - start;
+      const seconds = Math.floor(elapsedMs / 1000);
+      const minutes = Math.floor(seconds / 60);
+      const hours = Math.floor(minutes / 60);
+      
+      if (hours > 0) {
+        return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+      } else if (minutes > 0) {
+        return `${minutes}m ${seconds % 60}s`;
+      } else {
+        return `${seconds}s`;
+      }
+    };
+    
+    // Initial format
+    setElapsedTime(formatTime(startTime));
+    
+    // Set up interval
+    const intervalId = setInterval(() => {
+      setElapsedTime(formatTime(startTime));
+    }, 1000);
+    
+    // Clean up
+    return () => clearInterval(intervalId);
+  }, [startTime]);
+  
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg transition-all">
-        <h3 className="text-xl font-semibold mb-4">Analysis Progress</h3>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-xl font-semibold">Analysis Progress</h3>
+          
+          {/* Elapsed Time Display */}
+          <div className="flex items-center text-blue-600 dark:text-blue-400 font-medium">
+            <Clock className="w-4 h-4 mr-1" />
+            <span>{elapsedTime}</span>
+          </div>
+        </div>
 
         {/* Step indicator */}
         <div className="w-full bg-gray-200 dark:bg-gray-700 h-2 mb-6 rounded-full overflow-hidden">
