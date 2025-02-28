@@ -53,7 +53,8 @@ const BillAnalyzer = () => {
   // Available AI models - add new models here as they become available
   const availableModels = [
     { id: "gpt-4o-2024-08-06", name: "GPT-4o (Default)" },
-    { id: "o3-mini-2025-01-31", name: "o3-mini (Reasoning)" }
+    { id: "o3-mini-2025-01-31", name: "o3-mini (Reasoning)" },
+    { id: "claude-3-7-sonnet-20250219", name: "Claude 3.7 (Deep Thinking)" }
   ];
 
   // Use the global theme from ThemeProvider

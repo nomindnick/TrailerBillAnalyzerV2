@@ -308,7 +308,8 @@ class ReportGenerator:
             "gpt-4-turbo": "GPT-4 Turbo",
             "gpt-3.5-turbo": "GPT-3.5 Turbo",
             "claude-3-opus-20240229": "Claude 3 Opus",
-            "claude-3-sonnet-20240229": "Claude 3 Sonnet"
+            "claude-3-sonnet-20240229": "Claude 3 Sonnet",
+            "claude-3-7-sonnet-20250219": "Claude 3.7 Sonnet (Deep Thinking)"
         }
 
         return model_display_map.get(model_name, model_name)

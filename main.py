@@ -4,6 +4,7 @@ eventlet.monkey_patch()
 from flask import Flask, send_from_directory, request, jsonify, make_response
 from flask_socketio import SocketIO
 from openai import AsyncOpenAI
+from anthropic import AsyncAnthropic
 from flask_cors import CORS
 import os
 from dotenv import load_dotenv
@@ -30,7 +31,15 @@ if not os.getenv('OPENAI_API_KEY'):
     raise ValueError("OPENAI_API_KEY environment variable is not set")
 
 # Instantiate the async OpenAI client
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Check for Anthropic API key and instantiate client if present
+anthropic_client = None
+if os.getenv('ANTHROPIC_API_KEY'):
+    anthropic_client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    logger.info("Anthropic API client initialized successfully")
+else:
+    logger.warning("ANTHROPIC_API_KEY environment variable is not set, Claude models won't be available")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
@@ -219,10 +228,22 @@ async def process_bill_analysis(bill_number, year=2025, model="gpt-4o-2024-08-06
         # Step 4: AI Analysis with substeps
         progress.update_progress(4, f"Starting AI analysis with {model} model", 0, len(parsed_bill.digest_sections))
 
-        # Use the global AsyncOpenAI client
-        matcher = SectionMatcher(openai_client=client, model=model)
+        # Determine which client to use based on the model name
+        if model.startswith("claude"):
+            if not anthropic_client:
+                socketio.emit('analysis_error', {
+                    'error': "Anthropic API key not configured. Claude models are not available.",
+                    'billNumber': bill_number
+                })
+                return
+            llm_client = {"anthropic": anthropic_client}
+        else:
+            llm_client = {"openai": openai_client}
+        
+        # Initialize analyzers with appropriate client
+        matcher = SectionMatcher(openai_client=openai_client, anthropic_client=anthropic_client, model=model)
         practice_groups = PracticeGroups()
-        analyzer = ImpactAnalyzer(openai_client=client, practice_groups_data=practice_groups, model=model)
+        analyzer = ImpactAnalyzer(openai_client=openai_client, anthropic_client=anthropic_client, practice_groups_data=practice_groups, model=model)
 
         # First match sections
         progress.update_progress(4, "Matching digest items to bill sections", 1, len(parsed_bill.digest_sections))
