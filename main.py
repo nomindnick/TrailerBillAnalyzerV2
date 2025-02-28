@@ -31,7 +31,11 @@ if not os.getenv('OPENAI_API_KEY'):
     raise ValueError("OPENAI_API_KEY environment variable is not set")
 
 # Instantiate the async OpenAI client
-openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Remove proxies if they cause compatibility issues
+openai_client = AsyncOpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    http_client=AsyncOpenAI.default_http_client()  # Use default client without proxies
+)
 
 # Check for Anthropic API key and instantiate client if present
 anthropic_client = None
