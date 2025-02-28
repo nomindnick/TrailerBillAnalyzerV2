@@ -39,7 +39,21 @@ openai_client = AsyncOpenAI(
 # Check for Anthropic API key and instantiate client if present
 anthropic_client = None
 if os.getenv('ANTHROPIC_API_KEY'):
-    anthropic_client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    # Use a custom http_client to avoid the 'proxies' parameter issue
+    from anthropic._base_client import AsyncHttpxClientWrapper
+    import httpx
+    
+    # Create a custom http client without proxies
+    http_client = AsyncHttpxClientWrapper(
+        base_url="https://api.anthropic.com",
+        timeout=httpx.Timeout(timeout=600.0),
+        limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
+    )
+    
+    anthropic_client = AsyncAnthropic(
+        api_key=os.getenv("ANTHROPIC_API_KEY"),
+        http_client=http_client
+    )
     logger.info("Anthropic API client initialized successfully")
 else:
     logger.warning("ANTHROPIC_API_KEY environment variable is not set, Claude models won't be available")
