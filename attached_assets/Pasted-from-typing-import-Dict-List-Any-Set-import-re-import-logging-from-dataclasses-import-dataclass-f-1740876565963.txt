@@ -23,7 +23,7 @@ class SectionMatcher:
         self.anthropic_client = anthropic_client
         self.model = model
         self.logger.info(f"Initialized SectionMatcher with model: {model}")
-
+        
         # Determine which API to use based on model name
         self.use_anthropic = model.startswith("claude")
 
@@ -169,7 +169,7 @@ class SectionMatcher:
                 "implement specific digest items. Return a JSON object "
                 "with matches and confidence scores."
             )
-
+            
             # Claude-specific parameters
             params = {
                 "model": self.model,
@@ -188,21 +188,21 @@ class SectionMatcher:
                     "type": "enabled", 
                     "budget_tokens": 16000
                 }
-
+            
             self.logger.info(f"Using Anthropic API with model {self.model}")
             response = await self.anthropic_client.messages.create(**params)
-
+            
             # Find the text content in the response blocks
             response_content = ""
             for block in response.content:
                 if hasattr(block, 'text') and block.text:
                     response_content = block.text
                     break
-
+            
             if not response_content:
                 self.logger.error("No text content found in Claude response")
                 raise ValueError("Claude response did not contain a text block")
-
+            
             # Parse the JSON response from the text
             matches_data = self._parse_ai_matches(response_content)
         else:
@@ -450,7 +450,7 @@ class SectionMatcher:
                 # When using pre-fill approach, we need to add the opening brace back
                 if content and not content.strip().startswith('{'):
                     content = '{' + content
-
+                
                 # First try direct JSON loading
                 try:
                     data = json.loads(content)
@@ -467,7 +467,7 @@ class SectionMatcher:
             else:
                 # For OpenAI, we expect clean JSON
                 data = json.loads(content)
-
+            
             return data.get("matches", [])
         except Exception as e:
             self.logger.error(f"Error parsing AI matches: {str(e)}")

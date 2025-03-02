@@ -35,7 +35,7 @@ class ImpactAnalyzer:
         self.practice_groups = practice_groups_data
         self.model = model
         self.logger.info(f"Initialized ImpactAnalyzer with model: {model}")
-        
+
         # Determine which API to use based on model name
         self.use_anthropic = model.startswith("claude")
 
@@ -140,7 +140,9 @@ class ImpactAnalyzer:
                 "max_tokens": 64000,
                 "system": system_prompt,
                 "messages": [
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": prompt},
+                    # Pre-fill response to force clean JSON output
+                    {"role": "assistant", "content": "Here is the JSON response:\n{"}
                 ]
             }
 
@@ -153,9 +155,24 @@ class ImpactAnalyzer:
 
             self.logger.info(f"Using Anthropic API with model {self.model}")
             response = await self.anthropic_client.messages.create(**params)
-            
+
+            # Find the text content in the response blocks
+            response_content = ""
+            for block in response.content:
+                if hasattr(block, 'text') and block.text:
+                    response_content = block.text
+                    break
+
+            if not response_content:
+                self.logger.error("No text content found in Claude response")
+                raise ValueError("Claude response did not contain a text block")
+
             # Parse the JSON response from the text
             try:
+                # When using pre-fill approach, we need to add the opening brace back
+                if response_content and not response_content.strip().startswith('{'):
+                    response_content = '{' + response_content
+
                 analysis_data = json.loads(response_content)
             except json.JSONDecodeError:
                 # Handle case where response isn't valid JSON
