@@ -175,19 +175,21 @@ class SectionMatcher:
                 "model": self.model,
                 "max_tokens": 64000,
                 "system": system_prompt,
-                "messages": [
-                    {"role": "user", "content": context_prompt},
-                    # Pre-fill response to force clean JSON output
-                    {"role": "assistant", "content": "Here is the JSON response:\n{"}
-                ]
+                "messages": [{"role": "user", "content": context_prompt}]
             }
 
-            # Add thinking parameter for Claude 3.7 Sonnet
-            if self.model == "claude-3-7-sonnet-20250219":
+            # Set up extended thinking for Claude 3.7 models
+            if "claude-3-7" in self.model:
+                params["temperature"] = 1
                 params["thinking"] = {
                     "type": "enabled", 
                     "budget_tokens": 16000
                 }
+            else:
+                # Only use pre-filling for non-3.7 models
+                params["messages"].append(
+                    {"role": "assistant", "content": "Here is the JSON response:\n{"}
+                )
 
             self.logger.info(f"Using Anthropic API with model {self.model}")
             response = await self.anthropic_client.messages.create(**params)

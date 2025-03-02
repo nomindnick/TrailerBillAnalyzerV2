@@ -155,6 +155,7 @@ class ImpactAnalyzer:
                     "budget_tokens": 16000
                 }
                 # Remove pre-filled assistant message as it's incompatible with thinking
+                # Use a completely new messages array to avoid any pre-filled content
                 params["messages"] = [{"role": "user", "content": prompt}]
 
             self.logger.info(f"Using Anthropic API with model {self.model}")
