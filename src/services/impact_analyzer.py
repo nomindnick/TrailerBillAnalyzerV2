@@ -146,12 +146,16 @@ class ImpactAnalyzer:
                 ]
             }
 
-            # Add thinking parameter for Claude 3.7 Sonnet
-            if self.model == "claude-3-7-sonnet-20250219":
+            # Add thinking parameter for Claude 3.7 models
+            if "claude-3-7" in self.model:
+                # Extended thinking requires temperature=1 and is incompatible with pre-filled responses
+                params["temperature"] = 1
                 params["thinking"] = {
                     "type": "enabled", 
                     "budget_tokens": 16000
                 }
+                # Remove pre-filled assistant message as it's incompatible with thinking
+                params["messages"] = [{"role": "user", "content": prompt}]
 
             self.logger.info(f"Using Anthropic API with model {self.model}")
             response = await self.anthropic_client.messages.create(**params)
@@ -169,8 +173,8 @@ class ImpactAnalyzer:
 
             # Parse the JSON response from the text
             try:
-                # When using pre-fill approach, we need to add the opening brace back
-                if response_content and not response_content.strip().startswith('{'):
+                # Only add opening brace if using pre-fill approach and thinking is not enabled
+                if response_content and not response_content.strip().startswith('{') and "claude-3-7" not in self.model:
                     response_content = '{' + response_content
 
                 analysis_data = json.loads(response_content)

@@ -447,10 +447,6 @@ class SectionMatcher:
         try:
             # For Claude responses, we may need to extract JSON from a text response
             if self.use_anthropic:
-                # When using pre-fill approach, we need to add the opening brace back
-                if content and not content.strip().startswith('{'):
-                    content = '{' + content
-
                 # First try direct JSON loading
                 try:
                     data = json.loads(content)
