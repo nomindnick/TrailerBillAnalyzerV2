@@ -325,10 +325,58 @@ def serve_pdf_report(filename):
             html_content = f.read()
 
         report_gen = ReportGenerator()
+        
+        # Define additional CSS for PDF-specific fixes
+        additional_css = """
+            /* Ensure bullet points render correctly */
+            ul { 
+                list-style-type: disc;
+                padding-left: 2rem;
+            }
+            
+            li {
+                display: list-item;
+                margin-bottom: 8px;
+            }
+            
+            /* Ensure proper page breaks */
+            .change-box, .report-section, .practice-areas, .action-items {
+                page-break-inside: avoid;
+            }
+            
+            /* Improve table formatting for deadline sections */
+            .deadline-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin: 1rem 0;
+            }
+            
+            .deadline-table th, .deadline-table td {
+                padding: 8px;
+                text-align: left;
+                border-bottom: 1px solid #ddd;
+            }
+            
+            .deadline-table th {
+                background-color: #f5f5f5;
+                font-weight: bold;
+            }
+        """
+        
         try:
-            html = HTML(string=html_content)
-            css = CSS(string=report_gen.css_styles)
-            pdf_content = html.write_pdf(stylesheets=[css])
+            # Create HTML object and use base_url to resolve relative paths correctly
+            html = HTML(string=html_content, base_url=app.root_path)
+            
+            # Combine the main CSS with additional PDF-specific CSS
+            css = CSS(string=report_gen.css_styles + additional_css)
+            
+            # Use presentational hints to preserve styling from HTML
+            pdf_content = html.write_pdf(
+                stylesheets=[css],
+                presentational_hints=True,
+                optimize_images=True,
+                jpeg_quality=90
+            )
         except Exception as e:
             logger.error(f"PDF generation error: {str(e)}")
             logger.exception("Full traceback:")

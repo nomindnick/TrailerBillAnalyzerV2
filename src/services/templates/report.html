@@ -70,7 +70,7 @@
                     <!-- Local agencies impacted -->
                     <h4>Local Agencies Impacted</h4>
                     {% if change.local_agencies_impacted and change.local_agencies_impacted|length > 0 %}
-                        <ul>
+                        <ul class="agency-list">
                         {% for agency in change.local_agencies_impacted %}
                             <li>{{ agency }}</li>
                         {% endfor %}
@@ -87,8 +87,8 @@
                     <!-- Key Action Items -->
                     {% if change.key_action_items %}
                     <div class="action-items">
-                        <strong>Key Action Items</strong>
-                        <ul>
+                        <h4>Key Action Items</h4>
+                        <ul class="action-list">
                             {% for item in change.key_action_items %}
                             <li>{{ item }}</li>
                             {% endfor %}
@@ -96,29 +96,52 @@
                     </div>
                     {% endif %}
 
-                    <!-- Deadlines -->
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
                     {% if change.deadlines %}
                     <div class="action-items">
-                        <strong>Deadlines</strong>
-                        <ul>
-                            {% for dl in change.deadlines %}
-                            <li>
-                                <strong class="deadline">{{ dl.date if dl.date else "N/A" }}</strong>:
-                                {{ dl.description }}
-                                {% if dl.affected_agencies %}
-                                (Affected agencies: {{ dl.affected_agencies|join(', ') }})
-                                {% endif %}
-                            </li>
-                            {% endfor %}
-                        </ul>
+                        <h4>Deadlines</h4>
+                        {% if change.deadlines|length > 2 %}
+                            <!-- Use table format for multiple deadlines -->
+                            <table class="deadline-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Description</th>
+                                        <th>Affected Agencies</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for dl in change.deadlines %}
+                                    <tr>
+                                        <td><strong class="deadline">{{ dl.date if dl.date else "N/A" }}</strong></td>
+                                        <td>{{ dl.description }}</td>
+                                        <td>{% if dl.affected_agencies %}{{ dl.affected_agencies|join(', ') }}{% else %}All applicable agencies{% endif %}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        {% else %}
+                            <!-- Use list format for just a few deadlines -->
+                            <ul class="deadline-list">
+                                {% for dl in change.deadlines %}
+                                <li>
+                                    <strong class="deadline">{{ dl.date if dl.date else "N/A" }}</strong>:
+                                    {{ dl.description }}
+                                    {% if dl.affected_agencies %}
+                                    (Affected agencies: {{ dl.affected_agencies|join(', ') }})
+                                    {% endif %}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
                     </div>
                     {% endif %}
 
                     <!-- Additional Requirements -->
                     {% if change.requirements %}
                     <div class="action-items">
-                        <strong>Additional Requirements</strong>
-                        <ul>
+                        <h4>Additional Requirements</h4>
+                        <ul class="requirements-list">
                             {% for req in change.requirements %}
                             <li>{{ req }}</li>
                             {% endfor %}
@@ -129,8 +152,8 @@
                     <!-- Relevant Practice Groups -->
                     {% if change.practice_groups %}
                     <div class="practice-areas">
-                        <strong>Relevant Practice Groups</strong>
-                        <ul>
+                        <h4>Relevant Practice Groups</h4>
+                        <ul class="practice-groups-list">
                             {% for pg in change.practice_groups %}
                             <li>
                                 <span class="practice-area {% if pg.relevance|lower == 'primary' %}primary-area{% endif %}">
