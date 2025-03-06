@@ -261,24 +261,217 @@ class SectionMatcher:
         return digest_map
 
     def _extract_bill_sections(self, bill_text: str) -> Dict[str, Dict[str, Any]]:
-        """Extract and structure bill sections with enhanced metadata"""
+        """
+        Extract and structure bill sections with enhanced pattern matching for challenging formats.
+        """
         section_map = {}
+        self.logger.info(f"Extracting bill sections from text of length {len(bill_text)}")
 
-        # Enhanced section pattern with named groups
-        pattern = r'(?:SECTION|SEC\.)\s+(?P<number>\d+(?:\.\d+)?)\.\s*(?P<text>(?:.*?)(?=(?:SECTION|SEC\.)\s+\d+|\Z))'
+        # Print a sample to debug formatting issues
+        self.logger.debug(f"Bill text sample: {bill_text[50000:50500]}")
 
-        for match in re.finditer(pattern, bill_text, re.DOTALL | re.MULTILINE):
+        # Apply aggressive normalization to fix decimal point issues
+        normalized_text = self._aggressive_normalize(bill_text)
+
+        # Try multiple section patterns with increasing flexibility
+        section_patterns = [
+            # Pattern 1: Standard format with newline
+            r'(?:^|\n)\s*(?P<label>(?:SECTION|SEC)\.?\s+(?P<number>\d+)\.)\s*(?P<text>(?:.+?)(?=\n\s*(?:SECTION|SEC)\.?\s+\d+\.|\Z))',
+
+            # Pattern 2: More flexible with optional whitespace
+            r'(?:^|\n)\s*(?P<label>(?:SECTION|SEC)\.?\s*(?P<number>\d+)\.)\s*(?P<text>(?:.+?)(?=\n\s*(?:SECTION|SEC)\.?\s*\d+\.|\Z))',
+
+            # Pattern 3: Force matches at "SEC. X." regardless of surrounding context
+            r'\n\s*(?P<label>SEC\.\s+(?P<number>\d+)\.)\s*(?P<text>(?:.+?)(?=\n\s*SEC\.\s+\d+\.|\Z))',
+        ]
+
+        # Try each pattern
+        all_matches = []
+        successful_pattern = None
+
+        for i, pattern in enumerate(section_patterns):
+            matches = list(re.finditer(pattern, normalized_text, re.DOTALL | re.MULTILINE | re.IGNORECASE))
+            self.logger.info(f"Pattern {i+1} found {len(matches)} potential sections")
+
+            if matches:
+                all_matches = matches
+                successful_pattern = i+1
+                break
+
+        if not all_matches:
+            self.logger.warning("Standard patterns failed, attempting direct section extraction")
+            # Direct approach - find all "SEC. X." headers and extract content between them
+            section_headers = re.findall(r'\n\s*(SEC\.\s+(\d+)\.)', normalized_text)
+            self.logger.info(f"Found {len(section_headers)} section headers directly")
+
+            if section_headers:
+                # Manual extraction between headers
+                for i, (header, number) in enumerate(section_headers):
+                    start_pos = normalized_text.find(header) + len(header)
+
+                    # Find the end by looking for the next section header or end of text
+                    if i < len(section_headers) - 1:
+                        next_header = section_headers[i+1][0]
+                        end_pos = normalized_text.find(next_header)
+                    else:
+                        end_pos = len(normalized_text)
+
+                    section_text = normalized_text[start_pos:end_pos].strip()
+
+                    # Create a simple mock match object
+                    class SimpleMatch:
+                        def group(self, name):
+                            if name == 'label': return header
+                            if name == 'number': return number
+                            if name == 'text': return section_text
+                            return None
+
+                    all_matches.append(SimpleMatch())
+
+        # Process matches
+        for match in all_matches:
             section_num = match.group('number')
             section_text = match.group('text').strip()
+            section_label = match.group('label').strip()
+
+            # Skip empty sections
+            if not section_text:
+                self.logger.warning(f"Empty text for section {section_num}, skipping")
+                continue
+
+            # Log the beginning of the section text
+            self.logger.debug(f"Section {section_num} begins with: {section_text[:100]}...")
+
+            # Extract code references with special handling for decimal points
+            code_refs = self._extract_code_references_robust(section_text)
 
             section_map[section_num] = {
                 "text": section_text,
-                "code_refs": self._extract_code_references(section_text),
+                "original_label": section_label,
+                "code_refs": code_refs,
                 "action_type": self._determine_action_type(section_text),
                 "code_sections": self._extract_modified_sections(section_text)
             }
 
+            # Log code references found
+            if code_refs:
+                self.logger.info(f"Section {section_num} has code references: {list(code_refs)}")
+            else:
+                self.logger.debug(f"No code references found in section {section_num}")
+
+        self.logger.info(f"Successfully extracted {len(section_map)} bill sections: {list(section_map.keys())}")
         return section_map
+        
+    def _aggressive_normalize(self, text: str) -> str:
+        """
+        Aggressively normalize text to fix common issues with bill formatting,
+        especially handling decimal points in section numbers.
+        """
+        # Replace Windows line endings
+        text = text.replace('\r\n', '\n')
+
+        # Ensure consistent spacing around section headers
+        text = re.sub(r'(\n\s*)(SEC\.?|SECTION)(\s*)(\d+)(\.\s*)', r'\n\2 \4\5', text)
+
+        # Fix the decimal point issue - remove line breaks between section numbers and decimal points
+        text = re.sub(r'(\d+)\s*\n\s*(\.\d+)', r'\1\2', text)
+
+        # Standardize decimal points in section headers
+        text = re.sub(r'Section\s+(\d+)\s*\n\s*(\.\d+)', r'Section \1\2', text)
+
+        # Ensure section headers are properly separated with newlines
+        text = re.sub(r'([^\n])(SEC\.|SECTION)', r'\1\n\2', text)
+
+        return text
+
+    def _extract_code_references_robust(self, text: str) -> Set[str]:
+        """
+        Extract code references with special handling for decimal points and other formatting issues.
+        """
+        references = set()
+
+        # Check first for the amended/added/repealed pattern that's common in section headers
+        first_line = text.split('\n', 1)[0] if '\n' in text else text
+
+        # Normalize the section number if it contains a decimal point
+        first_line = re.sub(r'(\d+)\s*\n\s*(\.\d+)', r'\1\2', first_line)
+
+        # Pattern for "Section X of the Y Code is amended/added/repealed"
+        section_header_pattern = r'(?i)Section\s+(\d+(?:\.\d+)?)\s+of\s+(?:the\s+)?([A-Za-z\s]+Code)'
+        header_match = re.search(section_header_pattern, first_line)
+
+        if header_match:
+            section_num = header_match.group(1).strip()
+            code_name = header_match.group(2).strip()
+            references.add(f"{code_name} Section {section_num}")
+            self.logger.info(f"Found primary code reference: {code_name} Section {section_num}")
+
+        # Special case for Education Code sections with decimal points
+        # This handles cases like "Section 2575.2 of the Education Code"
+        decimal_pattern = r'Section\s+(\d+\.\d+)\s+of\s+(?:the\s+)?([A-Za-z\s]+Code)'
+        for match in re.finditer(decimal_pattern, text):
+            section_num = match.group(1).strip()
+            code_name = match.group(2).strip()
+            references.add(f"{code_name} Section {section_num}")
+
+        # Handle other standard reference formats
+        patterns = [
+            # Standard format: "Section 123 of the Education Code"
+            r'(?i)Section(?:s)?\s+(\d+(?:\.\d+)?)\s+of\s+(?:the\s+)?([A-Za-z\s]+Code)',
+
+            # Reverse format: "Education Code Section 123"
+            r'(?i)([A-Za-z\s]+Code)\s+Section(?:s)?\s+(\d+(?:\.\d+)?)',
+        ]
+
+        for pattern in patterns:
+            for match in re.finditer(pattern, text):
+                if len(match.groups()) == 2:
+                    if "code" in match.group(2).lower():  # Standard format
+                        section_num = match.group(1).strip()
+                        code_name = match.group(2).strip()
+                    else:  # Reverse format
+                        code_name = match.group(1).strip()
+                        section_num = match.group(2).strip()
+
+                    references.add(f"{code_name} Section {section_num}")
+
+        return references
+        
+    def _normalize_section_breaks(self, text: str) -> str:
+        """
+        Ensure section breaks are consistently formatted to improve pattern matching.
+
+        Args:
+            text: The bill text to normalize
+
+        Returns:
+            Normalized text with consistent section breaks
+        """
+        # Ensure newlines before section headers
+        normalized = re.sub(
+            r'(?<!\n)(?:\s*)((?:SECTION|SEC)\.?\s+\d+(?:\.\d+)?\.)',
+            r'\n\1',
+            text,
+            flags=re.IGNORECASE
+        )
+
+        # Standardize spacing in section headers
+        normalized = re.sub(
+            r'((?:SECTION|SEC)\.?)\s*(\d+(?:\.\d+)?)\.',
+            r'\1 \2.',
+            normalized,
+            flags=re.IGNORECASE
+        )
+
+        # Make sure all section headers are followed by at least one newline
+        normalized = re.sub(
+            r'((?:SECTION|SEC)\.?\s+\d+(?:\.\d+)?\.)\s*(?!\n)',
+            r'\1\n',
+            normalized,
+            flags=re.IGNORECASE
+        )
+
+        return normalized
 
     def _determine_action_type(self, text: str) -> str:
         """Determine the type of action being performed in the section"""
@@ -472,30 +665,64 @@ class SectionMatcher:
             return []
 
     def _extract_code_references(self, text: str) -> Set[str]:
-        """Extract code references with improved pattern matching"""
+        """
+        Extract code references with improved pattern matching for various formats.
+
+        Args:
+            text: The section text to search for code references
+
+        Returns:
+            Set of code references in standardized format
+        """
         references = set()
 
+        # First check the first line, which often contains the primary code reference
+        first_line = text.split('\n')[0] if '\n' in text else text
+
+        # Pattern for "Section X of the Y Code is amended/added/repealed"
+        section_header_pattern = r'(?i)Section\s+(\d+(?:\.\d+)?)\s+of\s+(?:the\s+)?([A-Za-z\s]+Code)\s+(?:is|are)'
+        header_match = re.search(section_header_pattern, first_line)
+
+        if header_match:
+            section_num = header_match.group(1).strip()
+            code_name = header_match.group(2).strip()
+            references.add(f"{code_name} Section {section_num}")
+            self.logger.debug(f"Found primary code reference: {code_name} Section {section_num}")
+
+        # Various patterns for code references
         patterns = [
             # Standard format: "Section 123 of the Education Code"
-            r'Section(?:s)?\s+(\d+(?:\.\d+)?(?:\s*,\s*\d+(?:\.\d+)?)*)\s+of\s+(?:the\s+)?([A-Za-z\s]+Code)',
+            r'(?i)Section(?:s)?\s+(\d+(?:\.\d+)?(?:\s*,\s*\d+(?:\.\d+)?)*)\s+of\s+(?:the\s+)?([A-Za-z\s]+Code)',
+
             # Reverse format: "Education Code Section 123"
-            r'([A-Za-z\s]+Code)\s+Section(?:s)?\s+(\d+(?:\.\d+)?(?:\s*,\s*\d+(?:\.\d+)?)*)',
+            r'(?i)([A-Za-z\s]+Code)\s+Section(?:s)?\s+(\d+(?:\.\d+)?(?:\s*,\s*\d+(?:\.\d+)?)*)',
+
             # Range format: "Sections 123-128 of the Education Code"
-            r'Section(?:s)?\s+(\d+(?:\.\d+)?)\s*(?:to|through|-)\s*(\d+(?:\.\d+)?)\s+of\s+(?:the\s+)?([A-Za-z\s]+Code)'
+            r'(?i)Section(?:s)?\s+(\d+(?:\.\d+)?)\s*(?:to|through|-)\s*(\d+(?:\.\d+)?)\s+of\s+(?:the\s+)?([A-Za-z\s]+Code)'
         ]
 
         for pattern in patterns:
-            matches = re.finditer(pattern, text, re.IGNORECASE)
-            for match in matches:
-                if len(match.groups()) == 2:
-                    sections, code = match.groups()
-                    for section in re.split(r'[,\s]+', sections):
-                        if section.strip():
-                            references.add(f"{code.strip()} Section {section.strip()}")
-                elif len(match.groups()) == 3:
+            for match in re.finditer(pattern, text, re.IGNORECASE):
+                if len(match.groups()) == 2:  # Standard or reverse format
+                    if "code" in match.group(2).lower():  # "Section X of Y Code" format
+                        sections_str, code_name = match.groups()
+                        for section in re.split(r'[,\s]+', sections_str):
+                            if section.strip() and section.strip().isdigit():
+                                references.add(f"{code_name.strip()} Section {section.strip()}")
+                    else:  # "Y Code Section X" format
+                        code_name, sections_str = match.groups()
+                        for section in re.split(r'[,\s]+', sections_str):
+                            if section.strip() and section.strip().isdigit():
+                                references.add(f"{code_name.strip()} Section {section.strip()}")
+                elif len(match.groups()) == 3:  # Range format
                     start, end, code = match.groups()
-                    for num in range(int(float(start)), int(float(end)) + 1):
-                        references.add(f"{code.strip()} Section {num}")
+                    try:
+                        for num in range(int(float(start)), int(float(end)) + 1):
+                            references.add(f"{code.strip()} Section {num}")
+                    except (ValueError, TypeError):
+                        # If we can't convert to numbers, just add the endpoints
+                        references.add(f"{code.strip()} Section {start.strip()}")
+                        references.add(f"{code.strip()} Section {end.strip()}")
 
         return references
 
