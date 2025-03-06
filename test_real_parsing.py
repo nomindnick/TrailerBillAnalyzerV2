@@ -30,7 +30,7 @@ class MockOpenAIClient:
 
 # Apply our fixes to BaseParser
 # This modifies the class method directly to test our changes
-def apply_fixes_to_base_parser(parser):
+def apply_fixes_to_base_parser(parser, bill_text):
     """Apply our fixes to the BaseParser instance"""
 
     # Replace the _parse_bill_sections method with our improved version
@@ -220,7 +220,8 @@ def apply_fixes_to_base_parser(parser):
 
     # Replace the code reference method with our improved version
     # Only if we haven't found many references with the original
-    if len(parser._extract_code_references(bill_portion[:5000])) < 3:
+    sample_text = bill_text[:5000] if bill_text else ""
+    if len(parser._extract_code_references(sample_text)) < 3:
         setattr(parser, '_extract_code_references', improved_extract_code_references.__get__(parser, type(parser)))
 
     return parser
@@ -242,8 +243,8 @@ async def test_ab114_parsing():
         # Prepare parsers
         parser = BaseParser()
 
-        # Apply our fixes to the BaseParser
-        apply_fixes_to_base_parser(parser)
+        # Apply our fixes to the BaseParser, passing in the bill text
+        apply_fixes_to_base_parser(parser, bill_text)
 
         # Run the parsing with our fixed parser
         parsed_bill = parser.parse_bill(bill_text)
