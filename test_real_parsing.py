@@ -21,20 +21,16 @@ logger = logging.getLogger("bill_parser_test")
 # Import the actual classes from your project
 from src.services.bill_scraper import BillScraper
 from src.services.base_parser import BaseParser
-from src.services.section_matcher import SectionMatcher
+from src.models.bill_components import TrailerBill, DigestSection, BillSection, CodeReference, CodeAction
 
-# Create a mock OpenAI client for the SectionMatcher
-class MockOpenAIClient:
-    async def chat(self):
-        return None
+# Create an improved parser subclass
+class ImprovedBaseParser(BaseParser):
+    """
+    Improved version of BaseParser with better handling of
+    section parsing and code reference extraction
+    """
 
-# Apply our fixes to BaseParser
-# This modifies the class method directly to test our changes
-def apply_fixes_to_base_parser(parser, bill_text):
-    """Apply our fixes to the BaseParser instance"""
-
-    # Replace the _parse_bill_sections method with our improved version
-    def new_parse_bill_sections(self, bill_portion: str) -> List:
+    def _parse_bill_sections(self, bill_portion: str) -> List[BillSection]:
         """
         Parse bill sections with improved pattern matching and error handling.
         """
@@ -99,10 +95,9 @@ def apply_fixes_to_base_parser(parser, bill_text):
 
                     # Extract code references and determine action type
                     code_refs = self._extract_code_references(body_text)
-                    action_type = self._determine_action_type(body_text)
+                    action_type = self._determine_action(body_text)
 
                     # Create the section object
-                    from src.models.bill_components import BillSection
                     bs = BillSection(
                         number=number,
                         original_label=f"SEC. {number}.",
@@ -110,7 +105,7 @@ def apply_fixes_to_base_parser(parser, bill_text):
                         code_references=code_refs
                     )
 
-                    if action_type:
+                    if action_type != CodeAction.UNKNOWN:
                         bs.section_type = action_type
 
                     sections.append(bs)
@@ -134,10 +129,9 @@ def apply_fixes_to_base_parser(parser, bill_text):
 
                 # Extract code references and determine action type
                 code_refs = self._extract_code_references(body_text)
-                action_type = self._determine_action_type(body_text)
+                action_type = self._determine_action(body_text)
 
                 # Create the section object
-                from src.models.bill_components import BillSection
                 bs = BillSection(
                     number=number,
                     original_label=label,
@@ -145,7 +139,7 @@ def apply_fixes_to_base_parser(parser, bill_text):
                     code_references=code_refs
                 )
 
-                if action_type:
+                if action_type != CodeAction.UNKNOWN:
                     bs.section_type = action_type
 
                 sections.append(bs)
@@ -155,8 +149,7 @@ def apply_fixes_to_base_parser(parser, bill_text):
 
         return sections
 
-    # Add our new aggressive section break normalization method
-    def aggressive_normalize_section_breaks(self, text: str) -> str:
+    def _aggressive_normalize_section_breaks(self, text: str) -> str:
         """
         Enhanced normalization of section breaks with more aggressive pattern matching.
         This is a fallback when regular normalization fails.
@@ -190,46 +183,34 @@ def apply_fixes_to_base_parser(parser, bill_text):
 
         return text
 
-    # Update the extraction method and add the new normalization method to the instance
-    setattr(parser, '_parse_bill_sections', new_parse_bill_sections.__get__(parser, type(parser)))
-    setattr(parser, '_aggressive_normalize_section_breaks', aggressive_normalize_section_breaks.__get__(parser, type(parser)))
-
-    # Also improve the extract_code_references method
-    def improved_extract_code_references(self, text: str):
+    def _extract_code_references(self, text: str) -> List[CodeReference]:
         """
-        Enhanced code reference extraction with better decimal point handling
+        Enhanced code reference extraction with improved pattern matching and decimal point handling.
         """
         references = []
 
-        # Special case for Education Code sections with decimal points
-        # This handles cases like "Section 2575.2 of the Education Code"
+        # Log the first 100 chars of the text we're searching for references
+        self.logger.debug(f"Searching for code references in: {text[:100]}...")
+
+        # First check for decimal point sections explicitly
         decimal_pattern = r'Section\s+(\d+\.\d+)\s+of\s+(?:the\s+)?([A-Za-z\s]+Code)'
         for match in re.finditer(decimal_pattern, text):
             section_num = match.group(1).strip()
             code_name = match.group(2).strip()
-            from src.models.bill_components import CodeReference
+            self.logger.info(f"Found decimal point code reference: {code_name} Section {section_num}")
             references.append(CodeReference(section=section_num, code_name=code_name))
 
-        # Now run the original method to get more references
-        original_refs = parser._extract_code_references(text)
-
-        # Combine both reference sets
-        references.extend(original_refs)
+        # Now call the parent implementation to get standard references
+        # We need to be careful here to avoid calling ourselves recursively
+        parent_refs = super()._extract_code_references(text)
+        references.extend(parent_refs)
 
         return references
 
-    # Replace the code reference method with our improved version
-    # Only if we haven't found many references with the original
-    sample_text = bill_text[:5000] if bill_text else ""
-    if len(parser._extract_code_references(sample_text)) < 3:
-        setattr(parser, '_extract_code_references', improved_extract_code_references.__get__(parser, type(parser)))
-
-    return parser
-
-# Test the actual parsers with our fixes
+# Test the actual parsers with our improved subclass
 async def test_ab114_parsing():
     """
-    Test parsing AB114 from the 2023-2024 session using the real parsers with fixes.
+    Test parsing AB114 from the 2023-2024 session using the improved parser.
     """
     logger.info("Starting test of AB114 (2023-2024) parsing...")
 
@@ -240,13 +221,10 @@ async def test_ab114_parsing():
         bill_text = bill_text_response['full_text']
         logger.info(f"Retrieved bill text of length: {len(bill_text)}")
 
-        # Prepare parsers
-        parser = BaseParser()
+        # Create an instance of our improved parser
+        parser = ImprovedBaseParser()
 
-        # Apply our fixes to the BaseParser, passing in the bill text
-        apply_fixes_to_base_parser(parser, bill_text)
-
-        # Run the parsing with our fixed parser
+        # Run the parsing with the improved parser
         parsed_bill = parser.parse_bill(bill_text)
 
         # Test if we're getting the sections we expect
