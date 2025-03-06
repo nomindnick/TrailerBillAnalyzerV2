@@ -1,5 +1,6 @@
 import re
 import logging
+import traceback
 from datetime import datetime
 from typing import List, Tuple, Optional
 from src.models.bill_components import (
@@ -159,7 +160,7 @@ class BaseParser:
 
             # Extract code references and determine action type
             code_refs = self._extract_code_references(body_text)
-            action_type = self._determine_action_type(body_text)
+            action_type = self._determine_action(body_text)
 
             # Create the section object
             bs = BillSection(
@@ -169,7 +170,7 @@ class BaseParser:
                 code_references=code_refs
             )
 
-            if action_type:
+            if action_type != CodeAction.UNKNOWN:
                 bs.section_type = action_type
 
             sections.append(bs)
@@ -184,6 +185,79 @@ class BaseParser:
         # Log the overall results
         self.logger.info(f"Successfully parsed {len(sections)} bill sections: {[s.original_label for s in sections]}")
 
+        return sections
+
+    def _parse_bill_sections_debug(self, bill_portion: str) -> List[BillSection]:
+        """Debug-focused section parser to identify where the process is failing."""
+        self.logger.info(f"Starting section parsing with text length: {len(bill_portion)}")
+
+        sections = []
+
+        # First, check for all section headers with a simple pattern
+        all_headers = re.findall(r'(?:^|\n)\s*(SEC\.\s+(\d+)\.)', bill_portion, re.IGNORECASE)
+        self.logger.info(f"FOUND HEADERS: {[h[1] for h in all_headers]}")
+
+        # Process each section header one by one with extensive logging
+        for i, (header, section_num) in enumerate(all_headers):
+            self.logger.info(f"------ PROCESSING SECTION {section_num} (header {i+1} of {len(all_headers)}) ------")
+
+            try:
+                # Find the start position of this section
+                start_idx = bill_portion.find(header)
+                if start_idx == -1:
+                    self.logger.error(f"ERROR: Couldn't find header '{header}' in bill text")
+                    continue
+
+                start_pos = start_idx + len(header)
+
+                # Find the end of this section (start of next section or end of text)
+                if i < len(all_headers) - 1:
+                    next_header = all_headers[i+1][0]
+                    end_pos = bill_portion.find(next_header, start_pos)
+                    if end_pos == -1:
+                        self.logger.error(f"ERROR: Couldn't find next header '{next_header}' after section {section_num}")
+                        end_pos = len(bill_portion)
+                else:
+                    end_pos = len(bill_portion)
+
+                # Extract the section text
+                section_text = bill_portion[start_pos:end_pos].strip()
+                self.logger.info(f"Section {section_num}: Extracted {len(section_text)} characters")
+                self.logger.info(f"SECTION TEXT STARTS WITH: {section_text[:100]}...")
+
+                # Check if there's anything strange in the text that might cause issues
+                if '\0' in section_text:
+                    self.logger.warning(f"WARNING: Section {section_num} contains null bytes")
+
+                # Extract code references with explicit error handling
+                try:
+                    self.logger.info(f"Extracting code references for section {section_num}")
+                    code_refs = self._extract_code_references(section_text)
+                    self.logger.info(f"Found {len(code_refs)} code references: {code_refs}")
+                except Exception as e:
+                    self.logger.error(f"EXCEPTION in code reference extraction: {str(e)}")
+                    self.logger.error(f"Stack trace: {traceback.format_exc()}")
+                    code_refs = []
+
+                # Create and add the section object
+                try:
+                    bs = BillSection(
+                        number=section_num,
+                        original_label=header.strip(),
+                        text=section_text,
+                        code_references=code_refs
+                    )
+                    sections.append(bs)
+                    self.logger.info(f"Successfully added section {section_num}")
+                except Exception as e:
+                    self.logger.error(f"EXCEPTION creating BillSection: {str(e)}")
+                    self.logger.error(f"Stack trace: {traceback.format_exc()}")
+
+            except Exception as e:
+                self.logger.error(f"GENERAL EXCEPTION processing section {section_num}: {str(e)}")
+                self.logger.error(f"Stack trace: {traceback.format_exc()}")
+
+        self.logger.info(f"PARSING COMPLETED: Found {len(sections)} sections: {[s.number for s in sections]}")
         return sections
 
     def _aggressive_normalize_section_breaks(self, text: str) -> str:

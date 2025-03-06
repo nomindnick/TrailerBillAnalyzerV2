@@ -7,6 +7,7 @@ import re
 from typing import Dict, List, Any, Set, Optional
 from dataclasses import dataclass
 import json
+import traceback  # Add this import for detailed error tracking
 
 # Set up logging
 logging.basicConfig(
@@ -149,6 +150,79 @@ class ImprovedBaseParser(BaseParser):
 
         return sections
 
+    def _parse_bill_sections_debug(self, bill_portion: str) -> List[BillSection]:
+        """Debug-focused section parser to identify where the process is failing."""
+        self.logger.info(f"Starting section parsing with text length: {len(bill_portion)}")
+
+        sections = []
+
+        # First, check for all section headers with a simple pattern
+        all_headers = re.findall(r'(?:^|\n)\s*(SEC\.\s+(\d+)\.)', bill_portion, re.IGNORECASE)
+        self.logger.info(f"FOUND HEADERS: {[h[1] for h in all_headers]}")
+
+        # Process each section header one by one with extensive logging
+        for i, (header, section_num) in enumerate(all_headers):
+            self.logger.info(f"------ PROCESSING SECTION {section_num} (header {i+1} of {len(all_headers)}) ------")
+
+            try:
+                # Find the start position of this section
+                start_idx = bill_portion.find(header)
+                if start_idx == -1:
+                    self.logger.error(f"ERROR: Couldn't find header '{header}' in bill text")
+                    continue
+
+                start_pos = start_idx + len(header)
+
+                # Find the end of this section (start of next section or end of text)
+                if i < len(all_headers) - 1:
+                    next_header = all_headers[i+1][0]
+                    end_pos = bill_portion.find(next_header, start_pos)
+                    if end_pos == -1:
+                        self.logger.error(f"ERROR: Couldn't find next header '{next_header}' after section {section_num}")
+                        end_pos = len(bill_portion)
+                else:
+                    end_pos = len(bill_portion)
+
+                # Extract the section text
+                section_text = bill_portion[start_pos:end_pos].strip()
+                self.logger.info(f"Section {section_num}: Extracted {len(section_text)} characters")
+                self.logger.info(f"SECTION TEXT STARTS WITH: {section_text[:100]}...")
+
+                # Check if there's anything strange in the text that might cause issues
+                if '\0' in section_text:
+                    self.logger.warning(f"WARNING: Section {section_num} contains null bytes")
+
+                # Extract code references with explicit error handling
+                try:
+                    self.logger.info(f"Extracting code references for section {section_num}")
+                    code_refs = self._extract_code_references(section_text)
+                    self.logger.info(f"Found {len(code_refs)} code references: {code_refs}")
+                except Exception as e:
+                    self.logger.error(f"EXCEPTION in code reference extraction: {str(e)}")
+                    self.logger.error(f"Stack trace: {traceback.format_exc()}")
+                    code_refs = []
+
+                # Create and add the section object
+                try:
+                    bs = BillSection(
+                        number=section_num,
+                        original_label=header.strip(),
+                        text=section_text,
+                        code_references=code_refs
+                    )
+                    sections.append(bs)
+                    self.logger.info(f"Successfully added section {section_num}")
+                except Exception as e:
+                    self.logger.error(f"EXCEPTION creating BillSection: {str(e)}")
+                    self.logger.error(f"Stack trace: {traceback.format_exc()}")
+
+            except Exception as e:
+                self.logger.error(f"GENERAL EXCEPTION processing section {section_num}: {str(e)}")
+                self.logger.error(f"Stack trace: {traceback.format_exc()}")
+
+        self.logger.info(f"PARSING COMPLETED: Found {len(sections)} sections: {[s.number for s in sections]}")
+        return sections
+
     def _aggressive_normalize_section_breaks(self, text: str) -> str:
         """
         Enhanced normalization of section breaks with more aggressive pattern matching.
@@ -221,10 +295,31 @@ async def test_ab114_parsing():
         bill_text = bill_text_response['full_text']
         logger.info(f"Retrieved bill text of length: {len(bill_text)}")
 
+        # Add this debug logging before parsing
+        logger.info("=" * 50)
+        logger.info("BILL TEXT SAMPLE (first 500 chars):")
+        logger.info(bill_text[:500])
+        logger.info("=" * 50)
+
+        # Check if the bill text has the expected sections
+        for expected_section in range(1, 10):
+            section_header = f"SEC. {expected_section}."
+            header_pos = bill_text.find(section_header)
+            if header_pos > -1:
+                context = bill_text[header_pos:header_pos+200]  # 200 chars of context
+                logger.info(f"Found '{section_header}' at position {header_pos}: {context}...")
+            else:
+                logger.warning(f"Could not find '{section_header}' in bill text")
+
         # Create an instance of our improved parser
         parser = ImprovedBaseParser()
 
+        # Test the new debug parser
+        logger.info("Using debug parser to identify issues...")
+        parsed_bill_debug = parser._parse_bill_sections_debug(bill_text)
+
         # Run the parsing with the improved parser
+        logger.info("Using standard parser...")
         parsed_bill = parser.parse_bill(bill_text)
 
         # Test if we're getting the sections we expect
