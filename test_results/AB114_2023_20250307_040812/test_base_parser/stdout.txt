@@ -1,0 +1,106 @@
+2025-03-07 04:08:13,154 - parser_test - INFO - Starting parser test for AB114 from 2023-2024 session
+2025-03-07 04:08:13,155 - parser_test - INFO - Fetching bill text...
+2025-03-07 04:08:13,155 - src.services.bill_scraper - INFO - Attempting to fetch bill from https://leginfo.legislature.ca.gov/faces/billNavClient.xhtml?bill_id=202320240AB114
+2025-03-07 04:08:13,155 - src.services.bill_scraper - INFO - Session string: 20232024
+2025-03-07 04:08:13,155 - src.services.bill_scraper - INFO - Full bill ID: 202320240AB114
+2025-03-07 04:08:13,156 - src.services.bill_scraper - INFO - Making request with headers:
+2025-03-07 04:08:13,156 - src.services.bill_scraper - INFO - {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9', 'Accept-Encoding': 'gzip, deflate, br', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"', 'Sec-Ch-Ua-Mobile': '?0', 'Sec-Ch-Ua-Platform': '"Windows"', 'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'none', 'Sec-Fetch-User': '?1', 'Upgrade-Insecure-Requests': '1'}
+2025-03-07 04:08:14,768 - src.services.bill_scraper - INFO - Response status: 200
+2025-03-07 04:08:14,768 - src.services.bill_scraper - INFO - Response headers: <CIMultiDictProxy('Date': 'Fri, 07 Mar 2025 04:08:13 GMT', 'Server': 'Apache', 'Cache-Control': 'no-cache', 'Cache-Control': 'must-revalidate', 'Cache-Control': 'max-age=0', 'Pragma': 'no-cache', 'Content-Type': 'text/html; charset=UTF-8', 'Expires': '-1', 'X-Content-Type-Options': 'nosniff', 'Set-Cookie': 'JSESSIONID=dI1uyhjlo7l4TCgW7tbzR3FlNYa17nzJ8CCvYgoxRIPKNogBDzd7!134831530; path=/; HttpOnly', 'Set-Cookie': 'ROUTEID=.5; path=/', 'Transfer-Encoding': 'chunked')>
+2025-03-07 04:08:14,954 - src.services.bill_scraper - INFO - Received HTML content of length: 1225719
+2025-03-07 04:08:15,247 - src.services.bill_scraper - INFO - Response content length: 1225719
+2025-03-07 04:08:15,248 - src.services.bill_scraper - INFO - Contains 'Bill Text' tag: True
+2025-03-07 04:08:15,248 - src.services.bill_scraper - INFO - Contains 'Content not found': False
+2025-03-07 04:08:15,515 - src.services.bill_scraper - INFO - Successfully parsed bill text of length 131546
+2025-03-07 04:08:15,515 - parser_test - INFO - Successfully retrieved bill text (131546 characters)
+2025-03-07 04:08:15,516 - parser_test - INFO - Saved raw bill text to 'raw_bill_text.txt'
+2025-03-07 04:08:15,516 - parser_test - INFO - Parsing bill with BaseParser...
+2025-03-07 04:08:15,528 - src.services.base_parser - WARNING - Could not parse bill header with standard pattern
+2025-03-07 04:08:15,650 - src.services.base_parser - INFO - Found 2 potential bill sections
+2025-03-07 04:08:15,650 - src.services.base_parser - INFO - Found section with label 'SEC. 2.'
+2025-03-07 04:08:15,666 - src.services.base_parser - INFO - Found 1 code references in section 2: ['Education Code:2574']
+2025-03-07 04:08:15,666 - src.services.base_parser - INFO - Found section with label 'SEC. 3.'
+2025-03-07 04:08:15,671 - src.services.base_parser - INFO - Found 1 code references in section 3: ['Education Code:2575.2']
+2025-03-07 04:08:15,671 - src.services.base_parser - INFO - Parsed 2 bill sections: ['SEC. 2.', 'SEC. 3.']
+2025-03-07 04:08:15,671 - src.services.base_parser - INFO - Digest section 1 has refs: set()
+2025-03-07 04:08:15,671 - src.services.base_parser - INFO - Digest section 2 has refs: set()
+2025-03-07 04:08:15,671 - src.services.base_parser - INFO - Digest section 3 has refs: set()
+2025-03-07 04:08:15,671 - src.services.base_parser - INFO - Digest section 4 has refs: set()
+2025-03-07 04:08:15,671 - src.services.base_parser - INFO - Digest section 5 has refs: set()
+2025-03-07 04:08:15,672 - src.services.base_parser - INFO - Digest section 7 has refs: set()
+2025-03-07 04:08:15,672 - src.services.base_parser - INFO - Digest section 8 has refs: set()
+2025-03-07 04:08:15,672 - src.services.base_parser - INFO - Digest section 9 has refs: set()
+2025-03-07 04:08:15,672 - src.services.base_parser - INFO - Digest section 10 has refs: set()
+2025-03-07 04:08:15,672 - src.services.base_parser - INFO - Digest section 11 has refs: set()
+2025-03-07 04:08:15,672 - src.services.base_parser - INFO - Digest section 12 has refs: set()
+2025-03-07 04:08:15,672 - src.services.base_parser - INFO - Digest section 13 has refs: set()
+2025-03-07 04:08:15,672 - src.services.base_parser - INFO - Digest section 14 has refs: set()
+2025-03-07 04:08:15,672 - src.services.base_parser - INFO - Digest section 15 has refs: set()
+2025-03-07 04:08:15,672 - src.services.base_parser - INFO - Digest section 16 has refs: set()
+2025-03-07 04:08:15,673 - src.services.base_parser - INFO - Digest section 17 has refs: set()
+2025-03-07 04:08:15,673 - src.services.base_parser - INFO - Digest section 18 has refs: set()
+2025-03-07 04:08:15,673 - src.services.base_parser - INFO - Digest section 19 has refs: set()
+2025-03-07 04:08:15,673 - src.services.base_parser - INFO - Digest section 20 has refs: set()
+2025-03-07 04:08:15,673 - src.services.base_parser - INFO - Digest section 21 has refs: set()
+2025-03-07 04:08:15,673 - src.services.base_parser - INFO - Digest section 22 has refs: set()
+2025-03-07 04:08:15,673 - src.services.base_parser - INFO - Digest section 23 has refs: set()
+2025-03-07 04:08:15,673 - src.services.base_parser - INFO - Digest section 24 has refs: set()
+2025-03-07 04:08:15,673 - src.services.base_parser - INFO - Digest section 25 has refs: set()
+2025-03-07 04:08:15,673 - src.services.base_parser - INFO - Digest section 26 has refs: set()
+2025-03-07 04:08:15,674 - src.services.base_parser - INFO - Digest section 27 has refs: set()
+2025-03-07 04:08:15,674 - src.services.base_parser - INFO - Digest section 28 has refs: set()
+2025-03-07 04:08:15,674 - src.services.base_parser - INFO - Digest section 29 has refs: set()
+2025-03-07 04:08:15,674 - src.services.base_parser - INFO - Digest section 30 has refs: set()
+2025-03-07 04:08:15,674 - src.services.base_parser - INFO - Digest section 32 has refs: set()
+2025-03-07 04:08:15,674 - src.services.base_parser - INFO - Digest section 33 has refs: set()
+2025-03-07 04:08:15,674 - src.services.base_parser - INFO - Digest section 34 has refs: set()
+2025-03-07 04:08:15,674 - src.services.base_parser - INFO - Digest section 35 has refs: set()
+2025-03-07 04:08:15,674 - src.services.base_parser - INFO - Digest section 36 has refs: set()
+2025-03-07 04:08:15,674 - src.services.base_parser - INFO - Digest section 37 has refs: set()
+2025-03-07 04:08:15,674 - src.services.base_parser - INFO - Digest section 38 has refs: set()
+2025-03-07 04:08:15,675 - src.services.base_parser - INFO - Digest section 39 has refs: set()
+2025-03-07 04:08:15,675 - src.services.base_parser - INFO - Digest section 40 has refs: set()
+2025-03-07 04:08:15,675 - src.services.base_parser - INFO - Digest section 41 has refs: set()
+2025-03-07 04:08:15,675 - src.services.base_parser - INFO - Digest section 42 has refs: set()
+2025-03-07 04:08:15,675 - src.services.base_parser - INFO - Digest section 43 has refs: set()
+2025-03-07 04:08:15,675 - src.services.base_parser - INFO - Digest section 44 has refs: set()
+2025-03-07 04:08:15,675 - src.services.base_parser - INFO - Digest section 45 has refs: set()
+2025-03-07 04:08:15,675 - src.services.base_parser - INFO - Digest section 46 has refs: set()
+2025-03-07 04:08:15,675 - src.services.base_parser - INFO - Digest section 50 has refs: set()
+2025-03-07 04:08:15,675 - src.services.base_parser - INFO - Digest section 51 has refs: set()
+2025-03-07 04:08:15,675 - src.services.base_parser - INFO - Digest section 52 has refs: set()
+2025-03-07 04:08:15,676 - src.services.base_parser - INFO - Digest section 53 has refs: set()
+2025-03-07 04:08:15,676 - src.services.base_parser - INFO - Digest section 54 has refs: set()
+2025-03-07 04:08:15,676 - src.services.base_parser - INFO - Digest section 55 has refs: set()
+2025-03-07 04:08:15,676 - src.services.base_parser - INFO - Digest section 56 has refs: set()
+2025-03-07 04:08:15,676 - src.services.base_parser - INFO - Digest section 57 has refs: set()
+2025-03-07 04:08:15,676 - src.services.base_parser - INFO - Digest section 58 has refs: set()
+2025-03-07 04:08:15,676 - src.services.base_parser - INFO - Digest section 59 has refs: set()
+2025-03-07 04:08:15,676 - src.services.base_parser - INFO - Digest section 60 has refs: set()
+2025-03-07 04:08:15,676 - src.services.base_parser - INFO - Digest section 61 has refs: set()
+2025-03-07 04:08:15,676 - src.services.base_parser - INFO - Digest section 62 has refs: set()
+2025-03-07 04:08:15,676 - src.services.base_parser - INFO - Digest section 63 has refs: set()
+2025-03-07 04:08:15,676 - src.services.base_parser - INFO - Digest section 64 has refs: set()
+2025-03-07 04:08:15,677 - src.services.base_parser - INFO - Digest section 65 has refs: set()
+2025-03-07 04:08:15,677 - src.services.base_parser - INFO - Digest section 66 has refs: set()
+2025-03-07 04:08:15,677 - src.services.base_parser - INFO - Digest section 67 has refs: set()
+2025-03-07 04:08:15,677 - src.services.base_parser - INFO - Digest section 68 has refs: set()
+2025-03-07 04:08:15,677 - src.services.base_parser - INFO - Digest section 69 has refs: set()
+2025-03-07 04:08:15,677 - src.services.base_parser - INFO - Digest section 70 has refs: set()
+2025-03-07 04:08:15,677 - src.services.base_parser - INFO - Digest section 71 has refs: set()
+2025-03-07 04:08:15,677 - src.services.base_parser - INFO - Digest section 72 has refs: set()
+2025-03-07 04:08:15,677 - src.services.base_parser - INFO - Total section matches found: 0
+2025-03-07 04:08:15,677 - parser_test - INFO - Parsing complete. Generating report...
+2025-03-07 04:08:15,678 - parser_test - INFO - Test report saved to 'parser_test_report.txt'
+
+PARSER TEST SUMMARY
+--------------------------------------------------
+Bill: AB114 (2023-2024)
+Digest Sections Found: 67
+Bill Sections Found: 2
+Digest Sections Matched: 0/67
+Bill Sections Matched: 0/2
+
+Detailed report saved to 'parser_test_report.txt'
+Raw bill text saved to 'raw_bill_text.txt'
+See 'parser_test.log' for detailed logging output
