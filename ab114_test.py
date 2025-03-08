@@ -102,7 +102,7 @@ async def test_ab114_parsing():
 
         # Test the normalization function from the parser
         logger.info("Testing text normalization...")
-        normalized_text = bill_parser._aggressive_normalize(cleaned_text)
+        normalized_text = bill_parser._aggressive_normalize_improved(cleaned_text)
 
         with open(os.path.join(output_dir, "ab114_normalized.txt"), "w", encoding="utf-8") as f:
             f.write(normalized_text)
