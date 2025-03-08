@@ -221,6 +221,9 @@ class BillScraper:
             # Then get the plain text with proper spacing
             full_text = content_div.get_text("\n", strip=True)
 
+            # Apply enhanced HTML cleaning for amended bills
+            full_text = self._clean_html_markup_enhanced(html_content)
+
             # Normalize whitespace and line breaks
             full_text = self._normalize_whitespace(full_text)
 
@@ -274,8 +277,9 @@ class BillScraper:
 
                 if bill_text_parts:
                     combined_text = "\n\n".join(bill_text_parts)
-                    # Clean and normalize the text
-                    cleaned_text = self._normalize_whitespace(combined_text)
+                    # Clean and normalize the text using enhanced cleaning
+                    cleaned_text = self._clean_html_markup_enhanced(combined_text)
+                    cleaned_text = self._normalize_whitespace(cleaned_text)
                     cleaned_text = self._normalize_section_breaks(cleaned_text)
 
                     return {
@@ -293,7 +297,9 @@ class BillScraper:
                 # Check if it contains key bill indicators
                 markers = ["CHAPTER", "SECTION", "SEC.", "Legislative Counsel", "do enact as follows"]
                 if any(marker in all_text for marker in markers):
-                    cleaned_text = self._normalize_whitespace(all_text)
+                    # Apply enhanced cleaning for heavily formatted/amended bills
+                    cleaned_text = self._clean_html_markup_enhanced(html_content)
+                    cleaned_text = self._normalize_whitespace(cleaned_text)
                     cleaned_text = self._normalize_section_breaks(cleaned_text)
 
                     return {
@@ -357,47 +363,81 @@ class BillScraper:
             self.logger.warning(f"Error extracting bill metadata: {str(e)}")
             return metadata  # Return whatever we could extract
 
-    def _clean_html_markup(self, text: str) -> str:
+    def _clean_html_markup_enhanced(self, text):
         """
-        Clean HTML markup from amended bills to create plain text that's easier to parse.
-        Handles strikethroughs, additions, and other HTML formatting.
+        Enhanced method to clean HTML markup from amended bills to create plain text that's easier to parse.
+        Handles strikethroughs, additions, and other HTML formatting with special attention to section headers.
 
         Args:
             text: The HTML text to clean
 
         Returns:
-            Plain text with HTML markup removed
+            Plain text with HTML markup removed but sections preserved
         """
-        # First, handle the strike-through content (removed text)
-        # We simply remove it since it's not part of the final bill text
-        text = re.sub(r'<font color="#B30000"><strike>.*?</strike></font>', '', text, flags=re.DOTALL)
-        text = re.sub(r'<strike>.*?</strike>', '', text, flags=re.DOTALL)
-        text = re.sub(r'<del>.*?</del>', '', text, flags=re.DOTALL)
+        # First, identify and protect section headers
+        section_headers = re.findall(r'(?:<[^>]*>)*(?:SECTION|SEC)\.?\s+\d+\.(?:<[^>]*>)*', text, re.IGNORECASE)
+        protected_text = text
+
+        section_header_map = []
+        for i, header in enumerate(section_headers):
+            # Create a unique marker for this section header
+            marker = f"__SECTION_MARKER_{i}__"
+            # Clean the header text (remove HTML but keep the section header text)
+            clean_header = re.sub(r'<[^>]*>', '', header)
+            # Replace the header with the marker
+            protected_text = protected_text.replace(header, marker)
+            # Store the mapping for later restoration
+            section_header_map.append((marker, clean_header))
+
+        # Handle strikethroughs - remove the content
+        protected_text = re.sub(r'<font color="#B30000"><strike>.*?</strike></font>', '', protected_text, flags=re.DOTALL)
+        protected_text = re.sub(r'<strike>.*?</strike>', '', protected_text, flags=re.DOTALL)
+        protected_text = re.sub(r'<del>.*?</del>', '', protected_text, flags=re.DOTALL)
+        protected_text = re.sub(r'<s>.*?</s>', '', protected_text, flags=re.DOTALL)
 
         # Handle red text that might indicate deletions
-        text = re.sub(r'<font color="(?:#B30000|#FF0000|red)">(.*?)</font>', '', text, flags=re.DOTALL)
+        protected_text = re.sub(r'<font color="(?:#B30000|#FF0000|red)">(.*?)</font>', '', protected_text, flags=re.DOTALL)
 
-        # Then handle blue text (added text)
-        # We keep this content but remove the HTML markup
-        text = re.sub(r'<font color="blue" class="blue_text"><i>(.*?)</i></font>', r'\1', text, flags=re.DOTALL)
-        text = re.sub(r'<font color="blue">(.*?)</font>', r'\1', text, flags=re.DOTALL)
-        text = re.sub(r'<span class="new_text">(.*?)</span>', r'\1', text, flags=re.DOTALL)
-        text = re.sub(r'<ins>(.*?)</ins>', r'\1', text, flags=re.DOTALL)
-        text = re.sub(r'<i>(.*?)</i>', r'\1', text, flags=re.DOTALL)
+        # Handle blue text (added text) - keep content but remove markup
+        protected_text = re.sub(r'<font color="blue" class="blue_text"><i>(.*?)</i></font>', r'\1', protected_text, flags=re.DOTALL)
+        protected_text = re.sub(r'<font color="blue">(.*?)</font>', r'\1', protected_text, flags=re.DOTALL)
+        protected_text = re.sub(r'<span class="new_text">(.*?)</span>', r'\1', protected_text, flags=re.DOTALL)
+        protected_text = re.sub(r'<ins>(.*?)</ins>', r'\1', protected_text, flags=re.DOTALL)
+        protected_text = re.sub(r'<i>(.*?)</i>', r'\1', protected_text, flags=re.DOTALL)
 
         # Remove any remaining HTML tags
-        text = re.sub(r'<[^>]*>', '', text)
+        protected_text = re.sub(r'<[^>]*>', ' ', protected_text)
 
         # Clean up extra whitespace
-        text = re.sub(r'\s+', ' ', text)
+        protected_text = re.sub(r'\s+', ' ', protected_text)
+
+        # Restore the protected section headers
+        cleaned_text = protected_text
+        for marker, header in section_header_map:
+            cleaned_text = cleaned_text.replace(marker, header)
 
         # Make sure section identifiers are separated by newlines
-        text = re.sub(r'([^\n])(SEC\.|SECTION)', r'\1\n\2', text, flags=re.IGNORECASE)
+        cleaned_text = re.sub(r'([^\n])(SEC\.|SECTION)', r'\1\n\2', cleaned_text, flags=re.IGNORECASE)
 
         # Ensure consistency in section formatting
-        text = re.sub(r'\n\s*(SEC\.?|SECTION)\s*(\d+)\.\s*', r'\n\1 \2.\n', text, flags=re.IGNORECASE)
+        cleaned_text = re.sub(r'\n\s*(SEC\.?|SECTION)\s*(\d+)\.\s*', r'\n\1 \2.\n', cleaned_text, flags=re.IGNORECASE)
 
-        return text
+        # Normalize whitespace
+        cleaned_text = re.sub(r'\s+', ' ', cleaned_text)
+        cleaned_text = re.sub(r' +\n', '\n', cleaned_text)
+        cleaned_text = re.sub(r'\n +', '\n', cleaned_text)
+        cleaned_text = re.sub(r'\n\n+', '\n\n', cleaned_text)
+
+        return cleaned_text.strip()
+
+    def _clean_html_markup(self, text: str) -> str:
+        """
+        Clean HTML markup from amended bills to create plain text that's easier to parse.
+        Handles strikethroughs, additions, and other HTML formatting.
+
+        This method is now a wrapper for the enhanced version.
+        """
+        return self._clean_html_markup_enhanced(text)
 
     def _normalize_whitespace(self, text: str) -> str:
         """

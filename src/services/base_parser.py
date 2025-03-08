@@ -53,7 +53,7 @@ class BillParser:
             cleaned_text = self._clean_html_markup(bill_text)
 
             # Then normalize section breaks for consistent parsing
-            cleaned_text = self._aggressive_normalize(cleaned_text)
+            cleaned_text = self._aggressive_normalize_improved(cleaned_text)
 
             # Now parse the bill components
             header_info = self._parse_bill_header(cleaned_text)
@@ -72,7 +72,7 @@ class BillParser:
 
             # Parse each portion
             bill.digest_sections = self._parse_digest_sections(digest_text)
-            bill.bill_sections = self._parse_bill_sections(bill_portion)
+            bill.bill_sections = self._parse_bill_sections_improved(bill_portion)
 
             # Set relationships between digest sections and bill sections
             self._match_sections(bill)
@@ -156,31 +156,64 @@ class BillParser:
         """
         Clean HTML markup from amended bills to create plain text that's easier to parse.
         Handles strikethroughs, additions, and other HTML formatting.
-        """
-        # First, handle the strike-through content (removed text)
-        # We simply remove it since it's not part of the final bill text
-        text = re.sub(r'<font color="#B30000"><strike>.*?</strike></font>', '', text, flags=re.DOTALL)
-        text = re.sub(r'<strike>.*?</strike>', '', text, flags=re.DOTALL)
 
-        # Then handle blue text (added text)
-        # We keep this content but remove the HTML markup
-        text = re.sub(r'<font color="blue" class="blue_text"><i>(.*?)</i></font>', r'\1', text, flags=re.DOTALL)
-        text = re.sub(r'<i>(.*?)</i>', r'\1', text, flags=re.DOTALL)
-        text = re.sub(r'<font color="blue">(.*?)</font>', r'\1', text, flags=re.DOTALL)
+        This is now a wrapper for the enhanced method.
+        """
+        # First, identify and protect section headers
+        section_headers = re.findall(r'(?:<[^>]*>)*(?:SECTION|SEC)\.?\s+\d+\.(?:<[^>]*>)*', text, re.IGNORECASE)
+        protected_text = text
+
+        section_header_map = []
+        for i, header in enumerate(section_headers):
+            # Create a unique marker for this section header
+            marker = f"__SECTION_MARKER_{i}__"
+            # Clean the header text (remove HTML but keep the section header text)
+            clean_header = re.sub(r'<[^>]*>', '', header)
+            # Replace the header with the marker
+            protected_text = protected_text.replace(header, marker)
+            # Store the mapping for later restoration
+            section_header_map.append((marker, clean_header))
+
+        # Handle strikethroughs - remove the content
+        protected_text = re.sub(r'<font color="#B30000"><strike>.*?</strike></font>', '', protected_text, flags=re.DOTALL)
+        protected_text = re.sub(r'<strike>.*?</strike>', '', protected_text, flags=re.DOTALL)
+        protected_text = re.sub(r'<del>.*?</del>', '', protected_text, flags=re.DOTALL)
+        protected_text = re.sub(r'<s>.*?</s>', '', protected_text, flags=re.DOTALL)
+
+        # Handle red text that might indicate deletions
+        protected_text = re.sub(r'<font color="(?:#B30000|#FF0000|red)">(.*?)</font>', '', protected_text, flags=re.DOTALL)
+
+        # Handle blue text (added text) - keep content but remove markup
+        protected_text = re.sub(r'<font color="blue" class="blue_text"><i>(.*?)</i></font>', r'\1', protected_text, flags=re.DOTALL)
+        protected_text = re.sub(r'<font color="blue">(.*?)</font>', r'\1', protected_text, flags=re.DOTALL)
+        protected_text = re.sub(r'<span class="new_text">(.*?)</span>', r'\1', protected_text, flags=re.DOTALL)
+        protected_text = re.sub(r'<ins>(.*?)</ins>', r'\1', protected_text, flags=re.DOTALL)
+        protected_text = re.sub(r'<i>(.*?)</i>', r'\1', protected_text, flags=re.DOTALL)
 
         # Remove any remaining HTML tags
-        text = re.sub(r'<[^>]*>', '', text)
+        protected_text = re.sub(r'<[^>]*>', ' ', protected_text)
 
         # Clean up extra whitespace
-        text = re.sub(r'\s+', ' ', text)
+        protected_text = re.sub(r'\s+', ' ', protected_text)
+
+        # Restore the protected section headers
+        cleaned_text = protected_text
+        for marker, header in section_header_map:
+            cleaned_text = cleaned_text.replace(marker, header)
 
         # Make sure section identifiers are separated by newlines
-        text = re.sub(r'([^\n])(SEC\.|SECTION)', r'\1\n\2', text, flags=re.IGNORECASE)
+        cleaned_text = re.sub(r'([^\n])(SEC\.|SECTION)', r'\1\n\2', cleaned_text, flags=re.IGNORECASE)
 
         # Ensure consistency in section formatting
-        text = re.sub(r'\n\s*(SEC\.?|SECTION)\s*(\d+)\.\s*', r'\n\1 \2.\n', text, flags=re.IGNORECASE)
+        cleaned_text = re.sub(r'\n\s*(SEC\.?|SECTION)\s*(\d+)\.\s*', r'\n\1 \2.\n', cleaned_text, flags=re.IGNORECASE)
 
-        return text
+        # Normalize whitespace
+        cleaned_text = re.sub(r'\s+', ' ', cleaned_text)
+        cleaned_text = re.sub(r' +\n', '\n', cleaned_text)
+        cleaned_text = re.sub(r'\n +', '\n', cleaned_text)
+        cleaned_text = re.sub(r'\n\n+', '\n\n', cleaned_text)
+
+        return cleaned_text.strip()
 
     def _extract_title(self, text: str) -> str:
         """
@@ -468,71 +501,194 @@ class BillParser:
         """
         Enhanced section parser that handles both clean bills and bills with
         amendment markup. Uses multiple strategies to find and extract sections.
+
+        This is now a wrapper for the improved version.
+        """
+        return self._parse_bill_sections_improved(bill_portion)
+
+    def _parse_bill_sections_improved(self, bill_portion):
+        """
+        Enhanced section parser that handles both clean bills and bills with
+        amendment markup. Uses multiple strategies to find and extract sections.
         """
         sections = []
         cleaned_text = bill_portion.strip()
 
-        # Apply aggressive normalization to the text
-        normalized_text = self._aggressive_normalize(cleaned_text)
+        self.logger.info(f"Starting enhanced bill section parsing for text of length: {len(cleaned_text)}")
 
-        # Try multiple section patterns with increasing flexibility
-        section_patterns = [
-            # Standard format with newline
-            r'(?:^|\n)\s*(?P<label>(?:SECTION|SEC)\.?\s+(?P<number>\d+)\.)\s*(?P<text>(?:.+?)(?=\n\s*(?:SECTION|SEC)\.?\s+\d+\.|\Z))',
+        # First pass: Try to identify section boundaries directly
+        # This two-stage approach helps with complex bills
+        section_boundaries = []
+        section_pattern = re.compile(
+            r'(?:^|\n)\s*(?:SECTION|SEC)\.?\s+(\d+)\.',
+            re.IGNORECASE | re.MULTILINE
+        )
 
-            # More flexible with optional whitespace
-            r'(?:^|\n)\s*(?P<label>(?:SECTION|SEC)\.?\s*(?P<number>\d+)\.)\s*(?P<text>(?:.+?)(?=\n\s*(?:SECTION|SEC)\.?\s*\d+\.|\Z))',
+        matches = list(section_pattern.finditer(cleaned_text))
 
-            # Force matches at "SEC. X." regardless of surrounding context
-            r'\n\s*(?P<label>SEC\.\s+(?P<number>\d+)\.)\s*(?P<text>(?:.+?)(?=\n\s*SEC\.\s+\d+\.|\Z))',
-        ]
+        if matches:
+            self.logger.info(f"Found {len(matches)} potential section boundaries")
 
-        # Try each pattern
-        all_matches = []
-        successful_pattern = None
+            # Build a list of (start_position, section_number, section_label)
+            for match in matches:
+                section_boundaries.append((
+                    match.start(),
+                    match.group(1),
+                    match.group(0).strip()
+                ))
 
-        for i, pattern in enumerate(section_patterns):
-            matches = list(re.finditer(pattern, normalized_text, re.DOTALL | re.MULTILINE | re.IGNORECASE))
-            self.logger.info(f"Pattern {i+1} found {len(matches)} potential sections")
+            # Sort by position in text
+            section_boundaries.sort()
 
-            if matches:
-                all_matches = matches
-                successful_pattern = i+1
-                break
+            # Extract each section using the boundaries
+            for i, (start_pos, section_num, section_label) in enumerate(section_boundaries):
+                # Find the end of this section (start of next section or end of text)
+                if i < len(section_boundaries) - 1:
+                    end_pos = section_boundaries[i+1][0]
+                else:
+                    end_pos = len(cleaned_text)
 
-        if not all_matches:
-            self.logger.warning("Standard patterns failed, attempting fallback section extraction")
-            # Use fallback method
-            return self._parse_bill_sections_fallback(cleaned_text)
+                # Extract the full section text
+                full_section_text = cleaned_text[start_pos:end_pos].strip()
 
-        # Process matches
-        for match in all_matches:
-            section_num = match.group('number')
-            section_text = match.group('text').strip()
-            section_label = match.group('label').strip()
+                # Split into label and body
+                parts = full_section_text.split('\n', 1)
+                if len(parts) > 1:
+                    section_body = parts[1].strip()
+                else:
+                    section_body = ""
 
-            # Skip empty sections
-            if not section_text:
-                self.logger.warning(f"Empty text for section {section_num}, skipping")
-                continue
+                # Skip empty sections
+                if not section_body:
+                    self.logger.warning(f"Empty text for section {section_num}, skipping")
+                    continue
 
-            # Extract code references with special handling for decimal points
-            code_refs = self._extract_code_references_robust(section_text)
+                # Extract code references
+                code_refs = self._extract_code_references_robust(section_body)
 
-            bs = BillSection(
-                number=section_num,
-                original_label=section_label,
-                text=section_text,
-                code_references=code_refs
+                # Create the BillSection object
+                bs = BillSection(
+                    number=section_num,
+                    original_label=section_label.strip(),
+                    text=section_body,
+                    code_references=code_refs
+                )
+
+                # Determine action type
+                action_type = self._determine_action(section_body)
+                if action_type != CodeAction.UNKNOWN:
+                    bs.section_type = action_type
+
+                sections.append(bs)
+                self.logger.info(f"Added section {section_num} with label '{section_label.strip()}'")
+
+        # If we couldn't find any sections with the direct approach, try the more aggressive approach
+        if not sections:
+            self.logger.warning("Direct section extraction failed, attempting more aggressive approach")
+
+            # Try explicit pattern matching for "SECTION X." and "SEC. X."
+            explicit_pattern = re.compile(
+                r'(?:^|\n)\s*((?:SECTION|SEC)\.?\s+(\d+)\.)\s*(.+?)(?=\n\s*(?:SECTION|SEC)\.?\s+\d+\.|\Z)',
+                re.DOTALL | re.IGNORECASE
             )
 
-            action_type = self._determine_action(section_text)
-            if action_type != CodeAction.UNKNOWN:
-                bs.section_type = action_type
+            explicit_matches = list(explicit_pattern.finditer(cleaned_text))
+            self.logger.info(f"Aggressive pattern found {len(explicit_matches)} potential sections")
 
-            sections.append(bs)
+            for match in explicit_matches:
+                section_label = match.group(1).strip()
+                section_num = match.group(2)
+                section_body = match.group(3).strip()
 
-        self.logger.info(f"Parsed {len(sections)} bill sections using pattern {successful_pattern}")
+                # Skip empty sections
+                if not section_body:
+                    self.logger.warning(f"Empty text for section {section_num}, skipping")
+                    continue
+
+                # Extract code references
+                code_refs = self._extract_code_references_robust(section_body)
+
+                # Create the BillSection object
+                bs = BillSection(
+                    number=section_num,
+                    original_label=section_label,
+                    text=section_body,
+                    code_references=code_refs
+                )
+
+                # Determine action type
+                action_type = self._determine_action(section_body)
+                if action_type != CodeAction.UNKNOWN:
+                    bs.section_type = action_type
+
+                sections.append(bs)
+                self.logger.info(f"Aggressive approach added section {section_num} with label '{section_label}'")
+
+        # If we still couldn't find any sections, use the most aggressive approach
+        if not sections:
+            self.logger.warning("All pattern-based approaches failed, trying line-by-line analysis")
+
+            # Split the text into lines and look for section headers line by line
+            lines = cleaned_text.split('\n')
+            section_start_idx = -1
+            current_section_num = None
+            current_section_label = None
+
+            for i, line in enumerate(lines):
+                # Check if this line contains a section header
+                section_match = re.search(r'^(?:SECTION|SEC)\.?\s+(\d+)\.', line.strip(), re.IGNORECASE)
+
+                if section_match:
+                    # If we were already processing a section, add it
+                    if current_section_num is not None:
+                        section_text = '\n'.join(lines[section_start_idx:i]).strip()
+                        # Split into label and body
+                        parts = section_text.split('\n', 1)
+                        section_body = parts[1].strip() if len(parts) > 1 else ""
+
+                        if section_body:  # Skip empty sections
+                            bs = BillSection(
+                                number=current_section_num,
+                                original_label=current_section_label,
+                                text=section_body,
+                                code_references=self._extract_code_references_robust(section_body)
+                            )
+
+                            action_type = self._determine_action(section_body)
+                            if action_type != CodeAction.UNKNOWN:
+                                bs.section_type = action_type
+
+                            sections.append(bs)
+                            self.logger.info(f"Line-by-line approach added section {current_section_num}")
+
+                    # Start a new section
+                    current_section_num = section_match.group(1)
+                    current_section_label = line.strip()
+                    section_start_idx = i
+
+                # Check if we've reached the end
+                if i == len(lines) - 1 and current_section_num is not None:
+                    section_text = '\n'.join(lines[section_start_idx:]).strip()
+                    # Split into label and body
+                    parts = section_text.split('\n', 1)
+                    section_body = parts[1].strip() if len(parts) > 1 else ""
+
+                    if section_body:  # Skip empty sections
+                        bs = BillSection(
+                            number=current_section_num,
+                            original_label=current_section_label,
+                            text=section_body,
+                            code_references=self._extract_code_references_robust(section_body)
+                        )
+
+                        action_type = self._determine_action(section_body)
+                        if action_type != CodeAction.UNKNOWN:
+                            bs.section_type = action_type
+
+                        sections.append(bs)
+                        self.logger.info(f"Line-by-line approach added final section {current_section_num}")
+
+        self.logger.info(f"Enhanced section parsing completed with {len(sections)} sections")
         return sections
 
     def _parse_bill_sections_fallback(self, bill_portion: str) -> List[BillSection]:
@@ -639,12 +795,28 @@ class BillParser:
         """
         Aggressively normalize text to fix common issues with bill formatting,
         especially handling decimal points in section numbers.
+
+        This is now a wrapper for the improved version.
+        """
+        return self._aggressive_normalize_improved(text)
+
+    def _aggressive_normalize_improved(self, text):
+        """
+        Aggressively normalize text to fix common issues with bill formatting,
+        especially handling decimal points in section numbers and section headers in amended bills.
         """
         # Replace Windows line endings
         text = text.replace('\r\n', '\n')
 
-        # Ensure consistent spacing around section headers
-        text = re.sub(r'(\n\s*)(SEC\.?|SECTION)(\s*)(\d+)(\.\s*)', r'\n\2 \4\5', text, flags=re.IGNORECASE)
+        # Make sure all SECTION or SEC headers have newlines before them
+        text = re.sub(r'([^\n])(SECTION|SEC\.)', r'\1\n\2', text, flags=re.IGNORECASE)
+
+        # Normalize section header format
+        text = re.sub(r'(?:^|\n)\s*(SECTION|SEC)\s*\.\s*(\d+)\s*\.', r'\n\1 \2.', text, flags=re.IGNORECASE)
+        text = re.sub(r'(?:^|\n)\s*(SECTION|SEC)(\d+)\s*\.', r'\n\1 \2.', text, flags=re.IGNORECASE)
+
+        # Ensure newlines after section headers
+        text = re.sub(r'(SECTION|SEC)\s+(\d+)\.\s*(?!\n)', r'\1 \2.\n', text, flags=re.IGNORECASE)
 
         # Fix the decimal point issue - remove line breaks between section numbers and decimal points
         text = re.sub(r'(\d+)\s*\n\s*(\.\d+)', r'\1\2', text)
@@ -652,17 +824,17 @@ class BillParser:
         # Standardize decimal points in section headers
         text = re.sub(r'Section\s+(\d+)\s*\n\s*(\.\d+)', r'Section \1\2', text)
 
-        # Ensure section headers are properly separated with newlines
-        text = re.sub(r'([^\n])(SEC\.|SECTION)', r'\1\n\2', text)
-
-        # Add space after section label if needed
-        text = re.sub(r'(SEC\.|SECTION)\s*(\d+\.)', r'\1 \2', text, flags=re.IGNORECASE)
-
-        # Enhance section visibility
-        text = re.sub(r'\n\s*(SEC\.|SECTION)\s+(\d+)\.', r'\n\1 \2.\n', text, flags=re.IGNORECASE)
+        # Ensure proper spacing in section references
+        text = re.sub(r'Section(\d+)', r'Section \1', text)
 
         # Fix double spaces
         text = re.sub(r'\s{2,}', ' ', text)
+
+        # Add empty line before sections to help with pattern matching
+        text = re.sub(r'(?:^|\n)(SECTION|SEC)\s+(\d+)\.', r'\n\n\1 \2.', text, flags=re.IGNORECASE)
+
+        # Make sure each Section header starts on a fresh line
+        text = re.sub(r'([^\n])(SECTION|SEC)\s+(\d+)\.', r'\1\n\2 \3.', text, flags=re.IGNORECASE)
 
         return text
 
@@ -845,3 +1017,132 @@ class BillParser:
                 if digest_code_refs and bill_code_refs and digest_code_refs.intersection(bill_code_refs):
                     if bill_section.number not in digest_section.bill_sections:
                         digest_section.bill_sections.append(bill_section.number)
+
+    def _extract_bill_sections_improved(self, bill_text):
+        """
+        Extract and structure bill sections with enhanced pattern matching for challenging formats.
+        Particularly designed for amended bills with complex markup.
+        """
+        section_map = {}
+        self.logger.info(f"Extracting bill sections from text of length {len(bill_text)}")
+
+        # First, perform aggressive cleaning and normalization
+        normalized_text = self._aggressive_normalize_improved(bill_text)
+
+        # Print a debug sample
+        sample_start = min(50000, max(0, len(normalized_text) - 500))
+        self.logger.debug(f"Normalized text sample: {normalized_text[sample_start:sample_start+500]}")
+
+        # Special pattern just to identify section headers
+        header_pattern = re.compile(
+            r'(?:^|\n)\s*(?P<label>(?:SECTION|SEC)\.?\s+(?P<number>\d+)\.)',
+            re.IGNORECASE | re.MULTILINE
+        )
+
+        headers = list(header_pattern.finditer(normalized_text))
+        self.logger.info(f"Found {len(headers)} section headers")
+
+        if headers:
+            # Extract full sections using the headers
+            for i, header in enumerate(headers):
+                start_pos = header.start()
+                section_label = header.group('label').strip()
+                section_num = header.group('number')
+
+                # Find the end of this section (start of next section or end of text)
+                if i < len(headers) - 1:
+                    end_pos = headers[i+1].start()
+                else:
+                    end_pos = len(normalized_text)
+
+                # Extract the full section text
+                section_text = normalized_text[start_pos:end_pos].strip()
+
+                # Remove the label from the text to get just the body
+                body_parts = section_text.split('\n', 1)
+                if len(body_parts) > 1:
+                    section_body = body_parts[1].strip()
+                else:
+                    section_body = ""
+
+                # Skip empty sections
+                if not section_body:
+                    self.logger.warning(f"Empty text for section {section_num}, skipping")
+                    continue
+
+                # Extract code references
+                code_refs = self._extract_code_references_robust(section_body)
+
+                section_map[section_num] = {
+                    "text": section_body,
+                    "original_label": section_label,
+                    "code_refs": code_refs,
+                    "action_type": self._determine_action(section_body),
+                    "code_sections": self._extract_modified_sections(section_body)
+                }
+
+                # Log the beginning of the section text
+                self.logger.debug(f"Section {section_num} begins with: {section_body[:100]}...")
+
+                # Log code references found
+                if code_refs:
+                    self.logger.info(f"Section {section_num} has code references: {list(code_refs)}")
+                else:
+                    self.logger.debug(f"No code references found in section {section_num}")
+
+        # If no sections were found using the improved pattern, try a more aggressive approach
+        if not section_map:
+            self.logger.warning("Standard extraction failed, attempting direct extraction")
+
+            # Direct regex to find all "SECTION X." or "SEC. X." patterns
+            section_regex = re.compile(r'(?:^|\n)\s*((?:SECTION|SEC)\.?\s+(\d+)\.)', re.IGNORECASE | re.MULTILINE)
+            section_matches = list(section_regex.finditer(normalized_text))
+
+            for i, match in enumerate(section_matches):
+                section_label = match.group(1).strip()
+                section_num = match.group(2)
+
+                # Calculate the section text boundary
+                start_pos = match.end()
+                if i < len(section_matches) - 1:
+                    end_pos = section_matches[i+1].start()
+                else:
+                    end_pos = len(normalized_text)
+
+                section_body = normalized_text[start_pos:end_pos].strip()
+
+                # Skip empty sections
+                if not section_body:
+                    self.logger.warning(f"Empty text for section {section_num}, skipping")
+                    continue
+
+                # Extract code references
+                code_refs = self._extract_code_references_robust(section_body)
+
+                section_map[section_num] = {
+                    "text": section_body,
+                    "original_label": section_label,
+                    "code_refs": code_refs,
+                    "action_type": self._determine_action(section_body),
+                    "code_sections": self._extract_modified_sections(section_body)
+                }
+
+        self.logger.info(f"Successfully extracted {len(section_map)} bill sections: {list(section_map.keys())}")
+        return section_map
+
+    def _extract_modified_sections(self, text: str) -> List[Dict[str, str]]:
+        """Extract information about modified code sections"""
+        modified_sections = []
+        pattern = r'Section\s+(\d+(?:\.\d+)?)\s+of\s+the\s+([A-Za-z\s]+Code)'
+
+        for match in re.finditer(pattern, text):
+            section_num = match.group(1)
+            code_name = match.group(2)
+
+            modified_sections.append({
+                "section": section_num,
+                "code": code_name,
+                "action": self._determine_action(text)
+            })
+
+        return modified_sections
