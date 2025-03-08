@@ -53,7 +53,7 @@ class BillParser:
         cleaned_text = self._clean_html_markup(bill_text)
 
         # Then normalize section breaks for consistent parsing
-        cleaned_text = self._normalize_section_breaks(cleaned_text)
+        cleaned_text = self._aggressive_normalize(cleaned_text)
 
         # Now parse the bill components
         header_info = self._parse_bill_header(cleaned_text)
@@ -79,6 +79,66 @@ class BillParser:
 
         return bill
 
+    from typing import Tuple
+
+    def _split_existing_and_changes(self, text: str) -> Tuple[str, str]:
+        """
+        Split a digest section text into existing law and proposed changes.
+
+        Args:
+            text: The text of a digest section
+
+        Returns:
+            A tuple with (existing_law, proposed_changes)
+        """
+        # Look for phrases that typically separate existing and proposed law
+        separators = [
+            "This bill would",
+            "The bill would",
+            "Instead, this bill"
+        ]
+
+        lower_text = text.lower()
+
+        # Try to find the first occurrence of any separator
+        split_pos = -1
+        found_separator = ""
+
+        for separator in separators:
+            pos = text.find(separator)
+            if pos != -1 and (split_pos == -1 or pos < split_pos):
+                split_pos = pos
+                found_separator = separator
+
+        # If no separator was found, make best guess
+        if split_pos == -1:
+            # Default split - search for "would" which is common in proposed changes
+            would_pos = lower_text.find("would")
+            if would_pos != -1:
+                # Look for the start of the sentence containing "would"
+                sentence_start = would_pos
+                while sentence_start > 0 and text[sentence_start-1] not in ".!?":
+                    sentence_start -= 1
+
+                if sentence_start > 0:
+                    existing_law = text[:sentence_start].strip()
+                    proposed_changes = text[sentence_start:].strip()
+                else:
+                    # If we can't find a good split, return half as existing and half as changes
+                    midpoint = len(text) // 2
+                    existing_law = text[:midpoint].strip()
+                    proposed_changes = text[midpoint:].strip()
+            else:
+                # If we can't find "would", return half as existing and half as changes
+                midpoint = len(text) // 2
+                existing_law = text[:midpoint].strip()
+                proposed_changes = text[midpoint:].strip()
+        else:
+            existing_law = text[:split_pos].strip()
+            proposed_changes = text[split_pos:].strip()
+
+        return existing_law, proposed_changes
+    
     def _clean_html_markup(self, text: str) -> str:
         """
         Clean HTML markup from amended bills to create plain text that's easier to parse.
@@ -368,6 +428,108 @@ class BillParser:
 
         return text
 
+    def _extract_code_references(self, text: str):
+        """
+        Extract code references from text by delegating to the robust version.
+
+        Args:
+            text: The text to search for code references
+
+        Returns:
+            A list of CodeReference objects
+        """
+        # Simply delegate to the existing robust implementation
+        return self._extract_code_references_robust(text)
+    
+    def _parse_bill_header(self, text: str) -> dict:
+        """
+        Parse the bill header to extract bill number, chapter, title, and dates.
+
+        Enhanced to handle amended bills with complex markup.
+
+        Args:
+            text: The bill text
+
+        Returns:
+            A dictionary with header information
+        """
+        import re
+
+        # First, try the standard pattern
+        header_match = re.search(self.bill_header_pattern, text, re.MULTILINE | re.IGNORECASE | re.DOTALL)
+
+        # If standard pattern fails, try a more flexible pattern that can handle amended bills
+        if not header_match:
+            self.logger.warning("Could not parse bill header with standard pattern")
+
+            # More flexible patterns for amended bills
+            alt_patterns = [
+                # Look for bill number in a more flexible way
+                r'(Assembly|Senate)\s+Bill(?:\s+No\.?)?\s+(\d+)',
+
+                # Look for chapter number separately
+                r'CHAPTER\s+(\d+)',
+            ]
+
+            bill_type = None
+            bill_num = None
+            chapter = ""
+
+            # Try to find bill type and number
+            bill_match = re.search(alt_patterns[0], text, re.IGNORECASE)
+            if bill_match:
+                bill_type = bill_match.group(1)
+                bill_num = bill_match.group(2)
+
+            # Try to find chapter number
+            chapter_match = re.search(alt_patterns[1], text, re.IGNORECASE)
+            if chapter_match:
+                chapter = chapter_match.group(1)
+
+            if bill_type and bill_num:
+                # Use the extracted information
+                header_info = {
+                    'bill_number': f"{bill_type} Bill {bill_num}",
+                    'chapter_number': chapter,
+                    'title': self._extract_title(text),
+                    'date_approved': None,
+                    'date_filed': None
+                }
+
+                # Try to extract dates
+                date_match = re.search(self.date_pattern, text)
+                if date_match:
+                    header_info['date_approved'] = self._parse_date(date_match.group(1)) if date_match else None
+                    header_info['date_filed'] = self._parse_date(date_match.group(2)) if date_match else None
+
+                return header_info
+
+        # If the standard pattern worked, use it
+        if header_match:
+            # If CHAPTER group is missing, we assign an empty string
+            # (Some trailer bills might omit the word "CHAPTER X" in the text)
+            chapter = header_match.group(3) if header_match.lastindex >= 3 else ""
+
+            date_match = re.search(self.date_pattern, text)
+
+            return {
+                'bill_number': f"{header_match.group(1)} Bill {header_match.group(2)}",
+                'chapter_number': chapter if chapter else "",
+                'title': self._extract_title(text),
+                'date_approved': self._parse_date(date_match.group(1)) if date_match else None,
+                'date_filed': self._parse_date(date_match.group(2)) if date_match else None
+            }
+
+        # If all else fails, return empty values
+        self.logger.error("Failed to parse bill header with any pattern")
+        return {
+            'bill_number': "",
+            'chapter_number': "",
+            'title': "",
+            'date_approved': None,
+            'date_filed': None
+        }
+    
     def _extract_code_references_robust(self, text: str) -> List[CodeReference]:
         """
         Extract code references with special handling for decimal points and other formatting issues.
