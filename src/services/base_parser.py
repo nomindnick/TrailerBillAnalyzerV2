@@ -2,7 +2,7 @@ import re
 import logging
 import traceback
 from datetime import datetime
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Set
 from src.models.bill_components import (
     TrailerBill,
     DigestSection,
@@ -11,10 +11,10 @@ from src.models.bill_components import (
     CodeAction
 )
 
-class BaseParser:
+class BillParser:
     """
-    Handles initial regex-based parsing of trailer bills to extract basic structure,
-    digest sections, and bill sections, including code references.
+    Enhanced parser for handling trailer bills, including those with amendment markup.
+    Properly processes bills with HTML formatting, strikethroughs, and additions.
     """
 
     def __init__(self):
@@ -27,6 +27,7 @@ class BaseParser:
         )
 
         self.digest_section_pattern = r'\((\d+)\)\s+([^(]+)(?=\(\d+\)|$)'
+
         # Regex for capturing "SECTION 1." or "SEC. X." blocks
         # We'll handle newlines/spaces in a more robust manner
         self.bill_section_pattern = re.compile(
@@ -48,7 +49,13 @@ class BaseParser:
           - List of DigestSection objects
           - List of BillSection objects
         """
-        cleaned_text = self._normalize_section_breaks(bill_text)
+        # First clean any HTML markup from amended bills
+        cleaned_text = self._clean_html_markup(bill_text)
+
+        # Then normalize section breaks for consistent parsing
+        cleaned_text = self._normalize_section_breaks(cleaned_text)
+
+        # Now parse the bill components
         header_info = self._parse_bill_header(cleaned_text)
 
         bill = TrailerBill(
@@ -60,12 +67,44 @@ class BaseParser:
             raw_text=cleaned_text
         )
 
+        # Split the bill text into digest and bill portions
         digest_text, bill_portion = self._split_digest_and_bill(cleaned_text)
+
+        # Parse each portion
         bill.digest_sections = self._parse_digest_sections(digest_text)
         bill.bill_sections = self._parse_bill_sections(bill_portion)
 
+        # Match digest sections to bill sections
         self._match_sections(bill)
+
         return bill
+
+    def _clean_html_markup(self, text: str) -> str:
+        """
+        Clean HTML markup from amended bills to create plain text that's easier to parse.
+        Handles strikethroughs, additions, and other HTML formatting.
+        """
+        # First, handle the strike-through content (removed text)
+        # We simply remove it since it's not part of the final bill text
+        text = re.sub(r'<font color="#B30000"><strike>.*?</strike></font>', '', text, flags=re.DOTALL)
+
+        # Then handle blue text (added text)
+        # We keep this content but remove the HTML markup
+        text = re.sub(r'<font color="blue" class="blue_text"><i>(.*?)</i></font>', r'\1', text, flags=re.DOTALL)
+
+        # Remove any remaining HTML tags
+        text = re.sub(r'<[^>]*>', '', text)
+
+        # Clean up extra whitespace
+        text = re.sub(r'\s+', ' ', text)
+
+        # Make sure section identifiers are separated by newlines
+        text = re.sub(r'([^\n])(SEC\.|SECTION)', r'\1\n\2', text, flags=re.IGNORECASE)
+
+        # Ensure consistency in section formatting
+        text = re.sub(r'\n\s*(SEC\.?|SECTION)\s*(\d+)\.\s*', r'\n\1 \2.\n', text, flags=re.IGNORECASE)
+
+        return text
 
     def _parse_bill_header(self, text: str) -> dict:
         header_match = re.search(self.bill_header_pattern, text, re.MULTILINE | re.IGNORECASE | re.DOTALL)
@@ -137,44 +176,70 @@ class BaseParser:
 
     def _parse_bill_sections(self, bill_portion: str) -> List[BillSection]:
         """
-        Parses all sections from the main bill text using a robust regex pattern
-        that captures both 'SECTION 1.' and 'SEC. 2.' style headings.
+        Enhanced section parser that handles both clean bills and bills with
+        amendment markup. Uses multiple strategies to find and extract sections.
         """
         sections = []
         cleaned_text = bill_portion.strip()
 
-        # Potentially normalize section breaks a bit more to ensure consistent newlines:
-        normalized_text = self._normalize_section_breaks(cleaned_text)
+        # Apply aggressive normalization to the text
+        normalized_text = self._aggressive_normalize(cleaned_text)
 
-        section_matches = list(self.bill_section_pattern.finditer(normalized_text))
-        self.logger.info(f"Found {len(section_matches)} potential bill sections")
+        # Try multiple section patterns with increasing flexibility
+        section_patterns = [
+            # Standard format with newline
+            r'(?:^|\n)\s*(?P<label>(?:SECTION|SEC)\.?\s+(?P<number>\d+)\.)\s*(?P<text>(?:.+?)(?=\n\s*(?:SECTION|SEC)\.?\s+\d+\.|\Z))',
 
-        if not section_matches:
-            # Attempt a fallback approach if no sections found at all
-            self.logger.warning("No sections found with primary pattern, attempting fallback.")
-            return self._parse_bill_sections_debug(cleaned_text)
+            # More flexible with optional whitespace
+            r'(?:^|\n)\s*(?P<label>(?:SECTION|SEC)\.?\s*(?P<number>\d+)\.)\s*(?P<text>(?:.+?)(?=\n\s*(?:SECTION|SEC)\.?\s*\d+\.|\Z))',
 
-        for match in section_matches:
-            label = match.group('label').strip()
-            number = match.group('number')
-            body_text = match.group('body').strip()
+            # Force matches at "SEC. X." regardless of surrounding context
+            r'\n\s*(?P<label>SEC\.\s+(?P<number>\d+)\.)\s*(?P<text>(?:.+?)(?=\n\s*SEC\.\s+\d+\.|\Z))',
+        ]
 
-            if not body_text:
-                self.logger.warning(f"Empty body found for section {number}, skipping")
+        # Try each pattern
+        all_matches = []
+        successful_pattern = None
+
+        for i, pattern in enumerate(section_patterns):
+            matches = list(re.finditer(pattern, normalized_text, re.DOTALL | re.MULTILINE | re.IGNORECASE))
+            self.logger.info(f"Pattern {i+1} found {len(matches)} potential sections")
+
+            if matches:
+                all_matches = matches
+                successful_pattern = i+1
+                break
+
+        if not all_matches:
+            self.logger.warning("Standard patterns failed, attempting fallback section extraction methods")
+            # Try fallback methods
+            return self._parse_bill_sections_fallback(cleaned_text)
+
+        # Process matches
+        for match in all_matches:
+            section_num = match.group('number')
+            section_text = match.group('text').strip()
+            section_label = match.group('label').strip()
+
+            # Skip empty sections
+            if not section_text:
+                self.logger.warning(f"Empty text for section {section_num}, skipping")
                 continue
 
-            self.logger.info(f"Found section with label '{label}'")
+            # Log the beginning of the section text
+            self.logger.debug(f"Section {section_num} begins with: {section_text[:100]}...")
 
-            code_refs = self._extract_code_references(body_text)
-            action_type = self._determine_action(body_text)
+            # Extract code references with special handling for decimal points
+            code_refs = self._extract_code_references_robust(section_text)
 
             bs = BillSection(
-                number=number,
-                original_label=label,
-                text=body_text,
+                number=section_num,
+                original_label=section_label,
+                text=section_text,
                 code_references=code_refs
             )
 
+            action_type = self._determine_action(section_text)
             if action_type != CodeAction.UNKNOWN:
                 bs.section_type = action_type
 
@@ -182,76 +247,122 @@ class BaseParser:
 
             if code_refs:
                 ref_strings = [f"{ref.code_name}:{ref.section}" for ref in code_refs]
-                self.logger.info(f"Found {len(code_refs)} code references in section {number}: {ref_strings}")
+                self.logger.info(f"Found {len(code_refs)} code references in section {section_num}: {ref_strings}")
             else:
-                self.logger.warning(f"No code references found in section {number}")
+                self.logger.warning(f"No code references found in section {section_num}")
 
         self.logger.info(f"Parsed {len(sections)} bill sections: {[s.original_label for s in sections]}")
         return sections
 
-    def _parse_bill_sections_debug(self, bill_portion: str) -> List[BillSection]:
+    def _parse_bill_sections_fallback(self, bill_portion: str) -> List[BillSection]:
         """
-        A fallback debug parser that tries a simpler approach if the main regex fails.
-        Logs extensive information for troubleshooting.
+        Fallback section parser that uses direct extraction methods when regular patterns fail.
+        This is especially useful for bills with complex formatting or amendments.
         """
         self.logger.info(f"Starting fallback parsing with text length: {len(bill_portion)}")
 
         sections = []
-        # Simple pattern: look for lines that start with "SECTION N." or "SEC. N."
-        # Then read until we encounter the next "SECTION/SEC." or the end of text
+
+        # Method 1: Look for section headers directly
         pattern = re.compile(
-            r'(SECTION\s+\d+\.|SEC\.\s+\d+\.)',
+            r'((?:SECTION|SEC)\.?\s+\d+\.)',
             re.IGNORECASE
         )
 
-        # Collect all indexes where these headings appear
+        # Find all section headers
         matches = list(pattern.finditer(bill_portion))
-        self.logger.info(f"FOUND HEADERS: {len(matches)}")
+        self.logger.info(f"Found {len(matches)} section headers")
 
-        for i, match in enumerate(matches):
-            start_idx = match.start()
-            label = match.group(1)
+        if matches:
+            # Extract sections based on the headers found
+            for i, match in enumerate(matches):
+                start_idx = match.start()
+                label = match.group(1)
 
-            # The next heading or end of the bill text
-            if i < len(matches) - 1:
-                end_idx = matches[i+1].start()
-            else:
-                end_idx = len(bill_portion)
+                # The next heading or end of the bill text
+                if i < len(matches) - 1:
+                    end_idx = matches[i+1].start()
+                else:
+                    end_idx = len(bill_portion)
 
-            section_text = bill_portion[start_idx:end_idx].strip()
+                section_text = bill_portion[start_idx:end_idx].strip()
 
-            # Attempt to extract the number from the label
-            sec_num_match = re.search(r'(?:SECTION|SEC\.?)\s+(\d+)\.', label, re.IGNORECASE)
-            sec_num = sec_num_match.group(1) if sec_num_match else f"Unknown_{i+1}"
+                # Extract the section number
+                sec_num_match = re.search(r'(?:SECTION|SEC\.?)\s+(\d+)\.', label, re.IGNORECASE)
+                sec_num = sec_num_match.group(1) if sec_num_match else f"Unknown_{i+1}"
 
-            # The "body" is everything after the label
-            body_lines = section_text.split('\n', 1)
-            body = body_lines[1] if len(body_lines) > 1 else ""
+                # The body is everything after the label
+                body_parts = section_text.split('\n', 1)
+                body = body_parts[1] if len(body_parts) > 1 else ""
 
-            code_refs = self._extract_code_references(body)
-            action_type = self._determine_action(body)
+                # Create the BillSection object
+                code_refs = self._extract_code_references_robust(body)
+                action_type = self._determine_action(body)
 
-            bs = BillSection(
-                number=sec_num,
-                original_label=label.strip(),
-                text=body.strip(),
-                code_references=code_refs
-            )
-            if action_type != CodeAction.UNKNOWN:
-                bs.section_type = action_type
+                bs = BillSection(
+                    number=sec_num,
+                    original_label=label.strip(),
+                    text=body.strip(),
+                    code_references=code_refs
+                )
 
-            sections.append(bs)
-            self.logger.info(f"Fallback added section {sec_num} with label '{label}'")
+                if action_type != CodeAction.UNKNOWN:
+                    bs.section_type = action_type
+
+                sections.append(bs)
+                self.logger.info(f"Fallback added section {sec_num} with label '{label}'")
+
+        # Method 2: If no sections found yet, try a more aggressive approach
+        if not sections:
+            self.logger.info("Trying more aggressive section extraction")
+
+            # Strip all HTML completely and normalize whitespace
+            cleaned_text = re.sub(r'<[^>]*>', '', bill_portion)
+            cleaned_text = re.sub(r'\s+', ' ', cleaned_text)
+
+            # Force section headers to be on new lines
+            cleaned_text = re.sub(r'([^\n])(SECTION|SEC\.)', r'\1\n\2', cleaned_text, flags=re.IGNORECASE)
+
+            # Try to find section headers more aggressively
+            section_headers = re.findall(r'\n\s*((?:SECTION|SEC\.)\s+(\d+)\.)', cleaned_text, re.IGNORECASE)
+
+            self.logger.info(f"Aggressive approach found {len(section_headers)} section headers")
+
+            if section_headers:
+                for i, (header, number) in enumerate(section_headers):
+                    start_pos = cleaned_text.find(header) + len(header)
+
+                    if i < len(section_headers) - 1:
+                        next_header = section_headers[i+1][0]
+                        end_pos = cleaned_text.find(next_header)
+                    else:
+                        end_pos = len(cleaned_text)
+
+                    section_text = cleaned_text[start_pos:end_pos].strip()
+
+                    # Create a BillSection object
+                    bs = BillSection(
+                        number=number,
+                        original_label=header.strip(),
+                        text=section_text,
+                        code_references=self._extract_code_references_robust(section_text)
+                    )
+
+                    sections.append(bs)
+                    self.logger.info(f"Aggressive fallback added section {number}")
 
         self.logger.info(f"Fallback parse completed with {len(sections)} sections")
         return sections
 
-    def _aggressive_normalize_section_breaks(self, text: str) -> str:
+    def _aggressive_normalize(self, text: str) -> str:
         """
-        Enhanced normalization of section breaks with more aggressive pattern matching.
-        This is a fallback when regular normalization fails.
+        Aggressively normalize text to fix common issues with bill formatting,
+        especially handling decimal points in section numbers and HTML markup.
         """
-        # First, ensure there's a newline before any SEC. or SECTION patterns
+        # Replace Windows line endings
+        text = text.replace('\r\n', '\n')
+
+        # Ensure consistent spacing around section headers
         text = re.sub(
             r'(?<!\n)(?:\s*)(SEC(?:TION)?\.?\s+\d+\.)',
             r'\n\1',
@@ -259,154 +370,48 @@ class BaseParser:
             flags=re.IGNORECASE
         )
 
-        # Standardize spacing around section labels
+        # Standardize spacing in section headers
         text = re.sub(
-            r'(SEC(?:TION)?\.)\s*(\d+)\.',
+            r'(SEC(?:TION)?\.?)\s*(\d+)\.',
             r'\1 \2.',
             text,
             flags=re.IGNORECASE
         )
 
-        # Ensure there's an extra newline between sections for clarity
+        # Make sure all section headers are followed by at least one newline
         text = re.sub(
-            r'(\n(?:SECTION|SEC)\.\s+\d+\..*?)(\n(?:SECTION|SEC)\.\s+\d+\.)',
-            r'\1\n\2',
-            text,
-            flags=re.IGNORECASE | re.DOTALL
-        )
-
-        return text
-
-    def _extract_code_references(self, text: str) -> List[CodeReference]:
-        """
-        Enhanced code reference extraction with improved pattern matching.
-        Looks for references like 'Section 123 of the Education Code', 
-        'Education Code Section 123', or '... is amended in the Penal Code ...'
-        """
-        references = []
-
-        # Basic patterns:
-        pattern1 = r'(?i)Section\s+(\d+(?:\.\d+)?(?:\s*,\s*\d+(?:\.\d+)?)*)\s+of\s+(?:the\s+)?([A-Za-z\s]+Code)'
-        pattern2 = r'(?i)([A-Za-z\s]+Code)\s+Section\s+(\d+(?:\.\d+)?(?:\s*,\s*\d+(?:\.\d+)?)*)'
-
-        # We'll store unique references in a set (code_name, section_number)
-        unique_refs = set()
-
-        # Pattern 1: "Section X of the Y Code"
-        for match in re.finditer(pattern1, text):
-            sections_str = match.group(1)
-            code_name = match.group(2).strip()
-            for section_num in re.split(r'\s*,\s*', sections_str):
-                if section_num.strip():
-                    unique_refs.add((code_name, section_num.strip()))
-
-        # Pattern 2: "Y Code Section X"
-        for match in re.finditer(pattern2, text):
-            code_name = match.group(1).strip()
-            sections_str = match.group(2)
-            for section_num in re.split(r'\s*,\s*', sections_str):
-                if section_num.strip():
-                    unique_refs.add((code_name, section_num.strip()))
-
-        # Convert into CodeReference objects
-        for code_name, section_num in unique_refs:
-            references.append(CodeReference(section=section_num, code_name=code_name))
-
-        return references
-
-    def _split_section_list(self, sections_str: str) -> List[str]:
-        s = re.sub(r'\s+and\s+', ',', sections_str, flags=re.IGNORECASE)
-        s = re.sub(r'\s+', '', s)
-        parts = re.split(r',', s)
-        return [p for p in parts if p]
-
-    def _parse_section_header(self, text: str) -> Tuple[List[CodeReference], Optional[CodeAction]]:
-        first_line = text.split('\n', 1)[0]
-        action = self._determine_action(first_line)
-        refs = self._extract_code_references(first_line)
-        return refs, action
-
-    def _determine_action(self, text: str) -> CodeAction:
-        lower = text.lower()
-        if "repealed and added" in lower:
-            return CodeAction.REPEALED_AND_ADDED
-        if "amended and repealed" in lower:
-            return CodeAction.AMENDED_AND_REPEALED
-        if "amended" in lower:
-            return CodeAction.AMENDED
-        if "added" in lower:
-            return CodeAction.ADDED
-        if "repealed" in lower:
-            return CodeAction.REPEALED
-        return CodeAction.UNKNOWN
-
-    def _split_existing_and_changes(self, text: str) -> Tuple[str, str]:
-        """
-        Attempts to split digest text into "existing law" vs. "this bill would" changes.
-        """
-        if not text or not isinstance(text, str):
-            return "", ""
-
-        existing_text = ""
-        change_text = text
-
-        pattern = r"(Existing law.*?)(This bill would.*)"
-        match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
-        if match:
-            existing_text = match.group(1).strip()
-            change_text = match.group(2).strip()
-            return existing_text, change_text
-
-        return text.strip(), ""
-
-    def _match_sections(self, bill: TrailerBill) -> None:
-        """
-        Match up digest sections to bill sections that share code references
-        (simple approach - real matching logic is done in SectionMatcher).
-        """
-        matches_found = 0
-        for dsec in bill.digest_sections:
-            digest_refs = {f"{ref.code_name}:{ref.section}" for ref in dsec.code_references}
-            self.logger.info(f"Digest section {dsec.number} has refs: {digest_refs}")
-
-            for bsec in bill.bill_sections:
-                bill_refs = {f"{ref.code_name}:{ref.section}" for ref in bsec.code_references}
-                overlap = digest_refs & bill_refs
-                if overlap:
-                    dsec.bill_sections.append(bsec.number)
-                    bsec.digest_reference = dsec.number
-                    matches_found += 1
-                    self.logger.info(
-                        f"Matched digest {dsec.number} to bill section {bsec.number} via refs: {overlap}"
-                    )
-
-        self.logger.info(f"Total section matches found: {matches_found}")
-
-    def _extract_title(self, text: str) -> str:
-        pattern = r'An act to .*?(?=\[|LEGISLATIVE COUNSEL|$)'
-        match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
-        return match.group().strip() if match else ""
-
-    def _parse_date(self, date_str: str) -> Optional[datetime]:
-        try:
-            return datetime.strptime(date_str.strip(), '%B %d, %Y')
-        except ValueError:
-            return None
-
-    def _normalize_section_breaks(self, text: str) -> str:
-        """
-        Insert line breaks before 'SECTION N.' or 'SEC. N.' if not already present,
-        ensuring each section starts on a fresh line for easier parsing.
-        """
-        # Convert Windows line endings
-        text = text.replace('\r\n', '\n')
-
-        # Ensure there's a newline before 'SEC. X.' or 'SECTION X.'
-        text = re.sub(
-            r'(?<!\n)(?:\s*)(SECTION\s+\d+\.|SEC\.\s+\d+\.)',
-            r'\n\1',
+            r'(SEC(?:TION)?\.?\s+\d+\.)\s*(?!\n)',
+            r'\1\n',
             text,
             flags=re.IGNORECASE
         )
 
+        # Fix the decimal point issue - remove line breaks between section numbers and decimal points
+        text = re.sub(r'(\d+)\s*\n\s*(\.\d+)', r'\1\2', text)
+
+        # Standardize decimal points in section headers
+        text = re.sub(r'Section\s+(\d+)\s*\n\s*(\.\d+)', r'Section \1\2', text)
+
         return text
+
+    def _extract_code_references_robust(self, text: str) -> List[CodeReference]:
+        """
+        Extract code references with special handling for decimal points and other formatting issues.
+        """
+        references = []
+
+        # Check first for the amended/added/repealed pattern that's common in section headers
+        first_line = text.split('\n', 1)[0] if '\n' in text else text
+
+        # Normalize the section number if it contains a decimal point
+        first_line = re.sub(r'(\d+)\s*\n\s*(\.\d+)', r'\1\2', first_line)
+
+        # Pattern for "Section X of the Y Code is amended/added/repealed"
+        section_header_pattern = r'(?i)Section\s+(\d+(?:\.\d+)?)\s+of\s+(?:the\s+)?([A-Za-z\s]+Code)'
+        header_match = re.search(section_header_pattern, first_line)
+
+        if header_match:
+            section_num = header_match.group(1).strip()
+            code_name = header_match.group(2).strip()
+            references.append(CodeReference(section=section_num, code_name=code_name))
+            self.logger
