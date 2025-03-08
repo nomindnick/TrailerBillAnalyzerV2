@@ -112,9 +112,73 @@ class BillScraper:
             self.logger.error(f"Error fetching bill {bill_number} from session {year}-{year+1}: {str(e)}")
             raise
 
+    def _clean_html_markup(self, text: str) -> str:
+        """
+        Clean HTML markup from amended bills to create plain text that's easier to parse.
+        Handles strikethroughs, additions, and other HTML formatting.
+        """
+        # First, handle the strike-through content (removed text)
+        # We simply remove it since it's not part of the final bill text
+        text = re.sub(r'<font color="#B30000"><strike>.*?</strike></font>', '', text, flags=re.DOTALL)
+
+        # Then handle blue text (added text)
+        # We keep this content but remove the HTML markup
+        text = re.sub(r'<font color="blue" class="blue_text"><i>(.*?)</i></font>', r'\1', text, flags=re.DOTALL)
+
+        # Remove any remaining HTML tags
+        text = re.sub(r'<[^>]*>', '', text)
+
+        # Clean up extra whitespace
+        text = re.sub(r'\s+', ' ', text)
+
+        # Make sure section identifiers are separated by newlines
+        text = re.sub(r'([^\n])(SEC\.|SECTION)', r'\1\n\2', text, flags=re.IGNORECASE)
+
+        # Ensure consistency in section formatting
+        text = re.sub(r'\n\s*(SEC\.?|SECTION)\s*(\d+)\.\s*', r'\n\1 \2.\n', text, flags=re.IGNORECASE)
+
+        return text
+    
+    def _normalize_section_breaks(self, text: str) -> str:
+        """
+        Ensure section breaks are consistently formatted to improve pattern matching.
+
+        Args:
+            text: The bill text to normalize
+
+        Returns:
+            Normalized text with consistent section breaks
+        """
+        # Ensure newlines before section headers
+        normalized = re.sub(
+            r'(?<!\n)(?:\s*)((?:SECTION|SEC)\.?\s+\d+(?:\.\d+)?\.)',
+            r'\n\1',
+            text,
+            flags=re.IGNORECASE
+        )
+
+        # Standardize spacing in section headers
+        normalized = re.sub(
+            r'((?:SECTION|SEC)\.?)\s*(\d+(?:\.\d+)?)\.',
+            r'\1 \2.',
+            normalized,
+            flags=re.IGNORECASE
+        )
+
+        # Make sure all section headers are followed by at least one newline
+        normalized = re.sub(
+            r'((?:SECTION|SEC)\.?\s+\d+(?:\.\d+)?\.)\s*(?!\n)',
+            r'\1\n',
+            normalized,
+            flags=re.IGNORECASE
+        )
+
+        return normalized
+    
     def _parse_bill_page(self, html_content: str) -> Dict[str, Any]:
         """
-        Parse the HTML content from the Legislature site to extract the main text.
+        Parse the HTML content from the Legislature site to extract the main text,
+        applying enhanced processing for amended bills.
         """
         try:
             soup = BeautifulSoup(html_content, "html.parser")
@@ -138,9 +202,16 @@ class BillScraper:
             if not content_div:
                 raise ValueError("Could not find valid bill content in HTML")
 
+            # Apply more aggressive cleaning to better handle amended bills
             full_text = content_div.get_text("\n", strip=True)
+
+            # Normalize whitespace and line breaks
             full_text = re.sub(r'\n\s*\n', '\n\n', full_text)
             full_text = re.sub(r' +', ' ', full_text)
+
+            # Ensure section headers are separated from surrounding text
+            full_text = re.sub(r'([^\n])(SEC\.|SECTION)', r'\1\n\2', full_text, flags=re.IGNORECASE)
+            full_text = re.sub(r'(SEC\.|SECTION)(\s*)(\d+)(\.)(\s*)', r'\1 \3\4\n', full_text, flags=re.IGNORECASE)
 
             if not full_text or len(full_text.strip()) < 100:
                 raise ValueError("Retrieved bill content appears to be empty or invalid")

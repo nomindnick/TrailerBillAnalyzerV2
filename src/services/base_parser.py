@@ -211,8 +211,8 @@ class BillParser:
                 break
 
         if not all_matches:
-            self.logger.warning("Standard patterns failed, attempting fallback section extraction methods")
-            # Try fallback methods
+            self.logger.warning("Standard patterns failed, attempting fallback section extraction")
+            # Use fallback method
             return self._parse_bill_sections_fallback(cleaned_text)
 
         # Process matches
@@ -225,9 +225,6 @@ class BillParser:
             if not section_text:
                 self.logger.warning(f"Empty text for section {section_num}, skipping")
                 continue
-
-            # Log the beginning of the section text
-            self.logger.debug(f"Section {section_num} begins with: {section_text[:100]}...")
 
             # Extract code references with special handling for decimal points
             code_refs = self._extract_code_references_robust(section_text)
@@ -244,12 +241,6 @@ class BillParser:
                 bs.section_type = action_type
 
             sections.append(bs)
-
-            if code_refs:
-                ref_strings = [f"{ref.code_name}:{ref.section}" for ref in code_refs]
-                self.logger.info(f"Found {len(code_refs)} code references in section {section_num}: {ref_strings}")
-            else:
-                self.logger.warning(f"No code references found in section {section_num}")
 
         self.logger.info(f"Parsed {len(sections)} bill sections: {[s.original_label for s in sections]}")
         return sections
@@ -354,43 +345,26 @@ class BillParser:
         self.logger.info(f"Fallback parse completed with {len(sections)} sections")
         return sections
 
+
     def _aggressive_normalize(self, text: str) -> str:
         """
         Aggressively normalize text to fix common issues with bill formatting,
-        especially handling decimal points in section numbers and HTML markup.
+        especially handling decimal points in section numbers.
         """
         # Replace Windows line endings
         text = text.replace('\r\n', '\n')
 
         # Ensure consistent spacing around section headers
-        text = re.sub(
-            r'(?<!\n)(?:\s*)(SEC(?:TION)?\.?\s+\d+\.)',
-            r'\n\1',
-            text,
-            flags=re.IGNORECASE
-        )
-
-        # Standardize spacing in section headers
-        text = re.sub(
-            r'(SEC(?:TION)?\.?)\s*(\d+)\.',
-            r'\1 \2.',
-            text,
-            flags=re.IGNORECASE
-        )
-
-        # Make sure all section headers are followed by at least one newline
-        text = re.sub(
-            r'(SEC(?:TION)?\.?\s+\d+\.)\s*(?!\n)',
-            r'\1\n',
-            text,
-            flags=re.IGNORECASE
-        )
+        text = re.sub(r'(\n\s*)(SEC\.?|SECTION)(\s*)(\d+)(\.\s*)', r'\n\2 \4\5', text, flags=re.IGNORECASE)
 
         # Fix the decimal point issue - remove line breaks between section numbers and decimal points
         text = re.sub(r'(\d+)\s*\n\s*(\.\d+)', r'\1\2', text)
 
         # Standardize decimal points in section headers
         text = re.sub(r'Section\s+(\d+)\s*\n\s*(\.\d+)', r'Section \1\2', text)
+
+        # Ensure section headers are properly separated with newlines
+        text = re.sub(r'([^\n])(SEC\.|SECTION)', r'\1\n\2', text)
 
         return text
 
@@ -414,4 +388,34 @@ class BillParser:
             section_num = header_match.group(1).strip()
             code_name = header_match.group(2).strip()
             references.append(CodeReference(section=section_num, code_name=code_name))
-            self.logger
+            self.logger.debug(f"Found primary code reference: {code_name} Section {section_num}")
+
+        # Special case for Education Code sections with decimal points
+        decimal_pattern = r'Section\s+(\d+\.\d+)\s+of\s+(?:the\s+)?([A-Za-z\s]+Code)'
+        for match in re.finditer(decimal_pattern, text):
+            section_num = match.group(1).strip()
+            code_name = match.group(2).strip()
+            references.append(CodeReference(section=section_num, code_name=code_name))
+
+        # Handle other standard reference formats
+        patterns = [
+            # Standard format: "Section 123 of the Education Code"
+            r'(?i)Section(?:s)?\s+(\d+(?:\.\d+)?)\s+of\s+(?:the\s+)?([A-Za-z\s]+Code)',
+
+            # Reverse format: "Education Code Section 123"
+            r'(?i)([A-Za-z\s]+Code)\s+Section(?:s)?\s+(\d+(?:\.\d+)?)',
+        ]
+
+        for pattern in patterns:
+            for match in re.finditer(pattern, text):
+                if len(match.groups()) == 2:
+                    if "code" in match.group(2).lower():  # Standard format
+                        section_num = match.group(1).strip()
+                        code_name = match.group(2).strip()
+                    else:  # Reverse format
+                        code_name = match.group(1).strip()
+                        section_num = match.group(2).strip()
+
+                    references.append(CodeReference(section=section_num, code_name=code_name))
+
+        return references
