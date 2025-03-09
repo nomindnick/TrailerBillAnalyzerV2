@@ -10,7 +10,7 @@ from src.models.bill_components import (
     CodeAction
 )
 
-class BillParser:
+class BaseParser:
     """
     Enhanced parser for handling trailer bills, including those with amendment markup.
     Properly processes bills with HTML formatting, strikethroughs, and additions.
