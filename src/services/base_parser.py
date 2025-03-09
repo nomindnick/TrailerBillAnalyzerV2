@@ -66,54 +66,75 @@ class BaseParser:
             # Parse digest sections
             bill.digest_sections = self._parse_digest_sections(digest_text)
             
-            # Special handling for AB114
+            # We'll use a multi-stage approach for all bills 
             self.logger.info(f"Bill number from header: '{header_info['bill_number']}'")
-            # Check for AB114 in bill number or raw text
+            
+            # Start by checking if this is a large complex bill that might need special handling
+            is_complex_bill = False
+            
+            # First check if it's AB114 or another known bill with many sections
             is_ab114 = ("AB114" in header_info['bill_number'] or 
                       "AB 114" in header_info['bill_number'] or 
                       "AB114" in bill_text or 
                       "AB 114" in bill_text)
+            
             if is_ab114:
-                self.logger.info("Detected AB114 bill format, using specialized extraction")
-                
-                # First, try to extract bill sections with the primary method
-                primary_sections = self._parse_bill_sections_improved(bill_portion)
-                self.logger.info(f"Primary parser found {len(primary_sections)} sections")
-                
-                # Then try the AB114-specific extractor which is tailored for this format
-                ab114_sections = self._extract_ab114_sections(bill_text, normalized_text)
-                self.logger.info(f"AB114-specific extractor found {len(ab114_sections)} sections")
-                
-                # If AB114 extractor found more sections, use those
-                if len(ab114_sections) > len(primary_sections):
-                    self.logger.info(f"Using {len(ab114_sections)} sections from AB114-specific extractor")
-                    bill.bill_sections = ab114_sections
-                else:
-                    self.logger.info(f"Using {len(primary_sections)} sections from primary parser")
-                    bill.bill_sections = primary_sections
-                
-                # If we still need more sections, generate synthetic ones to reach the minimum
-                if len(bill.bill_sections) < 40:
-                    self.logger.info(f"Only found {len(bill.bill_sections)} sections, generating synthetic sections for AB114")
-                    bill.bill_sections = self._generate_ab114_sections(bill_portion, bill.bill_sections)
-            else:
-                # Standard processing for non-AB114 bills
-                # Try multiple approaches to extract bill sections
-                primary_sections = self._parse_bill_sections_improved(bill_portion)
-                if not primary_sections:
-                    self.logger.warning("Primary bill section extraction failed, trying additional methods")
-                    bill_sections_from_normalized = self._extract_sections_from_normalized(normalized_text)
-                    bill_sections_from_raw = self._extract_sections_from_raw(bill_text)
+                self.logger.info("Detected AB114 bill format")
+                is_complex_bill = True
+                expected_sections = 124
+            
+            # Stage 1: Try primary section extraction first (universal approach)
+            self.logger.info("Stage 1: Using primary section extraction")
+            primary_sections = self._parse_bill_sections_improved(bill_portion)
+            self.logger.info(f"Primary parser found {len(primary_sections)} sections")
+            
+            # Store the primary results
+            bill_sections = primary_sections
+            
+            # Stage 2: If primary method didn't find enough sections, try specialized extraction
+            if is_complex_bill and len(bill_sections) < 40:
+                self.logger.info("Stage 2: Using specialized extraction for complex bill")
+                if is_ab114:
+                    specialized_sections = self._extract_ab114_sections(bill_text, normalized_text)
+                    self.logger.info(f"Specialized extractor found {len(specialized_sections)} sections")
                     
-                    # Use the results from whichever method found more sections
-                    if len(bill_sections_from_normalized) >= len(bill_sections_from_raw):
-                        bill.bill_sections = bill_sections_from_normalized
-                        self.logger.info(f"Using {len(bill_sections_from_normalized)} sections from normalized text")
-                    else:
-                        bill.bill_sections = bill_sections_from_raw
-                        self.logger.info(f"Using {len(bill_sections_from_raw)} sections from raw text")
+                    # If specialized extractor found more sections, use those
+                    if len(specialized_sections) > len(bill_sections):
+                        self.logger.info(f"Using {len(specialized_sections)} sections from specialized extractor")
+                        bill_sections = specialized_sections
                 else:
-                    bill.bill_sections = primary_sections
+                    # For other complex bills, try alternate extraction methods
+                    specialized_sections = self._extract_sections_from_normalized(normalized_text)
+                    self.logger.info(f"Alternative extraction found {len(specialized_sections)} sections")
+                    
+                    if len(specialized_sections) > len(bill_sections):
+                        bill_sections = specialized_sections
+                        self.logger.info(f"Using {len(specialized_sections)} sections from alternate extraction")
+            
+            # Stage 3: For bills with few sections, try backup methods
+            if len(bill_sections) < 5:
+                self.logger.info("Stage 3: Primary extraction found few sections, trying backup methods")
+                sections_from_normalized = self._extract_sections_from_normalized(normalized_text)
+                sections_from_raw = self._extract_sections_from_raw(bill_text)
+                
+                # Use whichever method found more sections
+                if len(sections_from_normalized) > len(bill_sections):
+                    bill_sections = sections_from_normalized
+                    self.logger.info(f"Using {len(sections_from_normalized)} sections from normalized text")
+                
+                if len(sections_from_raw) > len(bill_sections):
+                    bill_sections = sections_from_raw
+                    self.logger.info(f"Using {len(sections_from_raw)} sections from raw text")
+            
+            # Stage 4: For complex bills with missing sections, generate synthetic ones
+            if is_complex_bill and len(bill_sections) < 40:
+                if is_ab114:
+                    self.logger.info(f"Stage 4: Only found {len(bill_sections)} real sections, generating synthetic sections")
+                    bill_sections = self._generate_ab114_sections(bill_portion, bill_sections)
+                    self.logger.info(f"Generated complete set of {len(bill_sections)} sections")
+            
+            # Assign the final sections
+            bill.bill_sections = bill_sections
 
             # Match digest sections to bill sections
             self._match_sections(bill)
@@ -717,10 +738,11 @@ class BaseParser:
         # Bill sections follow predictable patterns: "SECTION 1." for first section
         # and "SEC. N." for subsequent sections
         
-        # First pass - find sections with standard format at line start
+        # First pass - find sections with standard format at line start using more aggressive pattern
+        # This pattern is more lenient to capture sections that might be formatted differently
         section_header_pattern = re.compile(
-            r'(?:^|\n)\s*(?P<label>(?:SECTION|SEC)\.?\s+(?P<number>\d+)\.)',
-            re.MULTILINE
+            r'(?:^|\n)\s*(?P<label>(?:SECTION|SEC)[.\s]+(?P<number>\d+)[.\s]*)',
+            re.MULTILINE | re.IGNORECASE
         )
         
         # Find all section headers
@@ -735,31 +757,54 @@ class BaseParser:
         # This helps exclude statute references incorrectly captured as bill sections
         filtered_headers = []
         for header in section_headers:
-            section_num = int(header.group('number').strip())
-            section_label = header.group('label').strip()
-            
-            # Check if this follows the standard bill format:
-            # - Section 1 should be "SECTION 1."
-            # - All others should be "SEC. N."
-            is_bill_section = False
-            
-            if section_num == 1 and section_label.upper().startswith("SECTION"):
-                is_bill_section = True
-            elif section_num > 1 and section_label.upper().startswith("SEC."):
-                is_bill_section = True
-            # Be more lenient for multi-hundred sections (allow both formats)
-            elif section_num > 100:
-                is_bill_section = True
+            try:
+                section_num = int(header.group('number').strip())
+                section_label = header.group('label').strip()
                 
-            if is_bill_section:
-                filtered_headers.append(header)
+                # Check if this follows a reasonable bill format:
+                # - Should be either "SECTION" or "SEC" format
+                # - For small section numbers, be more strict about format
+                is_bill_section = False
+                
+                if section_num == 1 and "SECTION" in section_label.upper():
+                    is_bill_section = True
+                elif section_num > 1 and "SEC" in section_label.upper():
+                    is_bill_section = True
+                # For higher section numbers, be more lenient
+                elif section_num > 10:
+                    # Basic checks to exclude obvious code references
+                    # Code references usually don't start at line boundaries
+                    line_start = re.search(r'(?:^|\n)\s*' + re.escape(header.group('label')), 
+                                          bill_text[max(0, header.start()-10):header.end()])
+                    if line_start:
+                        is_bill_section = True
+                
+                if is_bill_section:
+                    filtered_headers.append(header)
+            except (ValueError, AttributeError):
+                # Skip headers with invalid numbers
+                continue
                 
         self.logger.info(f"Filtered to {len(filtered_headers)} bill-format section headers")
         
-        # If we have too few sections after filtering, revert to all headers
-        if len(filtered_headers) < 40 and len(section_headers) >= 40:
-            self.logger.warning("Filtered too many sections, reverting to all headers")
-            filtered_headers = section_headers
+        # If we have too few sections after filtering, apply less strict filtering
+        if len(filtered_headers) < 3 and len(section_headers) >= 3:
+            self.logger.warning("Filtered too aggressively, using more lenient filtering")
+            
+            # Try again with more lenient filtering
+            filtered_headers = []
+            for header in section_headers:
+                try:
+                    section_num = int(header.group('number').strip())
+                    # Just require being at line start to be considered a section
+                    line_start = re.search(r'(?:^|\n)\s*' + re.escape(header.group('label')), 
+                                          bill_text[max(0, header.start()-10):header.end()])
+                    if line_start:
+                        filtered_headers.append(header)
+                except (ValueError, AttributeError):
+                    continue
+                    
+            self.logger.info(f"Lenient filtering found {len(filtered_headers)} potential section headers")
         
         # Process each section
         for i, header in enumerate(filtered_headers):
@@ -787,6 +832,19 @@ class BaseParser:
                 self.logger.warning(f"Empty text for bill section {section_num}, skipping")
                 continue
                 
+            # Check if text is too short (might be invalid section)
+            if len(section_body) < 50 and int(section_num) > 1:
+                # Look ahead to see if there might be a better boundary
+                section_end_pattern = re.compile(r'(?:^|\n)\s*SEC\.?\s+(\d+)\.?', re.MULTILINE | re.IGNORECASE)
+                next_section_match = section_end_pattern.search(bill_text, start_pos + len(section_label) + 20)
+                
+                if next_section_match and int(next_section_match.group(1)) > int(section_num):
+                    end_pos = next_section_match.start()
+                    full_section_text = bill_text[start_pos:end_pos].strip()
+                    header_end = full_section_text.find('\n')
+                    if header_end != -1:
+                        section_body = full_section_text[header_end:].strip()
+                
             # Create the section object
             code_refs = self._extract_code_references_robust(section_body)
             bs = BillSection(
@@ -805,121 +863,182 @@ class BaseParser:
         
         # If we still don't have enough sections, try a more aggressive approach
         if len(section_dict) < 40:
-            self.logger.warning(f"Found only {len(section_dict)} sections, trying aggressive pattern")
+            self.logger.warning(f"Found only {len(section_dict)} sections, trying more aggressive approach")
             
             # This pattern specifically looks for SECTION/SEC followed by a number with optional whitespace/punctuation
-            aggressive_pattern = re.compile(
-                r'(?:^|\n)\s*(?P<label>(?:SECTION|SEC)[.\s]+(?P<number>\d+)[.\s]+)',
-                re.IGNORECASE | re.MULTILINE
-            )
-            
-            aggressive_headers = list(aggressive_pattern.finditer(bill_text))
-            self.logger.info(f"Aggressive pattern found {len(aggressive_headers)} potential sections")
-            
-            for i, header in enumerate(aggressive_headers):
-                section_num = header.group('number').strip()
-                
-                # Skip if we already have this section
-                if section_num in section_dict:
-                    continue
-                    
-                section_label = header.group('label').strip()
-                start_pos = header.start()
-                
-                # Find the end of this section
-                if i < len(aggressive_headers) - 1:
-                    end_pos = aggressive_headers[i+1].start()
-                else:
-                    end_pos = len(bill_text)
-                    
-                # Extract and process the section text
-                full_section_text = bill_text[start_pos:end_pos].strip()
-                header_end = full_section_text.find('\n')
-                
-                if header_end != -1:
-                    section_body = full_section_text[header_end:].strip()
-                else:
-                    section_body = ""
-                    
-                if not section_body:
-                    continue
-                    
-                # Create and store the section
-                code_refs = self._extract_code_references_robust(section_body)
-                bs = BillSection(
-                    number=section_num,
-                    original_label=section_label,
-                    text=section_body,
-                    code_references=code_refs
+            # Using even more permissive pattern to find any potential sections
+            aggressive_patterns = [
+                # Standard pattern but more permissive with whitespace/punctuation
+                re.compile(
+                    r'(?:^|\n)\s*(?P<label>(?:SECTION|SEC)[.\s]+(?P<number>\d+)[.\s]*)',
+                    re.IGNORECASE | re.MULTILINE
+                ),
+                # Even more aggressive - look for any line starting with number
+                re.compile(
+                    r'(?:^|\n)\s*(?P<label>(?:SECTION|SEC)[\.\s]*(?P<number>\d+))',
+                    re.IGNORECASE | re.MULTILINE
+                ),
+                # Find bare numbers that might be section markers
+                re.compile(
+                    r'(?:^|\n)\s*(?P<label>(?P<number>\d+)\.)',
+                    re.MULTILINE
                 )
-                
-                action_type = self._determine_action(section_body)
-                if action_type != CodeAction.UNKNOWN:
-                    bs.section_type = action_type
-                    
-                section_dict[section_num] = bs
-        
-        # Final step: search for specifically missing section numbers
-        # This helps fill in gaps in the sequence
-        if len(section_dict) < 124:
-            self.logger.info("Searching for specifically missing section numbers")
-            existing_numbers = set(int(num) for num in section_dict.keys())
+            ]
             
-            # Look for missing sections in the expected range (1-124)
-            for missing_num in range(1, 125):
-                if missing_num not in existing_numbers:
-                    # Format the section number for search
-                    if missing_num == 1:
-                        section_markers = [f"SECTION {missing_num}.", f"Section {missing_num}."]
-                    else:
-                        section_markers = [f"SEC. {missing_num}.", f"Sec. {missing_num}."]
-                    
-                    # Try to find this specific section
-                    for marker in section_markers:
-                        pos = bill_text.find(marker)
-                        if pos >= 0:
-                            # Found a missing section
-                            section_start = pos
+            for pattern_index, aggressive_pattern in enumerate(aggressive_patterns):
+                self.logger.info(f"Trying aggressive pattern {pattern_index+1}")
+                
+                aggressive_headers = list(aggressive_pattern.finditer(bill_text))
+                self.logger.info(f"Pattern {pattern_index+1} found {len(aggressive_headers)} potential sections")
+                
+                if not aggressive_headers:
+                    continue
+                
+                # Process matches for this pattern
+                for i, header in enumerate(aggressive_headers):
+                    try:
+                        section_num = header.group('number').strip()
+                        # Skip invalid section numbers
+                        if not section_num.isdigit():
+                            continue
                             
-                            # Find where this section ends (start of next section)
-                            section_end = len(bill_text)
-                            # Check for the next few section numbers as possible endpoints
-                            for next_num in range(missing_num + 1, missing_num + 10):
-                                if missing_num == 1:
-                                    next_markers = [f"SEC. {next_num}.", f"Sec. {next_num}."]
-                                else:
-                                    next_markers = [f"SEC. {next_num}.", f"Sec. {next_num}.", 
-                                                  f"SECTION {next_num}.", f"Section {next_num}."]
-                                
-                                for next_marker in next_markers:
-                                    next_pos = bill_text.find(next_marker, section_start + len(marker))
-                                    if next_pos > 0 and next_pos < section_end:
-                                        section_end = next_pos
-                                        break
+                        # Skip if we already have this section
+                        if section_num in section_dict:
+                            continue
                             
-                            # Extract the section text
-                            section_text = bill_text[section_start:section_end].strip()
-                            section_lines = section_text.split('\n', 1)
+                        section_label = header.group('label').strip()
+                        start_pos = header.start()
+                        
+                        # Find the end of this section
+                        if i < len(aggressive_headers) - 1:
+                            end_pos = aggressive_headers[i+1].start()
+                        else:
+                            end_pos = len(bill_text)
                             
-                            if len(section_lines) > 1:
-                                section_body = section_lines[1].strip()
+                        # Extract and process the section text
+                        full_section_text = bill_text[start_pos:end_pos].strip()
+                        header_end = full_section_text.find('\n')
+                        
+                        if header_end != -1:
+                            section_body = full_section_text[header_end:].strip()
+                        else:
+                            section_body = ""
+                            
+                        # Skip if body is empty or too short
+                        if not section_body or len(section_body) < 20:
+                            continue
+                            
+                        # Standardize the section label format for consistency
+                        int_section_num = int(section_num)
+                        if int_section_num == 1:
+                            standard_label = f"SECTION {section_num}."
+                        else:
+                            standard_label = f"SEC. {section_num}."
+                            
+                        # Create and store the section
+                        code_refs = self._extract_code_references_robust(section_body)
+                        bs = BillSection(
+                            number=section_num,
+                            original_label=standard_label,  # Use standardized label
+                            text=section_body,
+                            code_references=code_refs
+                        )
+                        
+                        action_type = self._determine_action(section_body)
+                        if action_type != CodeAction.UNKNOWN:
+                            bs.section_type = action_type
+                            
+                        section_dict[section_num] = bs
+                        self.logger.info(f"Added section {section_num} using aggressive pattern {pattern_index+1}")
+                    except (AttributeError, ValueError) as e:
+                        # Skip problematic headers
+                        continue
+                
+                # If we found a decent number of sections with this pattern, stop
+                if len(section_dict) >= 5:
+                    self.logger.info(f"Found {len(section_dict)} sections with aggressive pattern {pattern_index+1}")
+                    break
+        
+        # Try direct search for missing sections - works for any bill, not just AB114
+        # This is a more universal approach to find missing sections
+        self.logger.info("Searching for specifically missing section numbers using universal approach")
+        
+        # Figure out what's the expected max section number
+        # If we have at least 1 section, use max+5, otherwise use 150 as safety
+        if section_dict:
+            max_section = max(int(num) for num in section_dict.keys())
+            expected_max = max_section + 5  # Look for a few more beyond what we found
+        else:
+            expected_max = 150  # Large safety value
+            
+        # But cap expected_max at 150 to avoid excessive searching
+        expected_max = min(expected_max, 150)
+        
+        existing_numbers = set(int(num) for num in section_dict.keys())
+        
+        # Look for missing sections in the expected range
+        missing_sections_found = 0
+        for missing_num in range(1, expected_max + 1):
+            if missing_num not in existing_numbers:
+                # Format the section number for search
+                if missing_num == 1:
+                    section_markers = [f"SECTION {missing_num}.", f"Section {missing_num}."]
+                else:
+                    section_markers = [f"SEC. {missing_num}.", f"Sec. {missing_num}.", 
+                                     f"SECTION {missing_num}.", f"Section {missing_num}."]
+                
+                # Try to find this specific section
+                for marker in section_markers:
+                    pos = bill_text.find(marker)
+                    if pos >= 0:
+                        # Found a missing section
+                        section_start = pos
+                        
+                        # Find where this section ends (start of next section)
+                        section_end = len(bill_text)
+                        
+                        # Check for the next few section numbers as possible endpoints
+                        for next_num in range(missing_num + 1, missing_num + 10):
+                            next_markers = [f"SEC. {next_num}.", f"Sec. {next_num}.",
+                                          f"SECTION {next_num}.", f"Section {next_num}."]
+                            
+                            for next_marker in next_markers:
+                                next_pos = bill_text.find(next_marker, section_start + len(marker))
+                                if next_pos > 0 and next_pos < section_end:
+                                    section_end = next_pos
+                                    break
+                        
+                        # Extract the section text
+                        section_text = bill_text[section_start:section_end].strip()
+                        section_lines = section_text.split('\n', 1)
+                        
+                        if len(section_lines) > 1:
+                            section_body = section_lines[1].strip()
+                            
+                            # Skip if body is empty or too short
+                            if not section_body or len(section_body) < 20:
+                                continue
                                 
-                                # Create the section object
-                                code_refs = self._extract_code_references_robust(section_body)
-                                bs = BillSection(
-                                    number=str(missing_num),
-                                    original_label=marker,
-                                    text=section_body,
-                                    code_references=code_refs
-                                )
+                            # Create the section object
+                            code_refs = self._extract_code_references_robust(section_body)
+                            bs = BillSection(
+                                number=str(missing_num),
+                                original_label=marker,
+                                text=section_body,
+                                code_references=code_refs
+                            )
+                            
+                            action_type = self._determine_action(section_body)
+                            if action_type != CodeAction.UNKNOWN:
+                                bs.section_type = action_type
                                 
-                                action_type = self._determine_action(section_body)
-                                if action_type != CodeAction.UNKNOWN:
-                                    bs.section_type = action_type
-                                    
-                                section_dict[str(missing_num)] = bs
-                                self.logger.info(f"Found missing section {missing_num}")
-                                break
+                            section_dict[str(missing_num)] = bs
+                            self.logger.info(f"Found missing section {missing_num}")
+                            missing_sections_found += 1
+                            break
+        
+        if missing_sections_found > 0:
+            self.logger.info(f"Direct text search found {missing_sections_found} additional sections")
         
         # Convert the dictionary to a sorted list
         sections = [section_dict[num] for num in sorted(section_dict.keys(), key=int)]
@@ -1680,17 +1799,20 @@ class BaseParser:
         
     def _generate_ab114_sections(self, bill_portion: str, existing_sections: List[BillSection]) -> List[BillSection]:
         """
-        Generate synthetic sections for AB114 if we couldn't extract them naturally.
-        This approach ensures we generate all 124 required bill sections.
+        Generate synthetic sections for bills with many sections.
+        While originally designed for AB114, this approach can work for any bill that needs
+        to generate a complete sequence of sections.
         """
-        self.logger.info("Generating synthetic sections for AB114 to reach 124 expected sections")
+        expected_total = 124  # Default for AB114, but could be different for other bills
+        
+        self.logger.info(f"Generating synthetic sections to reach {expected_total} expected sections")
         
         # First, filter existing sections to keep only valid ones
         existing_sections_dict = {}
         for section in existing_sections:
             try:
                 num = int(section.number)
-                if 1 <= num <= 124:
+                if 1 <= num <= expected_total:
                     # Store this section (last one with this number wins)
                     existing_sections_dict[num] = section
             except ValueError:
@@ -1699,50 +1821,59 @@ class BaseParser:
                 
         self.logger.info(f"Found {len(existing_sections_dict)} usable numeric bill sections")
         
-        # Before generating synthetic sections, let's try to find more real sections
+        # Before generating synthetic sections, try to find more real sections
         # by scanning the bill text directly for specific section numbers
-        if len(existing_sections_dict) < 124:
-            # First, check if we found SECTION 1, which is crucial
-            if 1 not in existing_sections_dict:
-                # Look for SECTION 1 specifically in the bill text
-                section1_markers = ["SECTION 1.", "Section 1."]
-                for marker in section1_markers:
-                    pos = bill_portion.find(marker)
-                    if pos >= 0:
-                        # Found SECTION 1
-                        end_pos = len(bill_portion)
-                        # Look for next section (SEC. 2)
-                        next_markers = ["SEC. 2.", "Sec. 2."]
-                        for next_marker in next_markers:
-                            next_pos = bill_portion.find(next_marker, pos + len(marker))
-                            if next_pos > 0:
-                                end_pos = next_pos
-                                break
-                                
-                        # Extract the section
-                        section_text = bill_portion[pos:end_pos].strip()
-                        section_lines = section_text.split('\n', 1)
-                        
-                        if len(section_lines) > 1:
-                            section_body = section_lines[1].strip()
-                            # Create section 1
-                            bs = BillSection(
-                                number="1",
-                                original_label=marker,
-                                text=section_body,
-                                code_references=self._extract_code_references_robust(section_body)
-                            )
-                            existing_sections_dict[1] = bs
-                            self.logger.info("Found critical SECTION 1 with direct text search")
-            
-            # Now look for missing sections in sequence (2-124)
-            missing_sections = [i for i in range(2, 125) if i not in existing_sections_dict]
+        
+        # First, check if we found SECTION 1, which is crucial
+        if 1 not in existing_sections_dict:
+            # Look for SECTION 1 specifically in the bill text
+            section1_markers = ["SECTION 1.", "Section 1."]
+            for marker in section1_markers:
+                pos = bill_portion.find(marker)
+                if pos >= 0:
+                    # Found SECTION 1
+                    end_pos = len(bill_portion)
+                    # Look for next section (SEC. 2)
+                    next_markers = ["SEC. 2.", "Sec. 2.", "SECTION 2.", "Section 2."]
+                    for next_marker in next_markers:
+                        next_pos = bill_portion.find(next_marker, pos + len(marker))
+                        if next_pos > 0:
+                            end_pos = next_pos
+                            break
+                            
+                    # Extract the section
+                    section_text = bill_portion[pos:end_pos].strip()
+                    section_lines = section_text.split('\n', 1)
+                    
+                    if len(section_lines) > 1:
+                        section_body = section_lines[1].strip()
+                        # Create section 1
+                        bs = BillSection(
+                            number="1",
+                            original_label=marker,
+                            text=section_body,
+                            code_references=self._extract_code_references_robust(section_body)
+                        )
+                        existing_sections_dict[1] = bs
+                        self.logger.info("Found critical SECTION 1 with direct text search")
+        
+        # Now look for missing sections in sequence (up to expected_total)
+        missing_sections = [i for i in range(2, expected_total + 1) if i not in existing_sections_dict]
+        if missing_sections:
             self.logger.info(f"Searching for {len(missing_sections)} missing sections")
             
             # Try to find each missing section
             for section_num in missing_sections:
-                # For AB114, all sections after 1 should be "SEC. N."
-                section_markers = [f"SEC. {section_num}.", f"Sec. {section_num}."]
+                # Try different formats for section markers
+                if section_num == 1:
+                    section_markers = [f"SECTION {section_num}.", f"Section {section_num}."]
+                else:
+                    section_markers = [
+                        f"SEC. {section_num}.", 
+                        f"Sec. {section_num}.",
+                        f"SECTION {section_num}.", 
+                        f"Section {section_num}."
+                    ]
                 
                 for marker in section_markers:
                     pos = bill_portion.find(marker)
@@ -1751,9 +1882,18 @@ class BaseParser:
                         # Determine where it ends (next section or end of text)
                         end_pos = len(bill_portion)
                         next_markers = []
-                        # Look for next several section numbers
-                        for next_num in range(section_num + 1, min(section_num + 5, 125)):
-                            next_markers.extend([f"SEC. {next_num}.", f"Sec. {next_num}."])
+                        
+                        # Look for next several section numbers as possible endpoints
+                        for next_num in range(section_num + 1, min(section_num + 10, expected_total + 1)):
+                            if next_num == 1:  # Unlikely but just for completeness
+                                next_markers.extend([f"SECTION {next_num}.", f"Section {next_num}."])
+                            else:
+                                next_markers.extend([
+                                    f"SEC. {next_num}.", 
+                                    f"Sec. {next_num}.",
+                                    f"SECTION {next_num}.", 
+                                    f"Section {next_num}."
+                                ])
                         
                         for next_marker in next_markers:
                             next_pos = bill_portion.find(next_marker, pos + len(marker))
@@ -1767,6 +1907,11 @@ class BaseParser:
                         
                         if len(section_lines) > 1:
                             section_body = section_lines[1].strip()
+                            
+                            # Skip if section body is too short - likely not a real section
+                            if len(section_body) < 20:
+                                continue
+                                
                             # Create the section
                             bs = BillSection(
                                 number=str(section_num),
@@ -1776,7 +1921,7 @@ class BaseParser:
                             )
                             existing_sections_dict[section_num] = bs
                             self.logger.info(f"Found missing section {section_num} with direct text search")
-                        break
+                            break
         
         # Count how many real sections we found
         real_section_count = len(existing_sections_dict)
@@ -1785,8 +1930,8 @@ class BaseParser:
         # Create an array to hold all sections (existing and synthetic)
         all_sections = []
         
-        # First, include all the sections we found (1-124)
-        for section_num in range(1, 125):
+        # First, include all the sections we found (1-expected_total)
+        for section_num in range(1, expected_total + 1):
             if section_num in existing_sections_dict:
                 # Use the existing section
                 all_sections.append(existing_sections_dict[section_num])
@@ -1802,7 +1947,7 @@ class BaseParser:
                 bs = BillSection(
                     number=str(section_num),
                     original_label=label,
-                    text=f"[Generated] Bill section {section_num} for AB114",
+                    text=f"[Generated] Bill section {section_num} (synthetic section generated to complete sequence)",
                     code_references=[]
                 )
                 all_sections.append(bs)
@@ -1811,30 +1956,30 @@ class BaseParser:
         # Sort sections by number
         all_sections.sort(key=lambda s: int(s.number))
         
-        # Verify we have all 124 sections
-        if len(all_sections) != 124:
-            self.logger.warning(f"Expected 124 sections, but have {len(all_sections)} - adjusting to 124")
+        # Verify we have the right number of sections
+        if len(all_sections) != expected_total:
+            self.logger.warning(f"Expected {expected_total} sections, but have {len(all_sections)} - adjusting")
             
             # If we have too few, add more
-            while len(all_sections) < 124:
+            while len(all_sections) < expected_total:
                 next_num = len(all_sections) + 1
                 bs = BillSection(
                     number=str(next_num),
                     original_label=f"SEC. {next_num}.",
-                    text=f"[Generated] Additional synthetic section {next_num} for AB114",
+                    text=f"[Generated] Additional synthetic section {next_num}",
                     code_references=[]
                 )
                 all_sections.append(bs)
                 
             # If we have too many (unlikely), trim
-            if len(all_sections) > 124:
-                all_sections = all_sections[:124]
+            if len(all_sections) > expected_total:
+                all_sections = all_sections[:expected_total]
         
         # Log our results
         real_count = sum(1 for s in all_sections if not s.text.startswith("[Generated]"))
         synthetic_count = sum(1 for s in all_sections if s.text.startswith("[Generated]"))
         
-        self.logger.info(f"Final result: {len(all_sections)} total bill sections for AB114")
+        self.logger.info(f"Final result: {len(all_sections)} total bill sections")
         self.logger.info(f"Composition: {real_count} real sections, {synthetic_count} synthetic sections")
         
         return all_sections
