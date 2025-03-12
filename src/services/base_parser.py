@@ -201,13 +201,18 @@ class BaseParser:
             full_text = soup.get_text(separator='\n', strip=True)
 
             # Try to find the Legislative Counsel's Digest
-            digest_match = re.search(r'LEGISLATIVE\s+COUNSEL(?:\'|'|')S\s+DIGEST(.*?)(?:The\s+people\s+of\s+the\s+State\s+of\s+California\s+do\s+enact\s+as\s+follows)', full_text, re.DOTALL | re.IGNORECASE)
+            # Fix the regex pattern by using character class for quotes and using the proper flags (as integers)
+            digest_match = re.search(r'LEGISLATIVE\s+COUNSEL[\'\']?S\s+DIGEST(.*?)(?:The\s+people\s+of\s+the\s+State\s+of\s+California\s+do\s+enact\s+as\s+follows)', 
+                                    full_text, 
+                                    re.DOTALL | re.IGNORECASE)  # These flags are integers, not strings
 
             if digest_match:
                 digest_text = digest_match.group(1).strip()
 
             # Try to find the bill text after enactment clause
-            bill_match = re.search(r'The\s+people\s+of\s+the\s+State\s+of\s+California\s+do\s+enact\s+as\s+follows(.*?)$', full_text, re.DOTALL | re.IGNORECASE)
+            bill_match = re.search(r'The\s+people\s+of\s+the\s+State\s+of\s+California\s+do\s+enact\s+as\s+follows(.*?)$', 
+                                  full_text, 
+                                  re.DOTALL | re.IGNORECASE)  # These flags are integers, not strings
 
             if bill_match:
                 bill_text = bill_match.group(1).strip()
@@ -224,7 +229,8 @@ class BaseParser:
             return digest_sections
 
         # First, remove the "LEGISLATIVE COUNSEL'S DIGEST" heading if present
-        digest_text = re.sub(r'^LEGISLATIVE\s+COUNSEL(?:\'|'|')S\s+DIGEST\s*', '', digest_text, flags=re.IGNORECASE)
+        # Use a character class for quotes to avoid the pipe character issue
+        digest_text = re.sub(r'^LEGISLATIVE\s+COUNSEL[\'\']?S\s+DIGEST\s*', '', digest_text, flags=re.IGNORECASE)
 
         # Split the digest text into sections based on paragraph numbers (1), (2), etc.
         section_pattern = r'\((\d+)\)(.*?)(?=\(\d+\)|$)'
