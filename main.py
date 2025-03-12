@@ -1,407 +1,136 @@
-import eventlet
-eventlet.monkey_patch()
-
-from flask import Flask, send_from_directory, request, jsonify, make_response
-from flask_socketio import SocketIO
-from openai import AsyncOpenAI
-from anthropic import AsyncAnthropic
-from flask_cors import CORS
-import os
-from dotenv import load_dotenv
-import logging
+"""
+Main entry point for Trailer Bill Analysis application
+Connects the bill retrieval, parsing, and analysis components
+"""
 import sys
+import logging
 import asyncio
-from weasyprint import HTML, CSS
-
-# Configure logging first, before using logger anywhere
-logging.basicConfig(level=logging.INFO, stream=sys.stdout)
-logger = logging.getLogger(__name__)
-logger.info("Starting application")
-
-# Load environment variables
-load_dotenv()
-logger.info("Environment variables loaded")
-
+import argparse
+from datetime import datetime
 from src.services.bill_scraper import BillScraper
 from src.services.base_parser import BaseParser
-from src.services.json_builder import JsonBuilder
-from src.services.section_matcher import SectionMatcher
-from src.services.impact_analyzer import ImpactAnalyzer
-from src.services.report_generator import ReportGenerator
-from src.models.practice_groups import PracticeGroups
-
 from src.models.bill_components import TrailerBill
 
-# Verify critical environment variables
-if not os.getenv('OPENAI_API_KEY'):
-    raise ValueError("OPENAI_API_KEY environment variable is not set")
-
-# Instantiate the async OpenAI client
-# Initialize without custom http_client to fix compatibility issues
-openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-# Check for Anthropic API key and instantiate client if present
-anthropic_client = None
-if os.getenv('ANTHROPIC_API_KEY'):
-    # Use a custom http_client to avoid the 'proxies' parameter issue
-    from anthropic._base_client import AsyncHttpxClientWrapper
-    import httpx
-    
-    # Create a custom http client without proxies
-    http_client = AsyncHttpxClientWrapper(
-        base_url="https://api.anthropic.com",
-        timeout=httpx.Timeout(timeout=600.0),
-        limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
-    )
-    
-    anthropic_client = AsyncAnthropic(
-        api_key=os.getenv("ANTHROPIC_API_KEY"),
-        http_client=http_client
-    )
-    logger.info("Anthropic API client initialized successfully")
-else:
-    logger.warning("ANTHROPIC_API_KEY environment variable is not set, Claude models won't be available")
-
 # Configure logging
-logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
 logger = logging.getLogger(__name__)
-logger.info("Environment variables loaded")
 
-app = Flask(__name__, static_folder='frontend/dist', static_url_path='')
-CORS(app, resources={
-    r"/api/*": {
-        "origins": ["http://0.0.0.0:3000", "https://0.0.0.0:3000"],
-        "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type"],
-        "expose_headers": ["Content-Type"]
-    }
-}, supports_credentials=True)
-
-@app.after_request
-def after_request(response):
-    logger.info(f"Response headers: {dict(response.headers)}")
-    return response
-
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
-
-
-class AnalysisProgressHandler:
-    """Enhanced progress handler with more detailed progress reporting"""
-    def __init__(self, socket):
-        self.socket = socket
-        self.current_step = 0
-        self.total_steps = 5
-        self.current_substep = 0
-        self.total_substeps = 0
-        self.last_message = ""
-
-    def update_progress(self, step, message, substep=None, total_substeps=None):
-        """
-        Update progress information and emit to client
-        """
-        self.current_step = step
-        self.last_message = message
-
-        if substep is not None:
-            self.current_substep = substep
-            self.total_substeps = total_substeps
-
-        logger.info(f"Progress: Step {step} - {message}")
-        self.socket.emit('analysis_progress', {
-            'step': step,
-            'message': message,
-            'current_substep': self.current_substep,
-            'total_substeps': self.total_substeps
-        })
-
-    def update_substep(self, substep, message=None):
-        """
-        Update just the substep progress without changing the main step
-        """
-        self.current_substep = substep
-        update_message = message if message else self.last_message
-
-        logger.info(f"Substep progress: {substep}/{self.total_substeps} - {update_message}")
-        self.socket.emit('analysis_progress', {
-            'step': self.current_step,
-            'message': update_message,
-            'current_substep': substep,
-            'total_substeps': self.total_substeps
-        })
-
-
-def trailer_bill_to_dict(bill: TrailerBill) -> dict:
+class BillAnalyzer:
     """
-    Convert the parsed TrailerBill object into a dictionary
-    that has a 'bill_sections' key for the report generator.
+    Main coordinator class for bill retrieval, parsing and analysis.
     """
-    sections_dict = {}
-    for bs in bill.bill_sections:
-        code_mods = []
-        for ref in bs.code_references:
-            code_mods.append({
-                "code_name": ref.code_name,
-                "section": ref.section,
-                "action": getattr(ref, "action", None)
-            })
-        sections_dict[bs.number] = {
-            "text": bs.text,
-            "code_modifications": code_mods
-        }
 
-    return {
-        "bill_sections": sections_dict
-    }
+    def __init__(self):
+        self.bill_scraper = BillScraper(max_retries=3, timeout=60)
+        self.bill_parser = BaseParser()
+        self.logger = logging.getLogger(__name__)
 
-
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def serve(path):
-    if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
-        return send_from_directory(app.static_folder, path)
-    return send_from_directory(app.static_folder, 'index.html')
-
-
-@app.route('/api/analyze', methods=['POST'])
-def analyze_bill():
-    try:
-        logger.info(f"Received request: {request.method} {request.path}")
-        logger.info(f"Request headers: {dict(request.headers)}")
-        logger.info(f"Request data: {request.get_data(as_text=True)}")
-
-        data = request.json
-        logger.info(f"Parsed JSON data: {data}")
-
-        bill_number = data.get('billNumber')
-        session_year = data.get('sessionYear', '2025-2026')  # Default to current session if not provided
-        selected_model = data.get('model', 'gpt-4o-2024-08-06')  # Default to GPT-4o if not provided
-
-        if not bill_number:
-            logger.error("Bill number is missing from request")
-            return jsonify({'error': 'Bill number is required'}), 400
-
-        # Extract the year from the session year string (e.g., "2025-2026" -> 2025)
-        try:
-            year = int(session_year.split('-')[0])
-            logger.info(f"Starting analysis for bill {bill_number} from session {session_year} (year {year}) using model {selected_model}")
-        except (ValueError, IndexError):
-            logger.error(f"Invalid session year format: {session_year}")
-            return jsonify({'error': 'Invalid session year format'}), 400
-
-        # Start async analysis in background
-        socketio.start_background_task(
-            target=lambda: asyncio.run(process_bill_analysis(bill_number, year, selected_model))
-        )
-
-        return jsonify({
-            'status': 'processing',
-            'billNumber': bill_number,
-            'sessionYear': session_year,
-            'model': selected_model
-        })
-
-    except Exception as e:
-        logger.error(f"Error in analyze_bill: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/reports/<filename>')
-def serve_report(filename):
-    reports_dir = os.path.join(app.root_path, 'reports')
-    return send_from_directory(reports_dir, filename)
-
-
-@app.errorhandler(404)
-def not_found_error(error):
-    return jsonify({'error': 'Not found'}), 404
-
-
-@app.errorhandler(500)
-def internal_error(error):
-    return jsonify({'error': 'Internal server error'}), 500
-
-
-async def process_bill_analysis(bill_number, year=2025, model="gpt-4o-2024-08-06"):  # Default to 2025 for current session and GPT-4o model
-    progress = AnalysisProgressHandler(socketio)
-    try:
-        # Step 1: Fetch bill text
-        progress.update_progress(1, f"Fetching bill text from legislative website (Session {year}-{year+1})")
-        bill_scraper = BillScraper(max_retries=3, timeout=30)
-        bill_text_response = await bill_scraper.get_bill_text(bill_number, year)
-        bill_text = bill_text_response['full_text']  # Store the full text
-        progress.update_progress(1, "Bill text successfully retrieved")
-
-        # Step 2: Initial parsing
-        progress.update_progress(2, "Parsing bill components and structure")
-        parser = BaseParser()
-        parsed_bill = parser.parse_bill(bill_text)
-        progress.update_progress(
-            2,
-            f"Identified {len(parsed_bill.digest_sections)} digest sections and {len(parsed_bill.bill_sections)} bill sections"
-        )
-
-        # Step 3: Build analysis structure
-        progress.update_progress(3, "Building analysis structure")
-        json_builder = JsonBuilder()
-        skeleton = json_builder.create_skeleton(parsed_bill.digest_sections, parsed_bill.bill_sections)
-        progress.update_progress(3, f"Analysis framework created with {len(skeleton['changes'])} change items")
-
-        # Step 4: AI Analysis with substeps
-        progress.update_progress(4, f"Starting AI analysis with {model} model", 0, len(parsed_bill.digest_sections))
-
-        # Determine which client to use based on the model name
-        if model.startswith("claude"):
-            if not anthropic_client:
-                socketio.emit('analysis_error', {
-                    'error': "Anthropic API key not configured. Claude models are not available.",
-                    'billNumber': bill_number
-                })
-                return
-            llm_client = {"anthropic": anthropic_client}
-        else:
-            llm_client = {"openai": openai_client}
-        
-        # Initialize analyzers with appropriate client
-        matcher = SectionMatcher(openai_client=openai_client, anthropic_client=anthropic_client, model=model)
-        practice_groups = PracticeGroups()
-        analyzer = ImpactAnalyzer(openai_client=openai_client, anthropic_client=anthropic_client, practice_groups_data=practice_groups, model=model)
-
-        # First match sections
-        progress.update_progress(4, "Matching digest items to bill sections", 1, len(parsed_bill.digest_sections))
-        skeleton = await matcher.match_sections(skeleton, bill_text, progress_handler=progress)
-
-        # Then analyze impacts
-        progress.update_progress(4, "Analyzing impacts on local agencies", 2, len(parsed_bill.digest_sections))
-        analyzed_skeleton = await analyzer.analyze_changes(skeleton, progress_handler=progress)
-
-
-        # Step 5: Generate report
-        progress.update_progress(5, "Generating final report")
-        report_gen = ReportGenerator()
-        report = report_gen.generate_report(
-            analyzed_skeleton,
-            {
-                'bill_number': bill_number,
-                'title': parsed_bill.title,
-                'chapter_number': parsed_bill.chapter_number,
-                'date_approved': parsed_bill.date_approved,
-                'model': model  # Add model info to the report
-            },
-            bill_text
-        )
-
-        # Save report
-        progress.update_progress(5, "Finalizing and saving report")
-        report_filename = f"bill_analysis_{bill_number}.html"
-        os.makedirs('reports', exist_ok=True)
-        report_path = os.path.join('reports', report_filename)
-        report_gen.save_report(report, report_path)
-
-        logger.info(f"Analysis completed for bill {bill_number}")
-        socketio.emit('analysis_complete', {
-            'status': 'complete',
-            'report_url': f'/api/reports/{report_filename}',
-            'billNumber': bill_number
-        })
-
-    except Exception as e:
-        logger.error(f"Error in process_bill_analysis: {str(e)}")
-        logger.exception("Full traceback:")
-        socketio.emit('analysis_error', {
-            'error': str(e),
-            'billNumber': bill_number
-        })
-
-
-@app.route('/api/reports/<filename>.pdf')
-def serve_pdf_report(filename):
-    try:
-        html_path = os.path.join(app.root_path, 'reports', f'{filename}.html')
-        if not os.path.exists(html_path):
-            logger.error(f"Report file not found: {html_path}")
-            return jsonify({'error': 'Report not found'}), 404
-
-        with open(html_path, 'r', encoding='utf-8') as f:
-            html_content = f.read()
-
-        report_gen = ReportGenerator()
-        
-        # Define additional CSS for PDF-specific fixes
-        additional_css = """
-            /* Ensure bullet points render correctly */
-            ul { 
-                list-style-type: disc;
-                padding-left: 2rem;
-            }
-            
-            li {
-                display: list-item;
-                margin-bottom: 8px;
-            }
-            
-            /* Ensure proper page breaks */
-            .change-box, .report-section, .practice-areas, .action-items {
-                page-break-inside: avoid;
-            }
-            
-            /* Improve table formatting for deadline sections */
-            .deadline-table {
-                width: 100%;
-                border-collapse: collapse;
-                margin: 1rem 0;
-            }
-            
-            .deadline-table th, .deadline-table td {
-                padding: 8px;
-                text-align: left;
-                border-bottom: 1px solid #ddd;
-            }
-            
-            .deadline-table th {
-                background-color: #f5f5f5;
-                font-weight: bold;
-            }
+    async def analyze_bill(self, bill_number: str, year: int) -> TrailerBill:
         """
-        
+        Retrieve, parse and analyze the specified bill
+
+        Args:
+            bill_number: Bill identifier (e.g., "AB123", "SB456")
+            year: Year of the legislative session
+
+        Returns:
+            TrailerBill object containing the parsed bill data
+        """
+        self.logger.info(f"Starting analysis of bill {bill_number} from {year}")
+
         try:
-            # Create HTML object and use base_url to resolve relative paths correctly
-            html = HTML(string=html_content, base_url=app.root_path)
-            
-            # Combine the main CSS with additional PDF-specific CSS
-            css = CSS(string=report_gen.css_styles + additional_css)
-            
-            # Use presentational hints to preserve styling from HTML
-            pdf_content = html.write_pdf(
-                stylesheets=[css],
-                presentational_hints=True,
-                optimize_images=True,
-                jpeg_quality=90
-            )
+            # Step 1: Retrieve the bill HTML
+            bill_data = await self.bill_scraper.get_bill_text(bill_number, year)
+            if not bill_data or 'html' not in bill_data:
+                raise ValueError(f"Failed to retrieve bill {bill_number}")
+
+            self.logger.info(f"Retrieved bill HTML ({len(bill_data['html'])} characters)")
+
+            # Step 2: Parse the bill HTML into a structured object
+            bill = self.bill_parser.parse_bill(bill_data['html'])
+
+            self.logger.info(f"Parsed bill {bill_number} successfully")
+            self.logger.info(f"Found {len(bill.digest_sections)} digest sections and {len(bill.bill_sections)} bill sections")
+
+            return bill
+
         except Exception as e:
-            logger.error(f"PDF generation error: {str(e)}")
-            logger.exception("Full traceback:")
-            return jsonify({'error': 'Failed to generate PDF'}), 500
+            self.logger.error(f"Error analyzing bill {bill_number}: {str(e)}")
+            raise
 
-        response = make_response(pdf_content)
-        response.headers.set('Content-Type', 'application/pdf')
-        response.headers.set('Content-Disposition', 'attachment', filename=f'{filename}.pdf')
+    def save_bill_to_file(self, bill: TrailerBill, output_file: str) -> None:
+        """
+        Save the parsed bill to a text file for inspection
 
-        return response
+        Args:
+            bill: The parsed TrailerBill object
+            output_file: Path to save the output to
+        """
+        try:
+            with open(output_file, 'w', encoding='utf-8') as f:
+                # Write bill metadata
+                f.write(f"Bill: {bill.bill_number}\n")
+                f.write(f"Title: {bill.title}\n")
+                f.write(f"Chapter: {bill.chapter_number}\n")
+                f.write(f"Date Approved: {bill.date_approved}\n")
+                f.write(f"Date Filed: {bill.date_filed}\n\n")
 
+                # Write digest sections
+                f.write(f"DIGEST SECTIONS ({len(bill.digest_sections)}):\n")
+                f.write("=" * 80 + "\n\n")
+
+                for ds in bill.digest_sections:
+                    f.write(f"DIGEST SECTION {ds.number}:\n")
+                    f.write("-" * 40 + "\n")
+                    f.write(f"Text: {ds.text[:200]}...\n")
+                    f.write(f"Existing Law: {ds.existing_law[:200]}...\n")
+                    f.write(f"Proposed Changes: {ds.proposed_changes[:200]}...\n")
+                    f.write(f"Code References: {', '.join([f'{ref.code_name} {ref.section}' for ref in ds.code_references])}\n")
+                    f.write(f"Linked Bill Sections: {', '.join(ds.bill_sections)}\n")
+                    f.write("\n")
+
+                # Write bill sections
+                f.write(f"BILL SECTIONS ({len(bill.bill_sections)}):\n")
+                f.write("=" * 80 + "\n\n")
+
+                for bs in bill.bill_sections:
+                    f.write(f"BILL SECTION {bs.number} ({bs.original_label}):\n")
+                    f.write("-" * 40 + "\n")
+                    f.write(f"Text: {bs.text[:200]}...\n")
+                    f.write(f"Code References: {', '.join([f'{ref.code_name} {ref.section}' for ref in bs.code_references])}\n")
+                    f.write("\n")
+
+                self.logger.info(f"Saved bill analysis to {output_file}")
+
+        except Exception as e:
+            self.logger.error(f"Error saving bill to file: {str(e)}")
+
+async def main():
+    """
+    Main entry point for command-line usage
+    """
+    parser = argparse.ArgumentParser(description='Analyze a California trailer bill')
+    parser.add_argument('bill_number', help='Bill number (e.g., SB174)')
+    parser.add_argument('--year', type=int, default=datetime.now().year, help='Legislative session year')
+    parser.add_argument('--output', default='bill_analysis.txt', help='Output file path')
+
+    args = parser.parse_args()
+
+    analyzer = BillAnalyzer()
+    try:
+        bill = await analyzer.analyze_bill(args.bill_number, args.year)
+        analyzer.save_bill_to_file(bill, args.output)
+        logger.info("Analysis completed successfully")
     except Exception as e:
-        logger.error(f"Error in PDF endpoint: {str(e)}")
-        logger.exception("Full traceback:")
-        return jsonify({'error': 'Failed to generate PDF'}), 500
+        logger.error(f"Analysis failed: {str(e)}")
+        sys.exit(1)
 
-
-if __name__ == '__main__':
-    os.makedirs('reports', exist_ok=True)
-
-    if not os.path.exists('frontend/dist'):
-        logger.info("Building frontend...")
-        os.system('cd frontend && npm install && npm run build')
-
-    port = int(os.environ.get('PORT', 8080))
-
-    logger.info(f"Starting server on port {port}...")
-    socketio.run(app, host='0.0.0.0', port=port, debug=True)
+if __name__ == "__main__":
+    asyncio.run(main())
