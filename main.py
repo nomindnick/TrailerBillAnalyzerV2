@@ -97,9 +97,13 @@ def analyze_bill():
     model = data.get('model', 'gpt-4o-2024-08-06')
 
     # Start async bill analysis in the background
-    socketio.start_background_task(
-        analyze_bill_async, bill_number, session_year, model
-    )
+    def run_async_analysis():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(analyze_bill_async(bill_number, session_year, model))
+        loop.close()
+        
+    socketio.start_background_task(run_async_analysis)
 
     return jsonify({'status': 'Analysis started'})
 
