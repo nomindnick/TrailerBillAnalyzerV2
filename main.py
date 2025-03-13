@@ -64,9 +64,10 @@ except (ImportError, Exception) as e:
 
 # Progress handler class for tracking analysis progress
 class ProgressHandler:
-    def __init__(self, socketio):
+    def __init__(self, socketio, analysis_id=None):
         self.socketio = socketio
         self.logger = logging.getLogger(__name__)
+        self.analysis_id = analysis_id
 
     def update_progress(self, step, message, current_substep=None, total_substeps=None):
         """Send progress update to client"""
@@ -79,6 +80,10 @@ class ProgressHandler:
             data['current_substep'] = current_substep
             data['total_substeps'] = total_substeps
 
+        # Include analysis ID if available
+        if self.analysis_id:
+            data['analysis_id'] = self.analysis_id
+
         self.logger.info(f"Emitting progress: step={step}, message={message}, data={data}")
         self.socketio.emit('analysis_progress', data)
 
@@ -87,6 +92,10 @@ class ProgressHandler:
         data = {'current_substep': current}
         if message:
             data['message'] = message
+
+        # Include analysis ID if available
+        if self.analysis_id:
+            data['analysis_id'] = self.analysis_id
 
         self.logger.info(f"Emitting substep update: current={current}, message={message}")
         self.socketio.emit('analysis_progress', data)
@@ -102,6 +111,7 @@ def analyze_bill():
     bill_number = data.get('billNumber')
     session_year = data.get('sessionYear', '2023-2024')
     model = data.get('model', 'gpt-4o-2024-08-06')
+    analysis_id = data.get('analysisId')  # Get the analysis ID
 
     # Determine if we should use Anthropic based on the model name
     use_anthropic = model.startswith('claude')
@@ -116,14 +126,15 @@ def analyze_bill():
                 bill_number=bill_number, 
                 year=session_year, 
                 use_anthropic=use_anthropic, 
-                model=model
+                model=model,
+                analysis_id=analysis_id  # Make sure parameter names match function definition
             )
         )
         loop.close()
 
     socketio.start_background_task(run_async_analysis)
 
-    return jsonify({'status': 'Analysis started'})
+    return jsonify({'status': 'Analysis started', 'analysisId': analysis_id})
 
 @app.route('/reports/<path:filename>')
 def serve_report(filename):
@@ -139,12 +150,12 @@ def serve(path):
     else:
         return send_from_directory(app.static_folder, 'index.html')
 
-async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None, progress_handler=None):
+async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None, analysis_id=None, progress_handler=None):
     """Asynchronous bill analysis"""
     try:
         # Create progress handler if not provided
         if progress_handler is None:
-            progress_handler = ProgressHandler(socketio)
+            progress_handler = ProgressHandler(socketio, analysis_id)  # Pass analysis_id to handler
 
         # Update initial progress
         progress_handler.update_progress(1, "Starting bill analysis")
@@ -227,7 +238,8 @@ async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None,
         # Emit completion event with report URL
         logger.info(f"Analysis complete, report saved to {report_path}")
         socketio.emit('analysis_complete', {
-            'report_url': f"/reports/{os.path.basename(report_path)}"
+            'report_url': f"/reports/{os.path.basename(report_path)}",
+            'analysis_id': analysis_id  # Include analysis ID
         })
 
         # Return data for frontend
@@ -294,6 +306,11 @@ def run_cli(bill_number, year, output):
     except Exception as e:
         logger.error(f"CLI error: {str(e)}", exc_info=True)
         return 1
+
+@socketio.on('ping')
+def handle_ping(data):
+    """Handle ping from client to keep connection alive"""
+    socketio.emit('pong', {'timestamp': data.get('timestamp')})
 
 if __name__ == "__main__":
     # Check if running as CLI or web server
