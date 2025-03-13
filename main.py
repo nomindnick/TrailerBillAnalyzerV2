@@ -312,6 +312,18 @@ def handle_ping(data):
     """Handle ping from client to keep connection alive"""
     socketio.emit('pong', {'timestamp': data.get('timestamp')})
 
+@socketio.on('connect')
+def handle_connect():
+    """Handle client connection"""
+    logger.info(f"Client connected: {request.sid}")
+    # Send a welcome message to confirm connection
+    socketio.emit('connection_established', {'status': 'connected'})
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle client disconnection"""
+    logger.info(f"Client disconnected: {request.sid}")
+
 if __name__ == "__main__":
     # Check if running as CLI or web server
     parser = argparse.ArgumentParser(description='Analyze California trailer bills')

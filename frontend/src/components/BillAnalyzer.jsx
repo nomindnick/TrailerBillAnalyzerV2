@@ -1,4 +1,4 @@
-// frontend/src/components/BillAnalyzer.jsx
+// Updated BillAnalyzer.jsx component with fixes for WebSocket communication
 
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
@@ -48,6 +48,9 @@ const BillAnalyzer = () => {
   const reconnectAttemptsRef = useRef(0);
   const maxReconnectAttempts = 10;
 
+  // Use a ref to keep track of the socket instance for cleanup
+  const socketRef = useRef(null);
+
   // Available session years - add new ones at the top as they become available
   const availableSessionYears = [
     "2025-2026",
@@ -76,37 +79,39 @@ const BillAnalyzer = () => {
     { id: 5, name: 'Report Generation', description: 'Creating final report' }
   ];
 
-  // Establish and manage socket connection
+  // Establish socket connection immediately on component mount
   useEffect(() => {
-    // Function to create and set up a new socket connection
-    const setupSocket = () => {
-      // Cleanup previous socket if it exists
-      if (socket) {
-        socket.disconnect();
+    // Function to create and connect socket
+    const connectSocket = () => {
+      // Create socket URL based on current location
+      const protocol = window.location.protocol;
+      const host = window.location.host;
+      const socketUrl = `${protocol}//${host}`;
+
+      console.log('Connecting to socket at:', socketUrl);
+
+      // Close any existing socket connection
+      if (socketRef.current) {
+        socketRef.current.disconnect();
       }
 
-      // Create socket URL with explicit protocol
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.host;
-      const socketUrl = `${window.location.protocol}//${host}`;
-
-      console.log('Setting up socket connection to:', socketUrl);
-
-      // Initialize socket with explicit configuration
+      // Create new socket connection
       const newSocket = io(socketUrl, {
         path: '/socket.io',
         transports: ['websocket', 'polling'],
         reconnection: true,
         reconnectionAttempts: maxReconnectAttempts,
         reconnectionDelay: 1000,
-        timeout: 30000,
-        forceNew: true, // Create a new connection every time
-        secure: window.location.protocol === 'https:'
+        timeout: 20000,
       });
+
+      // Store socket reference for cleanup
+      socketRef.current = newSocket;
+      setSocket(newSocket);
 
       // Connection event handlers
       newSocket.on('connect', () => {
-        console.log('Socket connected successfully:', newSocket.id);
+        console.log('Socket connected successfully with ID:', newSocket.id);
         setSocketConnected(true);
         setError(null);
         reconnectAttemptsRef.current = 0;
@@ -120,7 +125,6 @@ const BillAnalyzer = () => {
         if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
           setError('Failed to connect to analysis server. Please try again later.');
         } else if (isProcessing) {
-          // Only show connection error if we're actively processing
           setError(`Connection to server lost. Attempting to reconnect... (${reconnectAttemptsRef.current}/${maxReconnectAttempts})`);
         }
       });
@@ -129,23 +133,20 @@ const BillAnalyzer = () => {
         console.log('Socket disconnected:', reason);
         setSocketConnected(false);
 
-        if (reason === 'io server disconnect' || reason === 'transport close') {
-          // The server closed the connection, try to reconnect manually
-          console.log('Server disconnected, attempting to reconnect...');
-          newSocket.connect();
-        }
-
         if (isProcessing) {
           setError('Connection to analysis server lost. The analysis may still be running.');
+
+          // Try to reconnect automatically
+          setTimeout(() => {
+            if (isProcessing) {
+              console.log('Attempting to reconnect socket...');
+              newSocket.connect();
+            }
+          }, 1000);
         }
       });
 
-      // Debug listener for all events
-      newSocket.onAny((event, ...args) => {
-        console.log(`Socket event [${event}]:`, args);
-      });
-
-      // Progress update event handler
+      // Set up event listeners for analysis progress
       newSocket.on('analysis_progress', (data) => {
         console.log('Progress update received:', data);
 
@@ -156,12 +157,12 @@ const BillAnalyzer = () => {
             setError(null);
           }
 
-          // Always update step if provided
+          // Update step if provided
           if (data.step !== undefined) {
             setCurrentStep(data.step);
           }
 
-          // Always update message if provided
+          // Update message if provided
           if (data.message) {
             setStepMessage(data.message);
           }
@@ -184,7 +185,7 @@ const BillAnalyzer = () => {
         }
       });
 
-      // Analysis completion event handler
+      // Handle analysis completion
       newSocket.on('analysis_complete', (data) => {
         console.log('Analysis complete received:', data);
 
@@ -210,48 +211,45 @@ const BillAnalyzer = () => {
         }
       });
 
-      // Error event handler
+      // Handle analysis errors
       newSocket.on('analysis_error', (data) => {
         console.error('Analysis error received:', data);
 
-        // Only process events for the current analysis
         if (!currentAnalysisRef.current || data.analysis_id === currentAnalysisRef.current) {
           setError(data.error || 'Unknown error occurred during analysis');
           setIsProcessing(false);
           currentAnalysisRef.current = null;
         }
       });
-
-      return newSocket;
     };
 
-    // Set up the socket connection
-    const newSocket = setupSocket();
-    setSocket(newSocket);
+    // Connect socket
+    connectSocket();
 
     // Cleanup on unmount
     return () => {
       console.log('Cleaning up socket connection');
-      if (newSocket) {
-        newSocket.disconnect();
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
       }
     };
-  }, []); // Empty dependency array means this effect runs once on mount
+  }, []); // Empty dependency array means this runs once on component mount
 
   // Create a periodic ping to keep the socket connection alive
   useEffect(() => {
     let pingInterval;
 
-    if (socket && socketConnected && isProcessing) {
-      // Send a ping every 10 seconds to keep the connection alive
+    if (socketRef.current && socketConnected && isProcessing) {
+      // Send a ping every 5 seconds to keep the connection alive
       pingInterval = setInterval(() => {
         try {
-          socket.emit('ping', { timestamp: Date.now() });
+          socketRef.current.emit('ping', { timestamp: Date.now() });
           console.log('Ping sent to keep connection alive');
         } catch (err) {
           console.error('Error sending ping:', err);
         }
-      }, 10000);
+      }, 5000);
     }
 
     return () => {
@@ -259,7 +257,7 @@ const BillAnalyzer = () => {
         clearInterval(pingInterval);
       }
     };
-  }, [socket, socketConnected, isProcessing]);
+  }, [socketConnected, isProcessing]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -277,10 +275,16 @@ const BillAnalyzer = () => {
     currentAnalysisRef.current = analysisId;
 
     try {
-      // Check socket connection before proceeding
-      if (!socketConnected && socket) {
-        console.log('Socket disconnected, attempting to reconnect...');
-        socket.connect();
+      // Ensure socket is connected before proceeding
+      if (!socketConnected) {
+        console.log('Socket not connected, attempting to connect now...');
+        // If socket isn't connected, try to reconnect
+        if (socketRef.current) {
+          socketRef.current.connect();
+        } else {
+          // If no socket exists, we have a bigger problem
+          throw new Error('Socket connection not available. Please refresh the page and try again.');
+        }
 
         // Wait a moment for connection to establish
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -315,6 +319,12 @@ const BillAnalyzer = () => {
       // Analysis started successfully
       const data = await response.json();
       console.log('Analysis started successfully:', data);
+
+      // Force a check of socket connection after starting analysis
+      if (!socketConnected && socketRef.current) {
+        console.log('Reconnecting socket after analysis start...');
+        socketRef.current.connect();
+      }
     } catch (err) {
       console.error('Error starting analysis:', err);
       setError(err.message || 'Failed to connect to server');
@@ -347,11 +357,14 @@ const BillAnalyzer = () => {
           </button>
         </div>
 
-        {/* Connection status indicator */}
+        {/* Connection status indicator - more prominent now */}
         {!socketConnected && (
           <div className="mb-4 p-3 bg-yellow-100 dark:bg-yellow-900 border border-yellow-200 dark:border-yellow-800 rounded-lg flex items-center text-yellow-800 dark:text-yellow-200">
             <AlertTriangle className="h-5 w-5 mr-2" />
-            <span>Socket connection unavailable. Some features may not work properly.</span>
+            <span>
+              <strong>WebSocket disconnected:</strong> Waiting for connection to server...
+              {isProcessing && " This will affect progress updates."}
+            </span>
           </div>
         )}
 
@@ -432,7 +445,7 @@ const BillAnalyzer = () => {
             <div className="flex justify-end">
               <button
                 type="submit"
-                disabled={isProcessing || !billNumber || !socketConnected}
+                disabled={isProcessing || !billNumber}
                 className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 shadow-md hover:shadow-lg"
               >
                 {isProcessing ? 'Analyzing...' : 'Analyze Bill'}
