@@ -138,6 +138,13 @@ def serve(path):
 async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None, progress_handler=None):
     """Asynchronous bill analysis"""
     try:
+        # Create progress handler if not provided
+        if progress_handler is None:
+            progress_handler = ProgressHandler(socketio)
+
+        # Update initial progress
+        progress_handler.update_progress(1, "Starting bill analysis")
+
         # Set default model if not specified, but don't override a provided model
         if model is None:
             model = "claude-3-sonnet-20240229" if use_anthropic else "gpt-4o-2024-08-06"
@@ -156,6 +163,7 @@ async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None,
         bill_scraper = BillScraper()
 
         # Fetch bill data
+        progress_handler.update_progress(1, "Fetching bill text")
         bill_data = await bill_scraper.get_bill_text(bill_number, year)
         bill_text = bill_data["full_text"]
 
@@ -163,6 +171,7 @@ async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None,
         bill_parser = BaseParser()
 
         # Parse bill
+        progress_handler.update_progress(2, "Parsing bill text")
         parsed_bill = bill_parser.parse_bill(bill_text)
 
         # Load practice groups
@@ -175,6 +184,7 @@ async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None,
         json_builder = JsonBuilder()
 
         # Build skeleton from parsed bill
+        progress_handler.update_progress(3, "Building analysis structure")
         skeleton = json_builder.create_skeleton(parsed_bill.digest_sections, parsed_bill.bill_sections)
 
         # Match sections to digest items
@@ -199,6 +209,7 @@ async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None,
         }
 
         # Generate report
+        progress_handler.update_progress(5, "Generating final report")
         report_generator = ReportGenerator()
         report_html = report_generator.generate_report(final_skeleton, bill_info, bill_text)
 
@@ -208,6 +219,12 @@ async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None,
         report_path = f"reports/{bill_number}_{timestamp}.html"
         os.makedirs("reports", exist_ok=True)
         report_generator.save_report(report_html, report_path)
+
+        # Emit completion event with report URL
+        logger.info(f"Analysis complete, report saved to {report_path}")
+        socketio.emit('analysis_complete', {
+            'report_url': f"/reports/{os.path.basename(report_path)}"
+        })
 
         # Return data for frontend
         return {
@@ -220,6 +237,10 @@ async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None,
         }
     except Exception as e:
         logger.error(f"Error analyzing bill: {str(e)}", exc_info=True)
+        # Emit error event
+        socketio.emit('analysis_error', {
+            'error': str(e)
+        })
         return {"status": "error", "message": str(e)}
 
 def run_cli(bill_number, year, output):
