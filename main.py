@@ -66,6 +66,7 @@ except (ImportError, Exception) as e:
 class ProgressHandler:
     def __init__(self, socketio):
         self.socketio = socketio
+        self.logger = logging.getLogger(__name__)
 
     def update_progress(self, step, message, current_substep=None, total_substeps=None):
         """Send progress update to client"""
@@ -78,6 +79,7 @@ class ProgressHandler:
             data['current_substep'] = current_substep
             data['total_substeps'] = total_substeps
 
+        self.logger.info(f"Emitting progress: step={step}, message={message}, data={data}")
         self.socketio.emit('analysis_progress', data)
 
     def update_substep(self, current, message=None):
@@ -85,6 +87,8 @@ class ProgressHandler:
         data = {'current_substep': current}
         if message:
             data['message'] = message
+
+        self.logger.info(f"Emitting substep update: current={current}, message={message}")
         self.socketio.emit('analysis_progress', data)
 
 # API Routes

@@ -14,7 +14,7 @@ const formatElapsedTime = (start, now) => {
   const seconds = Math.floor(elapsedMs / 1000);
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
-  
+
   if (hours > 0) {
     return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
   } else if (minutes > 0) {
@@ -49,7 +49,7 @@ const BillAnalyzer = () => {
     "2017-2018",
     "2015-2016"
   ];
-  
+
   // Available AI models - add new models here as they become available
   const availableModels = [
     { id: "gpt-4o-2024-08-06", name: "GPT-4o (Default)" },
@@ -68,21 +68,22 @@ const BillAnalyzer = () => {
     { id: 5, name: 'Report Generation', description: 'Creating final report' }
   ];
 
+  // Set up socket connection
   useEffect(() => {
     // Initialize socket connection
-    const socketUrl = window.location.protocol === 'https:'
-      ? 'https://' + window.location.hostname
-      : 'http://localhost:8080';
+    const socketUrl = window.location.origin;
+    console.log('Connecting to socket URL:', socketUrl);
 
     const newSocket = io(socketUrl, {
+      path: '/socket.io',
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
-      secure: true
+      secure: window.location.protocol === 'https:'
     });
 
     newSocket.on('connect', () => {
-      console.log('Connected to server');
+      console.log('Connected to server socket');
     });
 
     newSocket.on('connect_error', (error) => {
@@ -90,86 +91,67 @@ const BillAnalyzer = () => {
       setError('Failed to connect to analysis server');
     });
 
-    setSocket(newSocket);
+    newSocket.on('disconnect', (reason) => {
+      console.log('Socket disconnected:', reason);
+    });
 
-    // Set up socket event listeners
+    // Add debug listener for all events
+    newSocket.onAny((event, ...args) => {
+      console.log(`Socket event [${event}]:`, args);
+    });
+
+    // Set up specific event handlers
     newSocket.on('analysis_progress', (data) => {
-      const prevStep = currentStep;
-      const newStep = data.step;
-      
-      setCurrentStep(newStep);
-      setStepMessage(data.message || '');
+      console.log('Progress update received:', data);
+      if (data.step) {
+        setCurrentStep(data.step);
+      }
+      if (data.message) {
+        setStepMessage(data.message);
+      }
 
-      // Update progress for the current step
-      setStepProgress(prev => {
-        const updatedProgress = { ...prev };
-        
-        // Calculate percentage for the current step
-        if (data.step_progress) {
-          updatedProgress[newStep] = data.step_progress; // If server provides direct step progress
-        } else {
-          // Estimate progress based on message or substeps
-          if (!updatedProgress[newStep]) {
-            updatedProgress[newStep] = 0;
-          }
-          
-          // Increment progress based on activity
-          updatedProgress[newStep] = Math.min(
-            updatedProgress[newStep] + (data.message ? 10 : 5), 
-            newStep === prevStep ? 95 : 100 // Cap at 95% until next step starts
-          );
-        }
-        
-        // Mark previous step as complete (100%)
-        if (newStep > prevStep && prevStep > 0) {
-          updatedProgress[prevStep] = 100;
-        }
-        
-        return updatedProgress;
-      });
-
-      // Handle AI analysis substeps (step 4)
-      if (data.total_substeps > 0) {
+      // Handle substeps tracking
+      if (data.current_substep !== undefined && data.total_substeps !== undefined) {
         setProgress({
           current: data.current_substep,
           total: data.total_substeps
         });
-        
-        // Calculate percentage for AI analysis step
-        const percentage = Math.round((data.current_substep / data.total_substeps) * 100);
+      }
+
+      // Update step progress if provided
+      if (data.step_progress !== undefined) {
         setStepProgress(prev => ({
           ...prev,
-          4: percentage
+          [data.step]: data.step_progress
         }));
       }
-      
-      // Auto-expand the current step for better visibility
-      setExpandedStepId(newStep);
     });
 
     newSocket.on('analysis_complete', (data) => {
+      console.log('Analysis complete received:', data);
       setIsProcessing(false);
       setReportUrl(data.report_url);
       setNotification({
         type: 'success',
         message: 'Analysis completed successfully!'
       });
-      
-      // Keep startTime for final duration display
-      // Don't reset startTime here so we can show final duration in the report section
 
       // Clear notification after 5 seconds
       setTimeout(() => setNotification(null), 5000);
     });
 
     newSocket.on('analysis_error', (data) => {
+      console.error('Analysis error received:', data);
       setError(data.error);
       setIsProcessing(false);
     });
 
+    setSocket(newSocket);
+
     // Cleanup on unmount
     return () => {
-      newSocket.close();
+      console.log('Cleaning up socket connection');
+      newSocket.disconnect();
     };
   }, []);
 
