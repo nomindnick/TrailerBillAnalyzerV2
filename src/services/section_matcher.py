@@ -175,7 +175,8 @@ class SectionMatcher:
                 "model": self.model,
                 "max_tokens": 64000,
                 "system": system_prompt,
-                "messages": [{"role": "user", "content": context_prompt}]
+                "messages": [{"role": "user", "content": context_prompt}],
+                "stream": True  # Use streaming for long-running operations
             }
 
             # Set up extended thinking for Claude 3.7 models
@@ -185,25 +186,23 @@ class SectionMatcher:
                     "type": "enabled", 
                     "budget_tokens": 16000
                 }
-            else:
-                # Only use pre-filling for non-3.7 models
-                params["messages"].append(
-                    {"role": "assistant", "content": "Here is the JSON response:\n{"}
-                )
 
-            self.logger.info(f"Using Anthropic API with model {self.model}")
-            response = await self.anthropic_client.messages.create(**params)
+            self.logger.info(f"Using Anthropic API with model {self.model} (streaming enabled)")
 
-            # Find the text content in the response blocks
+            # Process the streaming response
             response_content = ""
-            for block in response.content:
-                if hasattr(block, 'text') and block.text:
-                    response_content = block.text
-                    break
+            try:
+                stream = await self.anthropic_client.messages.create(**params)
+                async for chunk in stream:
+                    if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'text'):
+                        response_content += chunk.delta.text
+            except Exception as e:
+                self.logger.error(f"Error during Anthropic API streaming: {str(e)}")
+                raise
 
             if not response_content:
-                self.logger.error("No text content found in Claude response")
-                raise ValueError("Claude response did not contain a text block")
+                self.logger.error("No text content received in Anthropic streaming response")
+                raise ValueError("No text received from Claude API in streaming response")
 
             # Parse the JSON response from the text
             matches_data = self._parse_ai_matches(response_content)
@@ -234,6 +233,7 @@ class SectionMatcher:
             self.logger.info(f"Using OpenAI API with model {self.model}")
             response = await self.openai_client.chat.completions.create(**params)
             matches_data = self._parse_ai_matches(response.choices[0].message.content)
+
         results = []
 
         for match in matches_data:

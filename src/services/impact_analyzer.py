@@ -145,46 +145,49 @@ class ImpactAnalyzer:
                 "model": self.model,
                 "max_tokens": 64000,
                 "system": system_prompt,
-                "messages": [
-                    {"role": "user", "content": prompt},
-                    # Pre-fill response to force clean JSON output
-                    {"role": "assistant", "content": "Here is the JSON response:\n{"}
-                ]
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": True  # Use streaming for long-running operations
             }
 
             # Add thinking parameter for Claude 3.7 models
             if "claude-3-7" in self.model:
-                # Extended thinking requires temperature=1 and is incompatible with pre-filled responses
                 params["temperature"] = 1
                 params["thinking"] = {
                     "type": "enabled", 
                     "budget_tokens": 16000
                 }
-                # Remove pre-filled assistant message as it's incompatible with thinking
-                # Use a completely new messages array to avoid any pre-filled content
-                params["messages"] = [{"role": "user", "content": prompt}]
 
-            self.logger.info(f"Using Anthropic API with model {self.model}")
-            response = await self.anthropic_client.messages.create(**params)
+            self.logger.info(f"Using Anthropic API with model {self.model} (streaming enabled)")
 
-            # Find the text content in the response blocks
+            # Process the streaming response
             response_content = ""
-            for block in response.content:
-                if hasattr(block, 'text') and block.text:
-                    response_content = block.text
-                    break
+            try:
+                stream = await self.anthropic_client.messages.create(**params)
+                async for chunk in stream:
+                    if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'text'):
+                        response_content += chunk.delta.text
+            except Exception as e:
+                self.logger.error(f"Error during Anthropic API streaming: {str(e)}")
+                raise
 
             if not response_content:
-                self.logger.error("No text content found in Claude response")
-                raise ValueError("Claude response did not contain a text block")
+                self.logger.error("No text content received in Anthropic streaming response")
+                raise ValueError("No text received from Claude API in streaming response")
 
             # Parse the JSON response from the text
             try:
-                # Only add opening brace if using pre-fill approach and thinking is not enabled
-                if response_content and not response_content.strip().startswith('{') and "claude-3-7" not in self.model:
-                    response_content = '{' + response_content
-
-                analysis_data = json.loads(response_content)
+                # Check if response starts with a JSON object
+                if response_content and not response_content.strip().startswith('{'):
+                    # Try to extract JSON content
+                    json_start = response_content.find('{')
+                    json_end = response_content.rfind('}') + 1
+                    if json_start >= 0 and json_end > json_start:
+                        clean_json = response_content[json_start:json_end]
+                        analysis_data = json.loads(clean_json)
+                    else:
+                        raise ValueError("Could not extract JSON from response")
+                else:
+                    analysis_data = json.loads(response_content)
             except json.JSONDecodeError:
                 # Handle case where response isn't valid JSON
                 self.logger.error(f"Invalid JSON response from Claude: {response_content[:200]}...")

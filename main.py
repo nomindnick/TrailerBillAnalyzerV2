@@ -99,13 +99,24 @@ def analyze_bill():
     session_year = data.get('sessionYear', '2023-2024')
     model = data.get('model', 'gpt-4o-2024-08-06')
 
+    # Determine if we should use Anthropic based on the model name
+    use_anthropic = model.startswith('claude')
+
     # Start async bill analysis in the background
     def run_async_analysis():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        loop.run_until_complete(analyze_bill_async(bill_number, session_year, model))
+        # Use named parameters to avoid order issues
+        loop.run_until_complete(
+            analyze_bill_async(
+                bill_number=bill_number, 
+                year=session_year, 
+                use_anthropic=use_anthropic, 
+                model=model
+            )
+        )
         loop.close()
-        
+
     socketio.start_background_task(run_async_analysis)
 
     return jsonify({'status': 'Analysis started'})
@@ -127,15 +138,18 @@ def serve(path):
 async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None, progress_handler=None):
     """Asynchronous bill analysis"""
     try:
-        # Set default model if not specified
-        if not model:
+        # Set default model if not specified, but don't override a provided model
+        if model is None:
             model = "claude-3-sonnet-20240229" if use_anthropic else "gpt-4o-2024-08-06"
+
+        # Always calculate use_anthropic based on the final model name to ensure consistency
+        use_anthropic = model.startswith("claude")
 
         # Create clients
         openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
         anthropic_client = AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
-        logger.info(f"Using model: {model} for analysis")
+        logger.info(f"Using model: {model} for analysis (use_anthropic={use_anthropic})")
 
         # Create bill scraper
         bill_scraper = BillScraper()
@@ -188,6 +202,7 @@ async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None,
         report_html = report_generator.generate_report(final_skeleton, bill_info, bill_text)
 
         # Save report
+        from datetime import datetime
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         report_path = f"reports/{bill_number}_{timestamp}.html"
         os.makedirs("reports", exist_ok=True)
