@@ -7,6 +7,8 @@ from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO
+from openai import OpenAI
+from anthropic import AsyncAnthropic
 
 # Import services
 from src.services.bill_scraper import BillScraper
@@ -15,6 +17,7 @@ from src.services.json_builder import JsonBuilder
 from src.services.section_matcher import SectionMatcher
 from src.services.impact_analyzer import ImpactAnalyzer  # Assuming you have this service
 from src.services.report_generator import ReportGenerator  # Assuming you have this service
+from src.models.practice_groups import PracticeGroups
 
 # Configure logging
 logging.basicConfig(
@@ -121,87 +124,87 @@ def serve(path):
     else:
         return send_from_directory(app.static_folder, 'index.html')
 
-async def analyze_bill_async(bill_number, session_year, model):
-    """Run bill analysis asynchronously and emit progress via Socket.IO"""
-    progress_handler = ProgressHandler(socketio)
-    report_url = None
-
+async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None, progress_handler=None):
+    """Asynchronous bill analysis"""
     try:
-        # Extract year from session year (e.g., 2023 from "2023-2024")
-        year = int(session_year.split('-')[0])
+        # Set default model if not specified
+        if not model:
+            model = "claude-3-sonnet-20240229" if use_anthropic else "gpt-4o-2024-08-06"
 
-        # Step 1: Fetch bill text
-        progress_handler.update_progress(1, f"Fetching bill {bill_number} from {year}")
+        # Create clients
+        openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        anthropic_client = AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+
+        logger.info(f"Using model: {model} for analysis")
+
+        # Create bill scraper
+        bill_scraper = BillScraper()
+
+        # Fetch bill data
         bill_data = await bill_scraper.get_bill_text(bill_number, year)
+        bill_text = bill_data["full_text"]
 
-        if not bill_data or not bill_data.get('full_text'):
-            raise ValueError(f"Failed to retrieve bill text for {bill_number}")
+        # Create parser
+        bill_parser = BaseParser()
 
-        bill_text = bill_data['full_text']
-        progress_handler.update_progress(1, f"Retrieved bill text ({len(bill_text)} characters)")
-
-        # Step 2: Parse bill
-        progress_handler.update_progress(2, f"Parsing bill components")
+        # Parse bill
         parsed_bill = bill_parser.parse_bill(bill_text)
 
-        digest_count = len(parsed_bill.digest_sections)
-        section_count = len(parsed_bill.bill_sections)
-        progress_handler.update_progress(2, f"Identified {digest_count} digest sections and {section_count} bill sections")
+        # Load practice groups
+        practice_groups = PracticeGroups()
 
-        # Step 3: Build analysis skeleton
-        progress_handler.update_progress(3, "Creating analysis structure")
+        # Create section matcher with specified model
+        section_matcher = SectionMatcher(openai_client, model=model, anthropic_client=anthropic_client)
+
+        # Create JSON builder
+        json_builder = JsonBuilder()
+
+        # Build skeleton from parsed bill
         skeleton = json_builder.create_skeleton(parsed_bill.digest_sections, parsed_bill.bill_sections)
-        progress_handler.update_progress(3, f"Created initial structure with {len(skeleton['changes'])} changes")
 
-        # Step 4: AI Analysis - match sections
-        progress_handler.update_progress(4, "Matching digest items to bill sections")
+        # Match sections to digest items
+        matched_skeleton = await section_matcher.match_sections(skeleton, bill_text, progress_handler)
 
-        # Determine which AI client to use based on model name
-        ai_client = anthropic_client if model.startswith("claude") else openai_client
+        # Create impact analyzer with the SAME model as the section matcher
+        impact_analyzer = ImpactAnalyzer(openai_client, practice_groups, model=model, anthropic_client=anthropic_client)
 
-        if not ai_client:
-            raise ValueError(f"AI client for model {model} is not available")
+        # Analyze impacts
+        analyzed_skeleton = await impact_analyzer.analyze_changes(matched_skeleton, progress_handler)
 
-        section_matcher = SectionMatcher(openai_client, model, anthropic_client)
-        updated_skeleton = await section_matcher.match_sections(
-            skeleton, 
-            bill_text, 
-            progress_handler
-        )
+        # Update metadata
+        final_skeleton = json_builder.update_metadata(analyzed_skeleton)
 
-        # Step 4 continued: Analyze impacts
-        progress_handler.update_progress(4, "Analyzing impacts on public agencies")
+        # Extract bill info
+        bill_info = {
+            "bill_number": bill_number,
+            "chapter_number": parsed_bill.chapter_number,
+            "title": parsed_bill.title,
+            "date_approved": parsed_bill.date_approved,
+            "model": model
+        }
 
-        impact_analyzer = ImpactAnalyzer(openai_client, model, anthropic_client)
-        analysis_result = await impact_analyzer.analyze_impacts(
-            updated_skeleton,
-            parsed_bill,
-            progress_handler
-        )
+        # Generate report
+        report_generator = ReportGenerator()
+        report_html = report_generator.generate_report(final_skeleton, bill_info, bill_text)
 
-        # Step 5: Generate report
-        progress_handler.update_progress(5, "Generating final report")
+        # Save report
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        report_path = f"reports/{bill_number}_{timestamp}.html"
+        os.makedirs("reports", exist_ok=True)
+        report_generator.save_report(report_html, report_path)
 
-        report_generator = ReportGenerator(REPORTS_DIR)
-        report_file = report_generator.generate_report(
-            analysis_result,
-            parsed_bill,
-            bill_number,
-            model
-        )
-
-        report_url = f"/reports/{os.path.basename(report_file)}"
-        progress_handler.update_progress(5, "Report generation complete")
-
-        # Notify client of completion
-        socketio.emit('analysis_complete', {
-            'report_url': report_url,
-            'bill_number': bill_number
-        })
-
+        # Return data for frontend
+        return {
+            "status": "success",
+            "report_path": report_path,
+            "bill_number": bill_number,
+            "chapter_number": parsed_bill.chapter_number,
+            "title": parsed_bill.title,
+            "analyzed_data": final_skeleton
+        }
     except Exception as e:
         logger.error(f"Error analyzing bill: {str(e)}", exc_info=True)
-        socketio.emit('analysis_error', {'error': str(e)})
+        return {"status": "error", "message": str(e)}
 
 def run_cli(bill_number, year, output):
     """Run bill analysis from command line"""

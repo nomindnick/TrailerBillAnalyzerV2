@@ -34,21 +34,52 @@ class BillScraper:
             "Pragma": "no-cache",
         }
 
-    def get_session_year_range(self, year: int) -> str:
+    def get_session_year_range(self, year) -> str:
         """
         Calculate the legislative session year range based on the provided year.
         Legislative sessions in California run for 2 years, starting on odd years.
+
+        Args:
+            year: The year (as integer, string, or range like "2023-2024")
+
+        Returns:
+            Session year range string (e.g., "20232024")
         """
+        # Handle different input formats
+        if isinstance(year, str):
+            # If it's already in "YYYY-YYYY" format, extract the first year
+            if "-" in year:
+                try:
+                    first_year = int(year.split("-")[0].strip())
+                    return f"{first_year}{first_year + 1}"
+                except (ValueError, IndexError):
+                    self.logger.warning(f"Could not parse year range: {year}. Using current year.")
+                    import datetime
+                    current_year = datetime.datetime.now().year
+                    session_start = current_year if (current_year % 2 == 1) else (current_year - 1)
+                    return f"{session_start}{session_start + 1}"
+            else:
+                # Try to convert simple string to int
+                try:
+                    year = int(year)
+                except ValueError:
+                    self.logger.warning(f"Invalid year format: {year}. Using current year.")
+                    import datetime
+                    current_year = datetime.datetime.now().year
+                    session_start = current_year if (current_year % 2 == 1) else (current_year - 1)
+                    return f"{session_start}{session_start + 1}"
+
+        # Now year should be an integer
         session_start = year if (year % 2 == 1) else (year - 1)
         return f"{session_start}{session_start + 1}"
 
-    async def get_bill_text(self, bill_number: str, year: int) -> Dict[str, Any]:
+    async def get_bill_text(self, bill_number: str, year) -> Dict[str, Any]:
         """
         Retrieves the full text for the specified bill with retry logic.
 
         Args:
             bill_number: The bill identifier (e.g., "AB123", "SB456")
-            year: The year of the legislative session
+            year: The year of the legislative session (as integer, string, or range like "2023-2024")
 
         Returns:
             Dictionary containing bill text and metadata
@@ -57,7 +88,19 @@ class BillScraper:
         session_str = self.get_session_year_range(year)
         url = f"{self.bill_url}?bill_id={session_str}0{bill_number}"
 
-        self.logger.info(f"Fetching bill {bill_number} from session {year}-{year+1}")
+        # For logging, handle both string and integer year formats
+        if isinstance(year, str) and "-" in year:
+            # If it's already in session format like "2023-2024", use it directly
+            display_year = year
+        else:
+            # Otherwise convert to integer and create a range
+            try:
+                year_int = int(year) if isinstance(year, str) else year
+                display_year = f"{year_int}-{year_int+1}"
+            except (ValueError, TypeError):
+                display_year = str(year)  # Fallback for any other format
+
+        self.logger.info(f"Fetching bill {bill_number} from session {display_year}")
         self.logger.info(f"Request URL: {url}")
 
         for attempt in range(1, self.max_retries + 1):
@@ -66,7 +109,7 @@ class BillScraper:
             except ClientResponseError as e:
                 if e.status == 404:
                     self.logger.error(f"Bill not found: {bill_number} (404 response)")
-                    raise ValueError(f"Bill {bill_number} from session {year}-{year+1} not found")
+                    raise ValueError(f"Bill {bill_number} from session {display_year} not found")
                 elif attempt < self.max_retries:
                     wait_time = 2 ** attempt
                     self.logger.warning(f"Request failed with status {e.status}, retrying in {wait_time}s (attempt {attempt}/{self.max_retries})")

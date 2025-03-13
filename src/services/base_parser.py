@@ -201,10 +201,9 @@ class BaseParser:
             full_text = soup.get_text(separator='\n', strip=True)
 
             # Try to find the Legislative Counsel's Digest
-            # Fix the regex pattern by using character class for quotes and using the proper flags (as integers)
             digest_match = re.search(r'LEGISLATIVE\s+COUNSEL[\'\']?S\s+DIGEST(.*?)(?:The\s+people\s+of\s+the\s+State\s+of\s+California\s+do\s+enact\s+as\s+follows)', 
                                     full_text, 
-                                    re.DOTALL | re.IGNORECASE)  # These flags are integers, not strings
+                                    re.DOTALL | re.IGNORECASE)
 
             if digest_match:
                 digest_text = digest_match.group(1).strip()
@@ -212,7 +211,7 @@ class BaseParser:
             # Try to find the bill text after enactment clause
             bill_match = re.search(r'The\s+people\s+of\s+the\s+State\s+of\s+California\s+do\s+enact\s+as\s+follows(.*?)$', 
                                   full_text, 
-                                  re.DOTALL | re.IGNORECASE)  # These flags are integers, not strings
+                                  re.DOTALL | re.IGNORECASE)
 
             if bill_match:
                 bill_text = bill_match.group(1).strip()
@@ -229,7 +228,6 @@ class BaseParser:
             return digest_sections
 
         # First, remove the "LEGISLATIVE COUNSEL'S DIGEST" heading if present
-        # Use a character class for quotes to avoid the pipe character issue
         digest_text = re.sub(r'^LEGISLATIVE\s+COUNSEL[\'\']?S\s+DIGEST\s*', '', digest_text, flags=re.IGNORECASE)
 
         # Split the digest text into sections based on paragraph numbers (1), (2), etc.
@@ -274,38 +272,130 @@ class BaseParser:
 
     def _parse_bill_sections(self, bill_text: str) -> List[BillSection]:
         """
-        Parse the bill text into a list of BillSection objects
+        Parse the bill text into a list of BillSection objects with improved pattern matching
         """
         bill_sections = []
         if not bill_text:
             self.logger.warning("No bill text to parse")
             return bill_sections
 
-        # Look for section markers like "SECTION 1." or "SEC. 2."
-        section_pattern = r'(?:^|\n)\s*((?:SECTION|SEC)\.?\s+(\d+)\.)(.*?)(?=(?:^|\n)\s*(?:SECTION|SEC)\.?\s+\d+\.|$)'
-        section_matches = re.finditer(section_pattern, bill_text, re.DOTALL | re.IGNORECASE)
+        # Pre-process the text for more reliable section detection
+        normalized_text = self._aggressive_normalize_improved(bill_text)
 
-        for match in section_matches:
-            section_label = match.group(1).strip()
-            section_number = match.group(2)
-            section_text = match.group(3).strip()
+        # Log a sample for debugging
+        self.logger.debug(f"Normalized text sample: {normalized_text[:500]}...")
 
-            # Extract code references
-            code_references = self._extract_code_references(section_text)
+        # Try multiple section patterns with increasing flexibility
+        section_patterns = [
+            # Pattern 1: Standard format with newline
+            r'(?:^|\n)\s*(?P<label>(?:SECTION|SEC)\.?\s+(?P<number>\d+)\.)\s*(?P<text>(?:.+?)(?=\n\s*(?:SECTION|SEC)\.?\s+\d+\.|\Z))',
 
-            bill_section = BillSection(
-                number=section_number,
-                original_label=section_label,
-                text=section_text,
-                code_references=code_references
-            )
+            # Pattern 2: More flexible with optional whitespace
+            r'(?:^|\n)\s*(?P<label>(?:SECTION|SEC)\.?\s*(?P<number>\d+)\.)\s*(?P<text>(?:.+?)(?=\n\s*(?:SECTION|SEC)\.?\s*\d+\.|\Z))',
 
-            bill_sections.append(bill_section)
+            # Pattern 3: Force matches at "SEC. X." regardless of surrounding context
+            r'\n\s*(?P<label>SEC\.\s+(?P<number>\d+)\.)\s*(?P<text>(?:.+?)(?=\n\s*SEC\.\s+\d+\.|\Z))',
+        ]
+
+        # Try each pattern
+        all_matches = []
+        successful_pattern = None
+
+        for i, pattern in enumerate(section_patterns):
+            matches = list(re.finditer(pattern, normalized_text, re.DOTALL | re.MULTILINE | re.IGNORECASE))
+            self.logger.info(f"Pattern {i+1} found {len(matches)} potential sections")
+
+            if matches:
+                all_matches = matches
+                successful_pattern = i+1
+                break
+
+        if not all_matches:
+            self.logger.warning("Standard patterns failed, attempting direct section extraction")
+            # Direct approach - find all "SEC. X." headers and extract content between them
+            section_headers = re.findall(r'\n\s*(SEC\.\s+(\d+)\.)', normalized_text)
+            self.logger.info(f"Found {len(section_headers)} section headers directly")
+
+            if section_headers:
+                # Manual extraction between headers
+                for i, (header, number) in enumerate(section_headers):
+                    start_pos = normalized_text.find(header) + len(header)
+
+                    # Find the end by looking for the next section header or end of text
+                    if i < len(section_headers) - 1:
+                        next_header = section_headers[i+1][0]
+                        end_pos = normalized_text.find(next_header)
+                    else:
+                        end_pos = len(normalized_text)
+
+                    section_text = normalized_text[start_pos:end_pos].strip()
+
+                    # Create section object
+                    bill_section = BillSection(
+                        number=number,
+                        original_label=header,
+                        text=section_text,
+                        code_references=self._extract_code_references(section_text)
+                    )
+                    bill_sections.append(bill_section)
+
+        # Process regular matches
+        if all_matches and not bill_sections:
+            for match in all_matches:
+                section_num = match.group('number')
+                section_text = match.group('text').strip()
+                section_label = match.group('label').strip()
+
+                # Skip empty sections
+                if not section_text:
+                    self.logger.warning(f"Empty text for section {section_num}, skipping")
+                    continue
+
+                # Extract code references
+                code_refs = self._extract_code_references(section_text)
+
+                bill_section = BillSection(
+                    number=section_num,
+                    original_label=section_label,
+                    text=section_text,
+                    code_references=code_refs
+                )
+
+                bill_sections.append(bill_section)
 
         # Sort by section number
         bill_sections.sort(key=lambda x: int(x.number))
 
+        self.logger.info(f"Successfully extracted {len(bill_sections)} bill sections")
         return bill_sections
+
+    def _aggressive_normalize_improved(self, text: str) -> str:
+        """
+        Aggressively normalize text to fix common issues with bill formatting,
+        especially handling decimal points in section numbers.
+        """
+        # Replace Windows line endings
+        text = text.replace('\r\n', '\n')
+
+        # Ensure consistent spacing around section headers
+        text = re.sub(r'(\n\s*)(SEC\.?|SECTION)(\s*)(\d+)(\.\s*)', r'\n\2 \4\5', text)
+
+        # Fix the decimal point issue - remove line breaks between section numbers and decimal points
+        text = re.sub(r'(\d+)\s*\n\s*(\.\d+)', r'\1\2', text)
+
+        # Standardize decimal points in section headers
+        text = re.sub(r'Section\s+(\d+)\s*\n\s*(\.\d+)', r'Section \1\2', text)
+
+        # Ensure section headers are properly separated with newlines
+        text = re.sub(r'([^\n])(SEC\.|SECTION)', r'\1\n\2', text)
+
+        # Handle extra whitespace
+        text = re.sub(r'\n\s+', '\n', text)
+
+        # Ensure "The people of the State of California do enact as follows:" is followed by a newline
+        text = re.sub(r'(The people of the State of California do enact as follows:)(?!\n)', r'\1\n', text, flags=re.IGNORECASE)
+
+        return text
 
     def _extract_code_references(self, text: str) -> List[CodeReference]:
         """

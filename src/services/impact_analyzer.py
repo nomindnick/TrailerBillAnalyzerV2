@@ -33,11 +33,17 @@ class ImpactAnalyzer:
         self.openai_client = openai_client
         self.anthropic_client = anthropic_client
         self.practice_groups = practice_groups_data
-        self.model = model
-        self.logger.info(f"Initialized ImpactAnalyzer with model: {model}")
 
-        # Determine which API to use based on model name
-        self.use_anthropic = model.startswith("claude")
+        # Ensure model is a string, not a client object
+        if not isinstance(model, str):
+            self.logger.warning(f"Model parameter is not a string: {type(model)}. Defaulting to OpenAI API")
+            self.model = "gpt-4o-2024-08-06"
+            self.use_anthropic = False
+        else:
+            self.model = model
+            self.use_anthropic = model.startswith("claude")
+
+        self.logger.info(f"Initialized ImpactAnalyzer with model: {self.model}")
 
         # Expanded keywords to catch local agency references from the AI response
         self.local_agency_keywords = {
