@@ -1,4 +1,4 @@
-// src/components/BillAnalyzer.jsx
+// frontend/src/components/BillAnalyzer.jsx
 
 import React, { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
@@ -70,20 +70,28 @@ const BillAnalyzer = () => {
 
   // Set up socket connection
   useEffect(() => {
-    // Initialize socket connection
+    // Cleanup previous socket if it exists
+    if (socket) {
+      socket.disconnect();
+    }
+
+    // Initialize socket connection with appropriate options
     const socketUrl = window.location.origin;
     console.log('Connecting to socket URL:', socketUrl);
 
     const newSocket = io(socketUrl, {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
+      reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
+      timeout: 20000,
       secure: window.location.protocol === 'https:'
     });
 
+    // Connection event handlers
     newSocket.on('connect', () => {
-      console.log('Connected to server socket');
+      console.log('Connected to server socket:', newSocket.id);
     });
 
     newSocket.on('connect_error', (error) => {
@@ -95,17 +103,19 @@ const BillAnalyzer = () => {
       console.log('Socket disconnected:', reason);
     });
 
-    // Add debug listener for all events
+    // Debug listener for all events
     newSocket.onAny((event, ...args) => {
       console.log(`Socket event [${event}]:`, args);
     });
 
-    // Set up specific event handlers
+    // Progress update event handler
     newSocket.on('analysis_progress', (data) => {
       console.log('Progress update received:', data);
+
       if (data.step) {
         setCurrentStep(data.step);
       }
+
       if (data.message) {
         setStepMessage(data.message);
       }
@@ -127,6 +137,7 @@ const BillAnalyzer = () => {
       }
     });
 
+    // Analysis completion event handler
     newSocket.on('analysis_complete', (data) => {
       console.log('Analysis complete received:', data);
       setIsProcessing(false);
@@ -140,6 +151,7 @@ const BillAnalyzer = () => {
       setTimeout(() => setNotification(null), 5000);
     });
 
+    // Error event handler
     newSocket.on('analysis_error', (data) => {
       console.error('Analysis error received:', data);
       setError(data.error);
@@ -151,9 +163,11 @@ const BillAnalyzer = () => {
     // Cleanup on unmount
     return () => {
       console.log('Cleaning up socket connection');
-      newSocket.disconnect();
+      if (newSocket) {
+        newSocket.disconnect();
+      }
     };
-  }, []);
+  }, []); // Empty dependency array means this effect runs once on mount
 
   const handleSubmit = async (e) => {
     e.preventDefault();
