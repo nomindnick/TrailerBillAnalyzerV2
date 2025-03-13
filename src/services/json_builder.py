@@ -126,9 +126,10 @@ class JsonBuilder:
                     for change in changes
                 ),
                 "practice_groups_affected": sorted(list(set(
-                    group
+                    group["name"]  # Extract just the name field from each group dictionary
                     for change in changes
                     for group in change.get("practice_groups", [])
+                    if isinstance(group, dict) and "name" in group  # Ensure it's a valid group dict
                 )))
             })
             return skeleton

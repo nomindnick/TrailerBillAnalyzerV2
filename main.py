@@ -145,8 +145,9 @@ async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None,
         # Always calculate use_anthropic based on the final model name to ensure consistency
         use_anthropic = model.startswith("claude")
 
-        # Create clients
-        openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        # Create clients - use AsyncOpenAI for the OpenAI client
+        import openai
+        openai_client = openai.AsyncClient(api_key=os.environ.get("OPENAI_API_KEY"))
         anthropic_client = AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
         logger.info(f"Using model: {model} for analysis (use_anthropic={use_anthropic})")
