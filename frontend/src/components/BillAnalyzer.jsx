@@ -81,152 +81,112 @@ const BillAnalyzer = () => {
 
   // Establish socket connection immediately on component mount
   useEffect(() => {
-    // Function to create and connect socket
-    const connectSocket = () => {
-      // Create socket URL based on current location
-      const protocol = window.location.protocol;
-      const host = window.location.host;
-      const socketUrl = `${protocol}//${host}`;
+    const serverUrl = window.location.protocol + '//' + window.location.host;
+    console.log('Connecting to socket at:', serverUrl);
 
-      console.log('Connecting to socket at:', socketUrl);
+    const newSocket = io(serverUrl, {
+      path: '/socket.io',
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: maxReconnectAttempts,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 60000, // Increased timeout
+      pingTimeout: 60000, // Increased ping timeout
+      pingInterval: 5000  // More frequent pings
+    });
 
-      // Close any existing socket connection
-      if (socketRef.current) {
-        socketRef.current.disconnect();
+    socketRef.current = newSocket;
+    setSocket(newSocket);
+
+    newSocket.on('connect', () => {
+      console.log('Socket connected successfully with ID:', newSocket.id);
+      setSocketConnected(true);
+      setError(null);
+      reconnectAttemptsRef.current = 0;
+    });
+
+    newSocket.on('connect_error', (err) => {
+      console.error('Socket connection error:', err);
+      setSocketConnected(false);
+      reconnectAttemptsRef.current += 1;
+      if (reconnectAttemptsRef.current > 3) { // Delay error message
+        setError('Error connecting to server. Please reload the page and try again.');
       }
+    });
 
-      // Create new socket connection
-      const newSocket = io(socketUrl, {
-        path: '/socket.io',
-        transports: ['websocket', 'polling'],
-        reconnection: true,
-        reconnectionAttempts: maxReconnectAttempts,
-        reconnectionDelay: 1000,
-        timeout: 20000,
-      });
-
-      // Store socket reference for cleanup
-      socketRef.current = newSocket;
-      setSocket(newSocket);
-
-      // Connection event handlers
-      newSocket.on('connect', () => {
-        console.log('Socket connected successfully with ID:', newSocket.id);
-        setSocketConnected(true);
-        setError(null);
-        reconnectAttemptsRef.current = 0;
-      });
-
-      newSocket.on('connect_error', (err) => {
-        console.error('Socket connection error:', err);
-        setSocketConnected(false);
+    newSocket.on('disconnect', (reason) => {
+      console.log('Socket disconnected:', reason);
+      setSocketConnected(false);
+      if (isProcessing && reason !== 'io client disconnect') {
         reconnectAttemptsRef.current += 1;
-
-        if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
-          setError('Failed to connect to analysis server. Please try again later.');
-        } else if (isProcessing) {
-          setError(`Connection to server lost. Attempting to reconnect... (${reconnectAttemptsRef.current}/${maxReconnectAttempts})`);
+        if (reconnectAttemptsRef.current <= maxReconnectAttempts) {
+          console.log(`Attempting to reconnect (${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`);
+        } else {
+          console.error('Maximum reconnection attempts reached');
+          setError('Lost connection to server. Please try again later.');
+          setIsProcessing(false);
         }
-      });
+      }
+    });
 
-      newSocket.on('disconnect', (reason) => {
-        console.log('Socket disconnected:', reason);
-        setSocketConnected(false);
-
-        if (isProcessing) {
-          setError('Connection to analysis server lost. The analysis may still be running.');
-
-          // Try to reconnect automatically
-          setTimeout(() => {
-            if (isProcessing) {
-              console.log('Attempting to reconnect socket...');
-              newSocket.connect();
+    newSocket.on('analysis_progress', (data) => {
+      console.log('Progress update received:', data);
+      if (data.analysis_id && data.analysis_id !== currentAnalysisRef.current) {
+        console.log('Ignoring progress for different analysis:', data.analysis_id);
+        return;
+      }
+      if (error && error.includes('Connection to server lost')) {
+        setError(null);
+      }
+      if (data.step) {
+        setCurrentStep(parseInt(data.step, 10));
+      }
+      if (data.message) {
+        setStepMessage(data.message);
+      }
+      if (data.current_substep !== undefined && data.total_substeps !== undefined) {
+        setProgress({
+          current: parseInt(data.current_substep, 10),
+          total: parseInt(data.total_substeps, 10)
+        });
+        if (data.step) {
+          setStepProgress(prev => ({
+            ...prev,
+            [data.step]: {
+              current: parseInt(data.current_substep, 10),
+              total: parseInt(data.total_substeps, 10),
+              message: data.message
             }
-          }, 1000);
+          }));
         }
+      } else if (data.current_substep !== undefined) {
+        setProgress(prev => ({ ...prev, current: parseInt(data.current_substep, 10) }));
+      }
+    });
+
+    newSocket.on('analysis_complete', (data) => {
+      console.log('Analysis complete received:', data);
+      if (data.analysis_id && data.analysis_id !== currentAnalysisRef.current) {
+        console.log('Ignoring completion for different analysis:', data.analysis_id);
+        return;
+      }
+      setIsProcessing(false);
+      setCurrentStep(5);
+      setStepMessage('Analysis complete!');
+      setReportUrl(data.report_url);
+      setNotification({
+        type: 'success',
+        message: 'Analysis complete! You can now view or download the report.'
       });
+    });
 
-      // Set up event listeners for analysis progress
-      newSocket.on('analysis_progress', (data) => {
-        console.log('Progress update received:', data);
+    newSocket.on('analysis_error', (data) => {
+      console.error('Analysis error:', data);
+      setIsProcessing(false);
+      setError(data.error || 'An unknown error occurred during analysis');
+    });
 
-        // Only process events for the current analysis
-        if (!currentAnalysisRef.current || data.analysis_id === currentAnalysisRef.current) {
-          // Clear any connection errors since we're receiving events
-          if (error && error.includes('Connection to server lost')) {
-            setError(null);
-          }
-
-          // Update step if provided
-          if (data.step !== undefined) {
-            setCurrentStep(data.step);
-          }
-
-          // Update message if provided
-          if (data.message) {
-            setStepMessage(data.message);
-          }
-
-          // Handle substeps tracking
-          if (data.current_substep !== undefined) {
-            setProgress(prev => ({
-              current: data.current_substep,
-              total: data.total_substeps || prev.total
-            }));
-          }
-
-          // Update step-specific progress
-          if (data.step && data.step_progress !== undefined) {
-            setStepProgress(prev => ({
-              ...prev,
-              [data.step]: data.step_progress
-            }));
-          }
-        }
-      });
-
-      // Handle analysis completion
-      newSocket.on('analysis_complete', (data) => {
-        console.log('Analysis complete received:', data);
-
-        // Only process events for the current analysis
-        if (!currentAnalysisRef.current || data.analysis_id === currentAnalysisRef.current) {
-          setIsProcessing(false);
-          currentAnalysisRef.current = null;
-
-          if (data && data.report_url) {
-            setReportUrl(data.report_url);
-
-            setNotification({
-              type: 'success',
-              message: 'Analysis completed successfully!'
-            });
-
-            // Clear notification after 5 seconds
-            setTimeout(() => setNotification(null), 5000);
-          } else {
-            console.error('Missing report URL in completion event:', data);
-            setError('Analysis completed but report URL is missing');
-          }
-        }
-      });
-
-      // Handle analysis errors
-      newSocket.on('analysis_error', (data) => {
-        console.error('Analysis error received:', data);
-
-        if (!currentAnalysisRef.current || data.analysis_id === currentAnalysisRef.current) {
-          setError(data.error || 'Unknown error occurred during analysis');
-          setIsProcessing(false);
-          currentAnalysisRef.current = null;
-        }
-      });
-    };
-
-    // Connect socket
-    connectSocket();
-
-    // Cleanup on unmount
     return () => {
       console.log('Cleaning up socket connection');
       if (socketRef.current) {
@@ -234,30 +194,8 @@ const BillAnalyzer = () => {
         socketRef.current = null;
       }
     };
-  }, []); // Empty dependency array means this runs once on component mount
+  }, []);
 
-  // Create a periodic ping to keep the socket connection alive
-  useEffect(() => {
-    let pingInterval;
-
-    if (socketRef.current && socketConnected && isProcessing) {
-      // Send a ping every 5 seconds to keep the connection alive
-      pingInterval = setInterval(() => {
-        try {
-          socketRef.current.emit('ping', { timestamp: Date.now() });
-          console.log('Ping sent to keep connection alive');
-        } catch (err) {
-          console.error('Error sending ping:', err);
-        }
-      }, 5000);
-    }
-
-    return () => {
-      if (pingInterval) {
-        clearInterval(pingInterval);
-      }
-    };
-  }, [socketConnected, isProcessing]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -269,28 +207,25 @@ const BillAnalyzer = () => {
     setStartTime(new Date());
     setStepProgress({});
     setExpandedStepId(null);
-
-    // Generate a unique ID for this analysis
     const analysisId = `analysis_${Date.now()}`;
     currentAnalysisRef.current = analysisId;
 
     try {
-      // Ensure socket is connected before proceeding
       if (!socketConnected) {
-        console.log('Socket not connected, attempting to connect now...');
-        // If socket isn't connected, try to reconnect
+        console.log('Socket not connected, attempting to reconnect before analysis');
         if (socketRef.current) {
           socketRef.current.connect();
+          await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              reject(new Error('Socket reconnection timeout'));
+            }, 5000);
+            socketRef.current.once('connect', () => {
+              clearTimeout(timeout);
+              resolve();
+            });
+          });
         } else {
-          // If no socket exists, we have a bigger problem
-          throw new Error('Socket connection not available. Please refresh the page and try again.');
-        }
-
-        // Wait a moment for connection to establish
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        if (!socketConnected) {
-          throw new Error('Cannot connect to analysis server. Please refresh and try again.');
+          throw new Error('Socket connection is not available');
         }
       }
 
@@ -300,38 +235,70 @@ const BillAnalyzer = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           billNumber,
           sessionYear,
           model: selectedModel,
-          analysisId // Include the analysis ID in the request
-        })
+          analysisId
+        }),
       });
 
-      console.log('Response status:', response.status);
-
       if (!response.ok) {
-        const data = await response.json();
-        console.error('Error response:', data);
-        throw new Error(data.error || 'Failed to start analysis');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to start analysis');
       }
 
-      // Analysis started successfully
+      console.log('Response status:', response.status);
       const data = await response.json();
       console.log('Analysis started successfully:', data);
 
-      // Force a check of socket connection after starting analysis
-      if (!socketConnected && socketRef.current) {
-        console.log('Reconnecting socket after analysis start...');
-        socketRef.current.connect();
-      }
-    } catch (err) {
-      console.error('Error starting analysis:', err);
-      setError(err.message || 'Failed to connect to server');
+
+      const checkCompletionTimeout = setTimeout(async () => {
+        if (isProcessing && currentAnalysisRef.current === analysisId) {
+          console.log('Checking for completion status directly...');
+          try {
+            const checkResponse = await fetch(`/reports/${billNumber}_latest.json`);
+            if (checkResponse.ok) {
+              const reportData = await checkResponse.json();
+              if (reportData && reportData.report_url) {
+                console.log('Found completed report via direct check:', reportData);
+                setIsProcessing(false);
+                setReportUrl(reportData.report_url);
+                setCurrentStep(5);
+              }
+            }
+          } catch (err) {
+            console.log('Error checking completion status:', err);
+          }
+        }
+      }, 60000); // Check after 60 seconds
+
+      return () => clearTimeout(checkCompletionTimeout);
+    } catch (error) {
+      console.error('Error starting analysis:', error);
+      setError(error.message || 'Failed to start bill analysis');
       setIsProcessing(false);
-      currentAnalysisRef.current = null;
     }
   };
+
+  useEffect(() => {
+    let pingInterval;
+    if (socketRef.current && socketConnected && isProcessing) {
+      pingInterval = setInterval(() => {
+        try {
+          socketRef.current.emit('ping', { timestamp: Date.now() });
+          console.log('Ping sent to keep connection alive');
+        } catch (err) {
+          console.error('Error sending ping:', err);
+        }
+      }, 5000);
+    }
+    return () => {
+      if (pingInterval) {
+        clearInterval(pingInterval);
+      }
+    };
+  }, [socketConnected, isProcessing]);
 
   return (
     <div className="min-h-screen p-8 bg-background text-foreground transition-colors duration-200">
@@ -456,7 +423,7 @@ const BillAnalyzer = () => {
 
         {/* Progress display */}
         {isProcessing && (
-          <AnalysisProgress 
+          <AnalysisProgress
             currentStep={currentStep}
             stepMessage={stepMessage}
             steps={steps}

@@ -33,9 +33,15 @@ logger = logging.getLogger(__name__)
 # Create Flask app
 app = Flask(__name__, static_folder='frontend/dist')
 CORS(app)  # Enable CORS for development
-socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interval=25, 
-                   reconnection=True, reconnection_attempts=10, reconnection_delay=1, 
-                   reconnection_delay_max=5)
+socketio = SocketIO(app, 
+                   cors_allowed_origins="*", 
+                   ping_timeout=120,  # Increase ping timeout 
+                   ping_interval=15,  # More frequent pings
+                   reconnection=True, 
+                   reconnection_attempts=10, 
+                   reconnection_delay=1, 
+                   reconnection_delay_max=5,
+                   async_mode='threading')  # Use threading mode for better reliability
 
 # Create directory for reports
 REPORTS_DIR = Path("reports")
@@ -143,6 +149,35 @@ def serve_report(filename):
     """Serve generated reports"""
     return send_from_directory(REPORTS_DIR, filename)
 
+@app.route('/api/report-status/<bill_number>')
+def check_report_status(bill_number):
+    """Check if a report exists for the given bill number"""
+    try:
+        # Find the latest report for this bill
+        import glob
+        import os
+        
+        report_pattern = os.path.join(REPORTS_DIR, f"{bill_number}_*.html")
+        reports = sorted(glob.glob(report_pattern), key=os.path.getmtime, reverse=True)
+        
+        if reports:
+            latest_report = os.path.basename(reports[0])
+            return jsonify({
+                'status': 'complete',
+                'report_url': f"/reports/{latest_report}"
+            })
+        else:
+            return jsonify({
+                'status': 'pending',
+                'message': 'No report found yet'
+            })
+    except Exception as e:
+        logger.error(f"Error checking report status: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
 # Serve frontend static files
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
@@ -237,12 +272,36 @@ async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None,
         os.makedirs("reports", exist_ok=True)
         report_generator.save_report(report_html, report_path)
 
-        # Emit completion event with report URL
+        # Emit completion event with report URL - make multiple attempts
         logger.info(f"Analysis complete, report saved to {report_path}")
-        socketio.emit('analysis_complete', {
-            'report_url': f"/reports/{os.path.basename(report_path)}",
+        report_url = f"/reports/{os.path.basename(report_path)}"
+        completion_data = {
+            'report_url': report_url,
             'analysis_id': analysis_id  # Include analysis ID
-        })
+        }
+        
+        # Save completion data to a JSON file that can be polled by the frontend
+        # as a fallback mechanism
+        try:
+            import json
+            completion_json_path = f"reports/{bill_number}_latest.json"
+            with open(completion_json_path, 'w') as f:
+                json.dump(completion_data, f)
+            logger.info(f"Saved completion data to {completion_json_path}")
+        except Exception as json_err:
+            logger.error(f"Error saving completion JSON: {str(json_err)}")
+        
+        # Make multiple attempts to emit the completion event to increase reliability
+        max_emit_attempts = 3
+        for attempt in range(max_emit_attempts):
+            try:
+                logger.info(f"Emitting analysis_complete event (attempt {attempt+1}/{max_emit_attempts})")
+                socketio.emit('analysis_complete', completion_data)
+                # Sleep briefly between attempts
+                if attempt < max_emit_attempts - 1:
+                    await asyncio.sleep(1)
+            except Exception as emit_err:
+                logger.error(f"Error emitting completion event (attempt {attempt+1}): {str(emit_err)}")
 
         # Return data for frontend
         return {
@@ -312,19 +371,26 @@ def run_cli(bill_number, year, output):
 @socketio.on('ping')
 def handle_ping(data):
     """Handle ping from client to keep connection alive"""
-    socketio.emit('pong', {'timestamp': data.get('timestamp')})
+    logger.debug(f"Received ping from client {request.sid}: {data}")
+    # Reply directly to the client who sent the ping
+    socketio.emit('pong', {'timestamp': data.get('timestamp'), 'server_time': datetime.now().isoformat()}, room=request.sid)
 
 @socketio.on('connect')
 def handle_connect():
     """Handle client connection"""
     logger.info(f"Client connected: {request.sid}")
     # Send a welcome message to confirm connection
-    socketio.emit('connection_established', {'status': 'connected'})
+    socketio.emit('connection_established', {'status': 'connected', 'sid': request.sid}, room=request.sid)
 
 @socketio.on('disconnect')
 def handle_disconnect():
     """Handle client disconnection"""
     logger.info(f"Client disconnected: {request.sid}")
+    
+@socketio.on_error()
+def handle_error(e):
+    """Handle socket errors"""
+    logger.error(f"Socket.IO error for {request.sid}: {str(e)}")
 
 if __name__ == "__main__":
     # Check if running as CLI or web server
