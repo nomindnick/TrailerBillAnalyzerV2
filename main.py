@@ -148,6 +148,25 @@ def analyze_bill():
 @app.route('/reports/<path:filename>')
 def serve_report(filename):
     """Serve generated reports"""
+    if filename.endswith('.pdf'):
+        # Get corresponding HTML file
+        html_file = filename.replace('.pdf', '.html')
+        html_path = os.path.join(REPORTS_DIR, html_file)
+        
+        if not os.path.exists(html_path):
+            return 'HTML report not found', 404
+            
+        # Generate PDF from HTML
+        import pdfkit
+        pdf_path = os.path.join(REPORTS_DIR, filename)
+        
+        try:
+            pdfkit.from_file(html_path, pdf_path)
+            return send_from_directory(REPORTS_DIR, filename)
+        except Exception as e:
+            logger.error(f"PDF generation failed: {str(e)}")
+            return 'PDF generation failed', 500
+            
     return send_from_directory(REPORTS_DIR, filename)
 
 @app.route('/api/report-status/<bill_number>')
