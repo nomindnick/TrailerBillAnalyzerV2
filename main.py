@@ -33,7 +33,9 @@ logger = logging.getLogger(__name__)
 # Create Flask app
 app = Flask(__name__, static_folder='frontend/dist')
 CORS(app)  # Enable CORS for development
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interval=25, 
+                   reconnection=True, reconnection_attempts=10, reconnection_delay=1, 
+                   reconnection_delay_max=5)
 
 # Create directory for reports
 REPORTS_DIR = Path("reports")
