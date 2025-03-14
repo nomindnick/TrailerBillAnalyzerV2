@@ -152,21 +152,21 @@ def serve_report(filename):
         # Get corresponding HTML file
         html_file = filename.replace('.pdf', '.html')
         html_path = os.path.join(REPORTS_DIR, html_file)
-        
+
         if not os.path.exists(html_path):
             return 'HTML report not found', 404
-            
-        # Generate PDF from HTML
-        import pdfkit
+
+        # Generate PDF from HTML using WeasyPrint
+        from weasyprint import HTML
         pdf_path = os.path.join(REPORTS_DIR, filename)
-        
+
         try:
-            pdfkit.from_file(html_path, pdf_path)
+            HTML(html_path).write_pdf(pdf_path)
             return send_from_directory(REPORTS_DIR, filename)
         except Exception as e:
             logger.error(f"PDF generation failed: {str(e)}")
             return 'PDF generation failed', 500
-            
+
     return send_from_directory(REPORTS_DIR, filename)
 
 @app.route('/api/report-status/<bill_number>')
@@ -176,10 +176,10 @@ def check_report_status(bill_number):
         # Find the latest report for this bill
         import glob
         import os
-        
+
         report_pattern = os.path.join(REPORTS_DIR, f"{bill_number}_*.html")
         reports = sorted(glob.glob(report_pattern), key=os.path.getmtime, reverse=True)
-        
+
         if reports:
             latest_report = os.path.basename(reports[0])
             return jsonify({
@@ -299,7 +299,7 @@ async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None,
             'report_url': report_url,
             'analysis_id': analysis_id  # Include analysis ID
         }
-        
+
         # Save completion data to a JSON file that can be polled by the frontend
         # as a fallback mechanism
         try:
@@ -310,7 +310,7 @@ async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None,
             logger.info(f"Saved completion data to {completion_json_path}")
         except Exception as json_err:
             logger.error(f"Error saving completion JSON: {str(json_err)}")
-        
+
         # Make multiple attempts to emit the completion event to increase reliability
         max_emit_attempts = 3
         for attempt in range(max_emit_attempts):
@@ -406,7 +406,7 @@ def handle_connect():
 def handle_disconnect():
     """Handle client disconnection"""
     logger.info(f"Client disconnected: {request.sid}")
-    
+
 @socketio.on_error()
 def handle_error(e):
     """Handle socket errors"""
