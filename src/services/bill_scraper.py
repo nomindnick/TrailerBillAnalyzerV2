@@ -5,6 +5,7 @@ Focused on reliable retrieval with minimal processing.
 import aiohttp
 import logging
 import asyncio
+import re
 from typing import Dict, Any, Optional
 from bs4 import BeautifulSoup
 from datetime import datetime
@@ -26,8 +27,10 @@ class BillScraper:
 
         # Standard headers for requests
         self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                          "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            ),
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
             "Cache-Control": "no-cache",
@@ -112,21 +115,33 @@ class BillScraper:
                     raise ValueError(f"Bill {bill_number} from session {display_year} not found")
                 elif attempt < self.max_retries:
                     wait_time = 2 ** attempt
-                    self.logger.warning(f"Request failed with status {e.status}, retrying in {wait_time}s (attempt {attempt}/{self.max_retries})")
+                    self.logger.warning(
+                        f"Request failed with status {e.status}, retrying in {wait_time}s "
+                        f"(attempt {attempt}/{self.max_retries})"
+                    )
                     await asyncio.sleep(wait_time)
                 else:
-                    self.logger.error(f"Failed to fetch bill after {self.max_retries} attempts: {str(e)}")
+                    self.logger.error(
+                        f"Failed to fetch bill after {self.max_retries} attempts: {str(e)}"
+                    )
                     raise
             except Exception as e:
                 if attempt < self.max_retries:
                     wait_time = 2 ** attempt
-                    self.logger.warning(f"Error fetching bill: {str(e)}, retrying in {wait_time}s (attempt {attempt}/{self.max_retries})")
+                    self.logger.warning(
+                        f"Error fetching bill: {str(e)}, retrying in {wait_time}s "
+                        f"(attempt {attempt}/{self.max_retries})"
+                    )
                     await asyncio.sleep(wait_time)
                 else:
-                    self.logger.error(f"Failed to fetch bill after {self.max_retries} attempts: {str(e)}")
+                    self.logger.error(
+                        f"Failed to fetch bill after {self.max_retries} attempts: {str(e)}"
+                    )
                     raise
 
-        raise ValueError(f"Failed to fetch bill {bill_number} after {self.max_retries} attempts")
+        raise ValueError(
+            f"Failed to fetch bill {bill_number} after {self.max_retries} attempts"
+        )
 
     async def _fetch_bill(self, url: str, bill_number: str, year: int, attempt: int) -> Dict[str, Any]:
         """
@@ -160,7 +175,9 @@ class BillScraper:
                     "no bill information available"
                 ]
                 if any(indicator in html_content.lower() for indicator in not_found_indicators):
-                    raise ValueError(f"Bill {bill_number} from session {year}-{year+1} was not found")
+                    raise ValueError(
+                        f"Bill {bill_number} from session {year}-{year+1} was not found"
+                    )
 
                 # Parse the bill content
                 result = self._parse_bill_page(html_content)
@@ -169,7 +186,9 @@ class BillScraper:
                     self.logger.warning("Failed to extract bill text from HTML")
                     raise ValueError("Could not extract bill text from HTML")
 
-                self.logger.info(f"Successfully parsed bill text of length {len(result.get('full_text', ''))}")
+                self.logger.info(
+                    f"Successfully parsed bill text of length {len(result.get('full_text', ''))}"
+                )
 
                 # Add metadata
                 result.update(self._extract_bill_metadata(html_content))
@@ -178,6 +197,7 @@ class BillScraper:
     def _parse_bill_page(self, html_content: str) -> Dict[str, Any]:
         """
         Parse the HTML content from the Legislature site to extract the bill text.
+        Now with enhanced handling for amended bills (with strikethrough and added text).
         """
         try:
             soup = BeautifulSoup(html_content, "html.parser")
@@ -196,8 +216,16 @@ class BillScraper:
             if not bill_content:
                 raise ValueError("Could not find bill content container in HTML")
 
-            # Get bill content as HTML and as text
+            # Get bill content as HTML
             html_content = str(bill_content)
+
+            # Check if the bill has amendments (strikethrough or blue italicized text)
+            has_amendments = '<strike>' in html_content or '<font color="blue"' in html_content
+
+            # If the bill has amendments, clean the HTML to normalize amendments
+            if has_amendments:
+                self.logger.info("Detected amended bill. Normalizing amendment markup.")
+                html_content = self._clean_amended_bill_html(html_content)
 
             # Clean the text and normalize whitespace
             full_text = self._clean_html_markup(html_content)
@@ -209,7 +237,7 @@ class BillScraper:
             return {
                 'full_text': full_text,
                 'html': html_content,
-                'has_amendments': '<strike>' in html_content or '<font color="blue"' in html_content
+                'has_amendments': has_amendments
             }
         except Exception as e:
             self.logger.error(f"Error parsing bill page: {str(e)}")
@@ -230,6 +258,70 @@ class BillScraper:
         text = ' '.join(text.split())
 
         return text
+
+    def _clean_amended_bill_html(self, html_content: str) -> str:
+        """
+        Clean HTML of amended bills by removing strikethrough text and normalizing added text.
+        Returns clean HTML with amendments properly integrated, preserving the structure needed
+        for further parsing.
+
+        """
+        self.logger.info("Cleaning amended bill HTML to normalize strikethrough and added text")
+
+        try:
+            soup = BeautifulSoup(html_content, "html.parser")
+
+            # Special handling for section headers - mark them before any text operations
+            # We'll handle both "SEC." and "SECTION" references in the text
+            # to ensure we eventually can place them on their own lines.
+
+            # 1) Remove strikethrough text completely
+            for strike_tag in soup.find_all('strike'):
+                strike_tag.decompose()
+
+            # 2) Normalize any blue italicized text (keep content but remove styling)
+            for blue_text in soup.find_all('font', attrs={'color': 'blue'}):
+                # Remove italic tags but keep their content
+                for i_tag in blue_text.find_all('i'):
+                    i_tag.unwrap()  # unwrap <i> but preserve the text
+                # Replace the blue font tag with its content
+                blue_text.unwrap()
+
+            # 3) Remove any references to class_="blue_text", style background, etc.
+            for elem in soup.find_all(attrs={'class': 'blue_text'}):
+                elem.unwrap()
+
+            for span in soup.find_all('span', style=lambda s: s and 'background-color:yellow' in s):
+                span.unwrap()
+
+            for tag in soup.find_all():
+                # Check if the tag name starts with 'caml:' (case-insensitive check)
+                if tag.name.lower().startswith("caml:"):
+                    tag.decompose()
+
+            # 5) We now have a "clean" soup with amendments removed. Let's convert to string
+            #    so we can do some final regex passes. We'll do the same approach to add newlines
+            #    around SEC. and SECTION references.
+            html_str = str(soup)
+
+            # 6) Insert newlines around "SEC. X." references (and "SECTION X.")
+            #    so that the parser can properly detect them. We'll do it carefully:
+            #    - Pattern for capturing:
+            #      (A) optional preceding non-newline char
+            #      (B) "SEC." or "SECTION" plus some whitespace plus a digit + period
+            #    - Then put newlines around it. 
+            # << NEW / UPDATED >> 
+            html_str = re.sub(r'([^\n])(SEC\.\s+\d+\.)', r'\1\n\n\2', html_str, flags=re.IGNORECASE)
+            html_str = re.sub(r'(SEC\.\s+\d+\.)([^\n])', r'\1\n\2', html_str, flags=re.IGNORECASE)
+
+            # Also handle "SECTION n." 
+            html_str = re.sub(r'([^\n])(SECTION\s+\d+\.)', r'\1\n\n\2', html_str, flags=re.IGNORECASE)
+            html_str = re.sub(r'(SECTION\s+\d+\.)([^\n])', r'\1\n\2', html_str, flags=re.IGNORECASE)
+
+            return html_str
+        except Exception as e:
+            self.logger.error(f"Error cleaning amended bill HTML: {str(e)}")
+            return html_content  # Return original content on error
 
     def _extract_bill_metadata(self, html_content: str) -> Dict[str, Any]:
         """
@@ -256,12 +348,20 @@ class BillScraper:
 
             # Extract approval date if available
             approved_date = None
-            approval_text = soup.find(string=lambda t: "Approved" in str(t) and "Governor" in str(t))
+            approval_text = soup.find(
+                string=lambda t: "Approved" in str(t) and "Governor" in str(t)
+            )
             if approval_text:
                 # Try to find date near approval text
-                date_text = approval_text.findNext(string=lambda t: any(month in str(t) for month in 
-                                                   ['January', 'February', 'March', 'April', 'May', 'June', 
-                                                    'July', 'August', 'September', 'October', 'November', 'December']))
+                date_text = approval_text.findNext(
+                    string=lambda t: any(
+                        month in str(t)
+                        for month in [
+                            'January', 'February', 'March', 'April', 'May', 'June',
+                            'July', 'August', 'September', 'October', 'November', 'December'
+                        ]
+                    )
+                )
                 if date_text:
                     metadata['date_approved'] = date_text.strip()
 
