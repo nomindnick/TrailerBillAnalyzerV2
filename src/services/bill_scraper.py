@@ -264,9 +264,34 @@ class BillScraper:
         Clean HTML of amended bills by removing strikethrough text and normalizing added text.
         Returns clean HTML with amendments properly integrated, preserving the structure needed
         for further parsing.
-
         """
+        output_dir = "test_output"
+        os.makedirs(output_dir, exist_ok=True)
+        
         self.logger.info("Cleaning amended bill HTML to normalize strikethrough and added text")
+        
+        # Log initial state
+        with open(os.path.join(output_dir, "bill_pre_clean.html"), "w", encoding="utf-8") as f:
+            f.write(html_content)
+            
+        # Log counts of amendment markup
+        strike_pattern = r'<font color="#B30000"><strike>'
+        blue_pattern = r'<font color="blue" class="blue_text"><i>'
+        highlight_pattern = r'<b><span style=\'background-color:yellow\'>'
+        
+        strike_count = len(re.findall(strike_pattern, html_content))
+        blue_count = len(re.findall(blue_pattern, html_content))
+        highlight_count = len(re.findall(highlight_pattern, html_content))
+        
+        self.logger.info(f"Initial markup counts - strikethrough: {strike_count}, "
+                        f"blue text: {blue_count}, highlights: {highlight_count}")
+                        
+        # Log section markers before cleaning
+        section_pattern = r'(?:SEC\.|SECTION)\s+\d+\.'
+        pre_clean_sections = re.findall(section_pattern, html_content, re.IGNORECASE)
+        self.logger.info(f"Section markers before cleaning: {len(pre_clean_sections)}")
+        with open(os.path.join(output_dir, "pre_clean_sections.txt"), "w", encoding="utf-8") as f:
+            f.write("\n".join(pre_clean_sections))
 
         try:
             soup = BeautifulSoup(html_content, "html.parser")
@@ -318,6 +343,26 @@ class BillScraper:
             html_str = re.sub(r'([^\n])(SECTION\s+\d+\.)', r'\1\n\n\2', html_str, flags=re.IGNORECASE)
             html_str = re.sub(r'(SECTION\s+\d+\.)([^\n])', r'\1\n\2', html_str, flags=re.IGNORECASE)
 
+            # Log final state after all cleaning
+            output_dir = "test_output"
+            post_clean_sections = re.findall(r'(?:SEC\.|SECTION)\s+\d+\.', html_str, re.IGNORECASE)
+            self.logger.info(f"Section markers after cleaning: {len(post_clean_sections)}")
+            
+            with open(os.path.join(output_dir, "bill_post_clean.html"), "w", encoding="utf-8") as f:
+                f.write(html_str)
+            with open(os.path.join(output_dir, "post_clean_sections.txt"), "w", encoding="utf-8") as f:
+                f.write("\n".join(post_clean_sections))
+                
+            # Create a "diff" of sections
+            lost_sections = set(pre_clean_sections) - set(post_clean_sections)
+            new_sections = set(post_clean_sections) - set(pre_clean_sections)
+            if lost_sections or new_sections:
+                self.logger.warning("Section marker changes detected during cleaning:")
+                if lost_sections:
+                    self.logger.warning(f"Lost sections: {sorted(lost_sections)}")
+                if new_sections:
+                    self.logger.warning(f"New sections: {sorted(new_sections)}")
+                    
             return html_str
         except Exception as e:
             self.logger.error(f"Error cleaning amended bill HTML: {str(e)}")
