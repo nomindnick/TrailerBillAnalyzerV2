@@ -201,22 +201,12 @@ class BillScraper:
         Now with enhanced handling for amended bills (with strikethrough and added text).
         """
         try:
-            # Create debug directory if needed
-            output_dir = "debug_output"
-            os.makedirs(output_dir, exist_ok=True)
-
-            # Save original HTML for debugging
-            with open(os.path.join(output_dir, "original_bill.html"), "w", encoding="utf-8") as f:
-                f.write(html_content)
 
             self.logger.info("Starting bill parsing")
 
             # Pre-clean HTML to handle malformed attributes and tags
             cleaned_html = self._pre_clean_html(html_content)
 
-            # Save pre-cleaned HTML for debugging
-            with open(os.path.join(output_dir, "pre_cleaned_bill.html"), "w", encoding="utf-8") as f:
-                f.write(cleaned_html)
 
             # Create soup with cleaned HTML
             soup = BeautifulSoup(cleaned_html, "html.parser")
@@ -314,9 +304,6 @@ class BillScraper:
 
             self.logger.info(f"Successfully extracted bill text: {len(text_content)} characters")
 
-            # Save extracted text for debugging
-            with open(os.path.join(output_dir, "extracted_bill_text.txt"), "w", encoding="utf-8") as f:
-                f.write(text_content)
 
             return {
                 'full_text': text_content,
@@ -495,14 +482,7 @@ class BillScraper:
         Clean HTML of amended bills by normalizing strikethrough and added text.
         Returns clean HTML with amendments properly formatted.
         """
-        output_dir = "debug_output"
-        os.makedirs(output_dir, exist_ok=True)
-
         self.logger.info("Cleaning amended bill HTML to normalize strikethrough and added text")
-
-        # Log initial state
-        with open(os.path.join(output_dir, "bill_pre_clean.html"), "w", encoding="utf-8") as f:
-            f.write(html_content)
 
         # Log counts of amendment markup
         strike_pattern = r'<strike>'
@@ -520,8 +500,6 @@ class BillScraper:
         section_pattern = r'(?:SEC\.|SECTION)\s+\d+\.'
         pre_clean_sections = re.findall(section_pattern, html_content, re.IGNORECASE)
         self.logger.info(f"Section markers before cleaning: {len(pre_clean_sections)}")
-        with open(os.path.join(output_dir, "pre_clean_sections.txt"), "w", encoding="utf-8") as f:
-            f.write("\n".join(pre_clean_sections))
 
         try:
             soup = BeautifulSoup(html_content, "html.parser")
@@ -586,11 +564,6 @@ class BillScraper:
             # Log final state after all cleaning
             post_clean_sections = re.findall(r'(?:SEC\.|SECTION)\s+\d+\.', html_str, re.IGNORECASE)
             self.logger.info(f"Section markers after cleaning: {len(post_clean_sections)}")
-
-            with open(os.path.join(output_dir, "bill_post_clean.html"), "w", encoding="utf-8") as f:
-                f.write(html_str)
-            with open(os.path.join(output_dir, "post_clean_sections.txt"), "w", encoding="utf-8") as f:
-                f.write("\n".join(post_clean_sections))
 
             # Create a "diff" of sections
             lost_sections = set(pre_clean_sections) - set(post_clean_sections)

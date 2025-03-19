@@ -22,9 +22,6 @@ class BaseParser:
 
     def __init__(self):
         self.logger = logging.getLogger(__name__)
-        # Create debug directory
-        self.debug_dir = "debug_output"
-        os.makedirs(self.debug_dir, exist_ok=True)
 
     def parse_bill(self, bill_html: str) -> TrailerBill:
         """
@@ -38,9 +35,6 @@ class BaseParser:
         """
         self.logger.info("Starting bill parsing")
 
-        # Save raw HTML for debugging
-        with open(os.path.join(self.debug_dir, "raw_bill.html"), "w", encoding="utf-8") as f:
-            f.write(bill_html)
 
         # Create soup for easier parsing
         soup = BeautifulSoup(bill_html, "html.parser")
@@ -58,11 +52,6 @@ class BaseParser:
         # Split bill into digest and sections
         digest_text, bill_text = self._split_digest_and_bill(bill_html)
 
-        # Save split components for debugging
-        with open(os.path.join(self.debug_dir, "digest_text.txt"), "w", encoding="utf-8") as f:
-            f.write(digest_text)
-        with open(os.path.join(self.debug_dir, "bill_text.txt"), "w", encoding="utf-8") as f:
-            f.write(bill_text)
 
         # Parse digest sections
         digest_sections = self._parse_digest_sections(digest_text)
@@ -270,9 +259,6 @@ class BaseParser:
         # Fix malformed HTML before processing
         clean_html = self._fix_malformed_html(bill_html)
 
-        # Save cleaned HTML for debugging
-        with open(os.path.join(self.debug_dir, "cleaned_bill.html"), "w", encoding="utf-8") as f:
-            f.write(clean_html)
 
         soup = BeautifulSoup(clean_html, "html.parser")
 
@@ -426,9 +412,6 @@ class BaseParser:
         # First, remove the "LEGISLATIVE COUNSEL'S DIGEST" heading if present
         digest_text = re.sub(r'^LEGISLATIVE\s+COUNSEL[\'\']?S\s+DIGEST\s*', '', digest_text, flags=re.IGNORECASE)
 
-        # Save preprocessed digest text for debugging
-        with open(os.path.join(self.debug_dir, "preprocessed_digest.txt"), "w", encoding="utf-8") as f:
-            f.write(digest_text)
 
         # Split the digest text into sections based on paragraph numbers (1), (2), etc.
         # Enhanced pattern to handle various formatting issues
@@ -543,16 +526,8 @@ class BaseParser:
             self.logger.warning("No bill text to parse")
             return bill_sections
 
-        # Write original bill text to debug file
-        with open(os.path.join(self.debug_dir, "original_bill_text.txt"), "w", encoding="utf-8") as f:
-            f.write(bill_text)
-
         # Pre-process the text for more reliable section detection
         normalized_text = self._aggressive_normalize_improved(bill_text)
-
-        # Write normalized text to debug file
-        with open(os.path.join(self.debug_dir, "normalized_text.txt"), "w", encoding="utf-8") as f:
-            f.write(normalized_text)
 
         # Look for the first section - SECTION 1.
         first_section_pattern = r'(?:^|\n)\s*(?P<label>SECTION\s+1\.)\s*(?P<text>(?:.+?)(?=\n\s*SEC\.\s+\d+\.|\Z))'
@@ -629,14 +604,6 @@ class BaseParser:
 
         bill_sections.sort(key=sort_key)
 
-        # Write extracted sections to debug file
-        with open(os.path.join(self.debug_dir, "extracted_sections.txt"), "w", encoding="utf-8") as f:
-            for section in bill_sections:
-                f.write(f"\n\n{section.original_label}\n")
-                f.write(f"Number: {section.number}\n")
-                f.write(f"Code References: {[f'{r.code_name} Section {r.section}' for r in section.code_references]}\n")
-                f.write(f"Text: {section.text[:100]}...\n")
-                f.write("-" * 80)
 
         self.logger.info(f"Successfully extracted {len(bill_sections)} bill sections")
         return bill_sections

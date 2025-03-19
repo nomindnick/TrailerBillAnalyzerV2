@@ -500,9 +500,6 @@ class SectionMatcher:
         section_map = {}
         self.logger.info(f"Extracting bill sections from text of length {len(bill_text)}")
 
-        # Print a sample to debug formatting issues
-        self.logger.debug(f"Bill text sample: {bill_text[50000:50500]}")
-
         # Apply aggressive normalization to fix decimal point issues
         normalized_text = self._aggressive_normalize(bill_text)
 
@@ -524,8 +521,7 @@ class SectionMatcher:
 
         for i, pattern in enumerate(section_patterns):
             matches = list(re.finditer(pattern, normalized_text, re.DOTALL | re.MULTILINE | re.IGNORECASE))
-            self.logger.info(f"Pattern {i+1} found {len(matches)} potential sections")
-
+            
             if matches:
                 all_matches = matches
                 successful_pattern = i+1
@@ -586,11 +582,9 @@ class SectionMatcher:
                 "code_sections": self._extract_modified_sections(section_text)
             }
 
-            # Log code references found
+            # Log code references found if any
             if code_refs:
                 self.logger.info(f"Section {section_num} has code references: {list(code_refs)}")
-            else:
-                self.logger.debug(f"No code references found in section {section_num}")
 
         self.logger.info(f"Successfully extracted {len(section_map)} bill sections: {list(section_map.keys())}")
         return section_map
