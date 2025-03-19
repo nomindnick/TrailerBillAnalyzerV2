@@ -298,9 +298,10 @@ class BillScraper:
             # If this is an amended bill, clean the markup to preserve both added and deleted text
             if is_amended:
                 html_content = self._clean_amended_bill_html(html_content)
-
-            # Get clean text without HTML tags
-            text_content = self._extract_text_with_amendments(html_content)
+                text_content = self._extract_text_with_amendments(html_content)
+            else:
+                # For non-amended bills, use standard text extraction
+                text_content = self._extract_standard_text(html_content)
 
             # Check if we have any content
             if not text_content or len(text_content.strip()) < 100:
@@ -327,6 +328,44 @@ class BillScraper:
         except Exception as e:
             self.logger.error(f"Error parsing bill page: {str(e)}")
             raise
+
+    def _extract_standard_text(self, html_content: str) -> str:
+        """
+        Extract text from HTML for non-amended bills.
+        Focuses on preserving bill structure with proper spacing around section headers.
+        """
+        soup = BeautifulSoup(html_content, "html.parser")
+
+        # Get text with decent formatting
+        lines = []
+        for element in soup.find_all(['p', 'div', 'h1', 'h2', 'h3', 'h4', 'pre']):
+            text = element.get_text(strip=True)
+            if text:
+                lines.append(text)
+
+        # Join with newlines
+        text = '\n'.join(lines)
+
+        # Add proper spacing around section headers - critically important for parsing
+        # Ensure SECTION 1. is properly formatted
+        text = re.sub(r'(SECTION\s+1\.)', r'\n\n\1\n', text, flags=re.IGNORECASE)
+
+        # Ensure SEC. X. is properly formatted
+        text = re.sub(r'(SEC\.\s+\d+\.)', r'\n\n\1\n', text, flags=re.IGNORECASE)
+
+        # Add spacing around the enactment clause
+        text = re.sub(
+            r'(The people of the State of California do enact as follows:)', 
+            r'\n\n\1\n\n', 
+            text, 
+            flags=re.IGNORECASE
+        )
+
+        # Fix extra spaces
+        text = re.sub(r'\n\s+', '\n', text)
+        text = re.sub(r'\n{3,}', '\n\n', text)
+
+        return text
 
     def _pre_clean_html(self, html_content: str) -> str:
         """
@@ -367,21 +406,32 @@ class BillScraper:
 
     def _extract_text_with_amendments(self, html_content: str) -> str:
         """
-        Extract text from HTML with special handling for amendments.
-        This preserves added text and removes strikethrough text.
+        Extract text from HTML with enhanced handling for amendments.
+        This preserves added text and properly handles strikethrough text.
         """
         soup = BeautifulSoup(html_content, "html.parser")
 
-        # Remove strikethrough text
+        # Mark strikethrough text rather than removing it
         for strike in soup.find_all('strike'):
-            # Replace with a marker for easier debugging
-            strike.replace_with('[DELETED TEXT]')
+            # Replace with a marker that won't interfere with section detection
+            strike.replace_with(f' [DELETED: {strike.get_text()}] ')
 
         # Mark added text for better visibility
         for blue in soup.find_all('font', attrs={'color': 'blue'}):
-            # Add markers around the added text
+            # Get the text and mark it
             text = blue.get_text()
-            blue.replace_with(f'[ADDED: {text}]')
+            blue.replace_with(f' [ADDED: {text}] ')
+
+        # Also handle italic text within blue text that often marks additions
+        for italic in soup.find_all('i'):
+            parent = italic.parent
+            if parent and parent.name == 'font' and parent.get('color') == 'blue':
+                continue  # Skip as we already handled the parent blue font
+            italic.replace_with(f' {italic.get_text()} ')
+
+        # Handle highlighted text
+        for span in soup.find_all('span', style=lambda s: s and 'background-color:yellow' in s):
+            span.replace_with(f' {span.get_text()} ')
 
         # Get text with decent formatting
         lines = []
@@ -393,30 +443,52 @@ class BillScraper:
         # Join with newlines
         text_with_markers = '\n'.join(lines)
 
-        # Now remove the markers
-        text_cleaned = text_with_markers.replace('[DELETED TEXT]', '')
-        text_cleaned = re.sub(r'\[ADDED: (.*?)\]', r'\1', text_cleaned)
+        # Add proper spacing around section headers - critically important for parsing
+        # Handle first section (SECTION 1.)
+        text_with_markers = re.sub(
+            r'([^\n])(SECTION\s+1\.)', 
+            r'\1\n\n\2', 
+            text_with_markers, 
+            flags=re.IGNORECASE
+        )
+        text_with_markers = re.sub(
+            r'(SECTION\s+1\.)([^\n])', 
+            r'\1\n\2', 
+            text_with_markers, 
+            flags=re.IGNORECASE
+        )
 
-        # Normalize whitespace
-        text_cleaned = re.sub(r'\s+', ' ', text_cleaned)
-
-        # Add proper spacing around section headers
-        text_cleaned = re.sub(r'(SEC\.\s+\d+\.)', r'\n\n\1\n', text_cleaned, flags=re.IGNORECASE)
-        text_cleaned = re.sub(r'(SECTION\s+\d+\.)', r'\n\n\1\n', text_cleaned, flags=re.IGNORECASE)
+        # Handle subsequent sections (SEC. X.)
+        text_with_markers = re.sub(
+            r'([^\n])(SEC\.\s+\d+\.)', 
+            r'\1\n\n\2', 
+            text_with_markers, 
+            flags=re.IGNORECASE
+        )
+        text_with_markers = re.sub(
+            r'(SEC\.\s+\d+\.)([^\n])', 
+            r'\1\n\2', 
+            text_with_markers, 
+            flags=re.IGNORECASE
+        )
 
         # Add spacing around the enactment clause
-        text_cleaned = re.sub(
+        text_with_markers = re.sub(
             r'(The people of the State of California do enact as follows:)', 
             r'\n\n\1\n\n', 
-            text_cleaned, 
+            text_with_markers, 
             flags=re.IGNORECASE
         )
 
         # Fix extra spaces
-        text_cleaned = re.sub(r'\n\s+', '\n', text_cleaned)
-        text_cleaned = re.sub(r'\n{3,}', '\n\n', text_cleaned)
+        text_with_markers = re.sub(r'\n\s+', '\n', text_with_markers)
+        text_with_markers = re.sub(r'\n{3,}', '\n\n', text_with_markers)
 
-        return text_cleaned
+        # Force extra newlines before section headers to make them stand out
+        text_with_markers = re.sub(r'(SECTION\s+1\.)', r'\n\n\1', text_with_markers, flags=re.IGNORECASE)
+        text_with_markers = re.sub(r'(SEC\.\s+\d+\.)', r'\n\n\1', text_with_markers, flags=re.IGNORECASE)
+
+        return text_with_markers
 
     def _clean_amended_bill_html(self, html_content: str) -> str:
         """
@@ -453,8 +525,6 @@ class BillScraper:
 
         try:
             soup = BeautifulSoup(html_content, "html.parser")
-
-            # KEEP strikethrough text but mark it for later removal in text extraction
 
             # Normalize styling on blue italicized text (added text)
             for blue_text in soup.find_all('font', attrs={'color': 'blue'}):
