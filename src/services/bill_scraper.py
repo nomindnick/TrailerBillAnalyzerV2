@@ -164,6 +164,7 @@ class BillScraper:
                 html_content = await response.text()
                 content_length = len(html_content) if html_content else 0
                 self.logger.info(f"Received HTML content of length: {content_length}")
+                self.logger.info(f"Original HTML content length: {len(html_content)}") #Added logging
 
                 if not html_content or content_length < 100:
                     raise ValueError(f"Received invalid content (length: {content_length})")
@@ -234,6 +235,15 @@ class BillScraper:
             # Check if we have any content
             if not full_text or len(full_text.strip()) < 100:
                 raise ValueError("Retrieved bill content appears to be empty or invalid")
+
+            self.logger.info(f"Found bill content with ID: {bill_content.get('id')}")
+            self.logger.info(f"Bill content parent: {bill_content.parent.get('id') or bill_content.parent.get('class')}")
+            self.logger.info(f"Total length of raw HTML: {len(html_content)}")
+            self.logger.info(f"Length of extracted bill content: {len(str(bill_content))}") #Added logging
+            self.logger.info(f"Extracted bill content length: {len(html_content)}") #Added logging
+
+            with open("original_bill.html", "w", encoding="utf-8") as f:
+                f.write(html_content)
 
             return {
                 'full_text': full_text,
@@ -432,3 +442,40 @@ class BillScraper:
         except Exception as e:
             self.logger.warning(f"Error extracting bill metadata: {str(e)}")
             return metadata
+
+    def _split_digest_and_bill(self, html_content: str) -> Dict[str, str]:
+        """Splits bill HTML into digest and bill text."""
+        try:
+            soup = BeautifulSoup(html_content, "html.parser")
+
+            # Find digest and bill containers
+            digest_container = soup.find(id="digest")
+            bill_container = soup.find(id="bill")
+
+            if not digest_container or not bill_container:
+                raise ValueError("Could not find digest or bill containers in HTML")
+
+            # Extract all text from digest container
+            digest_text = digest_container.get_text(separator='\n', strip=True)
+
+            # Find the enactment clause
+            enactment_text = soup.find(string=lambda text: "The people of the State of California do enact as follows" in text)
+
+            if enactment_text:
+                sibling_count = 0
+                current_elem = enactment_text.find_parent()
+                while current_elem:
+                    sibling_count += 1
+                    current_elem = current_elem.find_next_sibling()
+                self.logger.info(f"Found {sibling_count} siblings after enactment clause")
+
+            if enactment_text and bill_container:
+                bill_text = bill_container.get_text(separator='\n', strip=True)
+                self.logger.info(f"Digest text length: {len(digest_text)}") #Added logging
+                self.logger.info(f"Bill text length: {len(bill_text)}") #Added logging
+                return {"digest": digest_text, "bill": bill_text}
+            else:
+                raise ValueError("Could not find enactment clause or bill container")
+        except Exception as e:
+            self.logger.error(f"Error splitting digest and bill text: {str(e)}")
+            raise
