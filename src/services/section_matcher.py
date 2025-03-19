@@ -26,6 +26,11 @@ class SectionMatcher:
 
         # Determine which API to use based on model name
         self.use_anthropic = model.startswith("claude")
+        
+        # Cache variables for Anthropic API
+        self.digest_cache_created = False
+        self.cached_digest_formatted = None  # Will store formatted digest items
+        self.cached_digest_map_key = None    # Will store a key to check if the digest map has changed
 
     async def match_sections(self, skeleton: Dict[str, Any], bill_text: str, progress_handler=None) -> Dict[str, Any]:
         """
@@ -50,7 +55,7 @@ class SectionMatcher:
                     4, 
                     "Starting section matching process",
                     1,
-                    len(section_map)  # Changed from len(digest_map) to number of sections
+                    len(section_map)  # Number of sections to process
                 )
 
             # Execute matching strategies in order of reliability
@@ -88,8 +93,8 @@ class SectionMatcher:
                     "Section number matching complete"
                 )
 
-            # 3. Context-based matching for remaining unmatched sections
-            remaining_digests = digest_map  # Use all digest items for context
+            # 3. Context-based matching for ALL remaining bill sections
+            # Get sections that haven't been matched yet
             remaining_sections = self._get_unmatched_sections(section_map, matches)
 
             if remaining_sections:
@@ -99,24 +104,44 @@ class SectionMatcher:
                         f"Performing contextual matching for {len(remaining_sections)} remaining sections"
                     )
 
-                # Process remaining sections one by one with progress updates
+                # Process each bill section, matching it to a digest item
                 context_matches = []
+                
+                # Set up cache tracking for Anthropic
+                cache_hits = 0
+                total_sections = len(remaining_sections)
+                
                 for i, (section_id, section_info) in enumerate(remaining_sections.items()):
                     if progress_handler:
+                        # Update the progress message to show cache info if using Claude
+                        progress_msg = f"Analyzing context for bill section {section_id}"
+                        if self.use_anthropic and cache_hits > 0:
+                            progress_msg += f" (using cached digest, {cache_hits}/{i} cache hits)"
+                            
                         progress_handler.update_substep(
                             min(current_section + i, section_count),
-                            f"Analyzing context for bill section {section_id}"
+                            progress_msg
                         )
 
-                    # Get context matches for this section
+                    # Match this section to the best digest item
                     section_matches = await self._match_section_to_digest(
                         section_id,
                         section_info, 
                         digest_map,
                         bill_text
                     )
+                    
+                    # Track cache hits for Claude API
+                    if self.use_anthropic and self.digest_cache_created and i > 0:
+                        cache_hits += 1
+                    
                     context_matches.extend(section_matches)
 
+                # Log final cache statistics if using Claude
+                if self.use_anthropic and total_sections > 1:
+                    cache_hit_rate = (cache_hits / max(1, total_sections - 1)) * 100  # Subtract 1 as first request creates cache
+                    self.logger.info(f"Claude API cache performance: {cache_hits}/{total_sections-1} sections used cache ({cache_hit_rate:.1f}%)")
+                
                 matches.extend(context_matches)
 
             # Validate and update skeleton with matches
@@ -155,7 +180,9 @@ class SectionMatcher:
         bill_text: str
     ) -> List[MatchResult]:
         """Match a single bill section to the appropriate digest item(s)"""
-        context_prompt = self._build_section_prompt(
+        # Build a prompt that provides all digest sections and the current bill section
+        # Note the reversed matching approach compared to the previous implementation
+        context_prompt = self._build_reverse_section_prompt(
             section_id,
             section_info,
             digest_map
@@ -163,35 +190,98 @@ class SectionMatcher:
         
         # Determine which API to use
         if self.use_anthropic:
-            # Using Anthropic API
-            system_prompt = (
-                "You are analyzing bill section to determine which digest item(s) "
-                "it implements. Return a JSON object with matches and confidence scores."
+            # Using Anthropic API with prompt caching for digest items
+            base_system_prompt = (
+                "You are analyzing a bill section to determine which digest item it implements. "
+                "Each bill section must be matched to exactly one digest item. "
+                "Return a JSON object with the best matching digest item and confidence score."
             )
 
-            # Claude-specific parameters
-            params = {
-                "model": self.model,
-                "max_tokens": 64000,
-                "system": system_prompt,
-                "messages": [{"role": "user", "content": context_prompt}],
-                "stream": True  # Use streaming for long-running operations
-            }
-
-            # Set up extended thinking for Claude 3.7 models
-            if "claude-3-7" in self.model:
-                params["temperature"] = 1
-                params["thinking"] = {
-                    "type": "enabled", 
-                    "budget_tokens": 16000
+            # Split the context prompt into cacheable (digest items) and non-cacheable parts (bill section)
+            prompt_parts = context_prompt.split("Available Digest Items:")
+            bill_section_part = prompt_parts[0]  # Contains the bill section to analyze
+            digest_items_part = "Available Digest Items:" + prompt_parts[1].split("IMPORTANT REQUIREMENTS:")[0]
+            requirements_part = "IMPORTANT REQUIREMENTS:" + prompt_parts[1].split("IMPORTANT REQUIREMENTS:")[1]
+            
+            # Check for supported models for caching
+            cache_supported = (
+                "claude-3-7" in self.model or
+                "claude-3-5" in self.model or
+                "claude-3" in self.model
+            )
+            
+            if cache_supported:
+                self.logger.info(f"Using Anthropic API with model {self.model} (with prompt caching)")
+                
+                # Build system with caching enabled for the digest items
+                system_messages = [
+                    {
+                        "type": "text",
+                        "text": base_system_prompt
+                    },
+                    {
+                        "type": "text",
+                        "text": digest_items_part,
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+                
+                # Claude-specific parameters with caching
+                params = {
+                    "model": self.model,
+                    "max_tokens": 64000,
+                    "system": system_messages,
+                    "messages": [
+                        {
+                            "role": "user", 
+                            "content": bill_section_part + requirements_part
+                        }
+                    ],
+                    "stream": True  # Use streaming for long-running operations
                 }
-
-            self.logger.info(f"Using Anthropic API with model {self.model} (streaming enabled)")
+                
+                # Set up extended thinking for Claude 3.7 models
+                if "claude-3-7" in self.model:
+                    params["temperature"] = 1
+                    params["thinking"] = {
+                        "type": "enabled", 
+                        "budget_tokens": 16000
+                    }
+            else:
+                # Fallback to regular API without caching for unsupported models
+                self.logger.info(f"Using Anthropic API with model {self.model} (without prompt caching, unsupported model)")
+                
+                # Regular parameters without caching
+                params = {
+                    "model": self.model,
+                    "max_tokens": 64000,
+                    "system": base_system_prompt,
+                    "messages": [{"role": "user", "content": context_prompt}],
+                    "stream": True  # Use streaming for long-running operations
+                }
+                
+                # Set up extended thinking for Claude 3.7 models
+                if "claude-3-7" in self.model:
+                    params["temperature"] = 1
+                    params["thinking"] = {
+                        "type": "enabled", 
+                        "budget_tokens": 16000
+                    }
 
             # Process the streaming response
             response_content = ""
             try:
                 stream = await self.anthropic_client.messages.create(**params)
+                # Track cache usage if available
+                if hasattr(stream, 'usage'):
+                    usage = stream.usage
+                    if hasattr(usage, 'cache_creation_input_tokens') and usage.cache_creation_input_tokens > 0:
+                        self.digest_cache_created = True
+                        self.logger.info(f"Cache created with {usage.cache_creation_input_tokens} tokens")
+                    elif hasattr(usage, 'cache_read_input_tokens') and usage.cache_read_input_tokens > 0:
+                        self.logger.info(f"Cache hit: {usage.cache_read_input_tokens} tokens read from cache")
+                
+                # Process streaming response
                 async for chunk in stream:
                     if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'text'):
                         response_content += chunk.delta.text
@@ -206,15 +296,16 @@ class SectionMatcher:
             # Parse the JSON response from the text
             matches_data = self._parse_ai_section_matches(response_content)
         else:
-            # Using OpenAI API
+            # Using OpenAI API - No changes needed as OpenAI handles caching internally
             params = {
                 "model": self.model,
                 "messages": [
                     {
                         "role": "system", 
                         "content": (
-                            "You are analyzing a bill section to determine which digest item(s) "
-                            "it implements. Return a JSON object with matches and confidence scores."
+                            "You are analyzing a bill section to determine which digest item it implements. "
+                            "Each bill section must be matched to exactly one digest item. "
+                            "Return a JSON object with the best matching digest item and confidence score."
                         )
                     },
                     {"role": "user", "content": context_prompt}
@@ -692,7 +783,7 @@ class SectionMatcher:
         }
 
     def _build_section_prompt(self, section_id: str, section_info: Dict[str, Any], digest_map: Dict[str, Dict[str, Any]]) -> str:
-        """Build detailed prompt for section to digest matching"""
+        """Build detailed prompt for section to digest matching (LEGACY)"""
         digest_items_formatted = []
         for digest_id, digest_info in digest_map.items():
             # Format each digest item
@@ -716,6 +807,83 @@ class SectionMatcher:
     {all_digest_items}
 
     IMPORTANT: Select the SINGLE best matching digest item for this section. Choose only the one digest item that most directly corresponds to this bill section.
+
+    Analyze the text carefully and return your match in this JSON format:
+    {{
+        "matches": [
+            {{
+                "digest_id": "digest item id (e.g. 'change_1')",
+                "confidence": float,
+                "evidence": {{
+                    "key_terms": ["matched terms"],
+                    "thematic_match": "explanation",
+                    "action_alignment": "explanation"
+                }}
+            }}
+        ]
+    }}"""
+    
+    def _format_digest_items(self, digest_map: Dict[str, Dict[str, Any]]) -> str:
+        """
+        Format digest items into a single string for prompts
+        This is separated to support caching
+        """
+        digest_items_formatted = []
+        for digest_id, digest_info in digest_map.items():
+            # Format each digest item
+            item_text = f"Digest Item {digest_id}:\n"
+            item_text += f"Text: {digest_info['text']}\n"
+            if digest_info.get('existing_law'):
+                item_text += f"Existing Law: {digest_info['existing_law']}\n"
+            if digest_info.get('proposed_change'):
+                item_text += f"Proposed Change: {digest_info['proposed_change']}\n"
+            digest_items_formatted.append(item_text)
+        
+        # Join all digest items
+        return "\n".join(digest_items_formatted)
+        
+    def _get_digest_map_key(self, digest_map: Dict[str, Dict[str, Any]]) -> str:
+        """Generate a key to identify if digest map has changed"""
+        # Simple key generation - hash the digest IDs and lengths of their content
+        # This is a quick way to check if the digest map might have changed
+        digest_keys = sorted(digest_map.keys())
+        key_parts = []
+        for did in digest_keys:
+            info = digest_map[did]
+            # Create a signature based on text lengths
+            sig = f"{did}:{len(info.get('text', ''))}:{len(info.get('existing_law', ''))}"
+            key_parts.append(sig)
+        return "|".join(key_parts)
+
+    def _build_reverse_section_prompt(self, section_id: str, section_info: Dict[str, Any], digest_map: Dict[str, Dict[str, Any]]) -> str:
+        """
+        Build prompt for the reversed matching approach - one bill section matched to all digest items
+        This ensures each bill section is matched to a digest item
+        """
+        # Format the digest items and cache for re-use
+        digest_map_key = self._get_digest_map_key(digest_map)
+        if not self.cached_digest_formatted or digest_map_key != self.cached_digest_map_key:
+            self.cached_digest_formatted = self._format_digest_items(digest_map)
+            self.cached_digest_map_key = digest_map_key
+            self.digest_cache_created = False  # Need to create a new cache with Claude
+        
+        all_digest_items = self.cached_digest_formatted
+        
+        return f"""Identify which digest item is best implemented by this bill section:
+
+    Bill Section {section_id}:
+    {section_info['text']}
+
+    Available Digest Items:
+    {all_digest_items}
+
+    IMPORTANT REQUIREMENTS:
+    1. Every bill section MUST be matched to exactly ONE digest item
+    2. Choose the SINGLE digest item that best corresponds to this bill section
+    3. Even if the match isn't perfect, select the best possible digest item
+
+    This bill section is making a change to the law. Your task is to determine which digest item 
+    best describes the change being made by this section.
 
     Analyze the text carefully and return your match in this JSON format:
     {{
@@ -913,7 +1081,10 @@ class SectionMatcher:
         return numbers
 
     def _validate_matches(self, matches: List[MatchResult]) -> List[MatchResult]:
-        """Validate matches and resolve conflicts"""
+        """
+        Validate matches and resolve conflicts
+        Under the reverse matching approach, each bill section should match to exactly one digest item
+        """
         validated = []
         seen_sections = defaultdict(list)
 
@@ -921,14 +1092,22 @@ class SectionMatcher:
         for match in matches:
             seen_sections[match.section_id].append(match)
 
-        # Resolve conflicts
+        # Process each section
         for section_id, section_matches in seen_sections.items():
             if len(section_matches) == 1:
+                # Only one match for this section - perfect
                 validated.append(section_matches[0])
             else:
-                # Keep highest confidence match
+                # Multiple matches for this section - keep highest confidence
                 best_match = max(section_matches, key=lambda m: m.confidence)
+                self.logger.info(f"Section {section_id} had {len(section_matches)} matches - keeping highest confidence match to digest {best_match.digest_id}")
                 validated.append(best_match)
+
+        # Log sections with no matches - this shouldn't happen with the new approach
+        # but we'll keep this check for robustness
+        all_section_ids = {match.section_id for match in matches}
+        if len(all_section_ids) < sum(1 for _ in seen_sections):
+            self.logger.warning(f"Some sections have no matches after validation - this shouldn't happen")
 
         return validated
 
@@ -961,17 +1140,10 @@ class SectionMatcher:
 
     def _verify_complete_matching(self, skeleton: Dict[str, Any], section_map: Dict[str, Dict[str, Any]]) -> None:
         """
-        Verify all digest items have matches and all bill sections are matched to at least one digest item
+        Verify all bill sections are matched to a digest item
+        With the reverse matching approach, each bill section should be matched to exactly one digest item,
+        but some digest items may not have matches.
         """
-        # Check for unmatched digest items
-        unmatched_digests = []
-        for change in skeleton["changes"]:
-            if not change.get("bill_sections"):
-                unmatched_digests.append(change["id"])
-
-        if unmatched_digests:
-            self.logger.warning(f"Unmatched digest items: {', '.join(unmatched_digests)}")
-            
         # Check for unmatched bill sections
         all_matched_sections = set()
         for change in skeleton["changes"]:
@@ -980,7 +1152,18 @@ class SectionMatcher:
         unmatched_sections = set(section_map.keys()) - all_matched_sections
         
         if unmatched_sections:
-            self.logger.warning(f"Unmatched bill sections: {', '.join(unmatched_sections)}")
+            self.logger.error(f"Unmatched bill sections: {', '.join(unmatched_sections)}")
+            self.logger.error("With the reverse matching approach, all bill sections should be matched to a digest item.")
+            raise ValueError(f"Failed to match {len(unmatched_sections)} bill sections")
+            
+        # Check for unmatched digest items - this is allowed but we'll log it
+        unmatched_digests = []
+        for change in skeleton["changes"]:
+            if not change.get("bill_sections"):
+                unmatched_digests.append(change["id"])
+
+        if unmatched_digests:
+            self.logger.warning(f"Note: {len(unmatched_digests)} digest items have no matching bill sections: {', '.join(unmatched_digests)}")
 
     def _get_linked_sections(self, change: Dict[str, Any], skeleton: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Get all bill sections that are linked to this change."""
