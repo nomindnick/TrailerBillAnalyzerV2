@@ -268,30 +268,74 @@ class SectionMatcher:
                         "budget_tokens": 16000
                     }
 
-            # Process the streaming response
+            # Process the streaming response with retries for Overloaded errors
             response_content = ""
-            try:
-                stream = await self.anthropic_client.messages.create(**params)
-                # Track cache usage if available
-                if hasattr(stream, 'usage'):
-                    usage = stream.usage
-                    if hasattr(usage, 'cache_creation_input_tokens') and usage.cache_creation_input_tokens > 0:
-                        self.digest_cache_created = True
-                        self.logger.info(f"Cache created with {usage.cache_creation_input_tokens} tokens")
-                    elif hasattr(usage, 'cache_read_input_tokens') and usage.cache_read_input_tokens > 0:
-                        self.logger.info(f"Cache hit: {usage.cache_read_input_tokens} tokens read from cache")
-                
-                # Process streaming response
-                async for chunk in stream:
-                    if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'text'):
-                        response_content += chunk.delta.text
-            except Exception as e:
-                self.logger.error(f"Error during Anthropic API streaming: {str(e)}")
-                raise
+            max_retries = 3
+            retry_delay = 2  # Starting delay in seconds
+            
+            for retry_attempt in range(max_retries + 1):
+                try:
+                    # Make the API call
+                    stream = await self.anthropic_client.messages.create(**params)
+                    
+                    # Track cache usage if available
+                    if hasattr(stream, 'usage'):
+                        usage = stream.usage
+                        if hasattr(usage, 'cache_creation_input_tokens') and usage.cache_creation_input_tokens > 0:
+                            self.digest_cache_created = True
+                            self.logger.info(f"Cache created with {usage.cache_creation_input_tokens} tokens")
+                        elif hasattr(usage, 'cache_read_input_tokens') and usage.cache_read_input_tokens > 0:
+                            self.logger.info(f"Cache hit: {usage.cache_read_input_tokens} tokens read from cache")
+                    
+                    # Process streaming response
+                    response_content = ""  # Reset for each attempt
+                    async for chunk in stream:
+                        if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'text'):
+                            response_content += chunk.delta.text
+                    
+                    # If we get here, the API call succeeded
+                    break
+                    
+                except Exception as e:
+                    error_str = str(e)
+                    is_overloaded = "overloaded_error" in error_str.lower() or "overloaded" in error_str.lower()
+                    
+                    if is_overloaded and retry_attempt < max_retries:
+                        # Only retry on Overloaded errors
+                        wait_time = retry_delay * (2 ** retry_attempt)  # Exponential backoff
+                        self.logger.warning(f"Anthropic API overloaded, retrying in {wait_time}s (attempt {retry_attempt+1}/{max_retries})")
+                        import asyncio
+                        await asyncio.sleep(wait_time)
+                        continue
+                    else:
+                        # Either not an overloaded error or we've exhausted retries
+                        if retry_attempt == max_retries:
+                            self.logger.error(f"Error during Anthropic API streaming after {max_retries} retries: {error_str}")
+                        else:
+                            self.logger.error(f"Error during Anthropic API streaming: {error_str}")
+                        
+                        # Try falling back to non-streaming for overloaded errors
+                        if is_overloaded:
+                            self.logger.info("Attempting fallback to non-streaming request...")
+                            try:
+                                # Clone params but remove streaming
+                                non_streaming_params = params.copy()
+                                non_streaming_params.pop("stream", None)
+                                
+                                # Make non-streaming request
+                                response = await self.anthropic_client.messages.create(**non_streaming_params)
+                                response_content = response.content[0].text
+                                self.logger.info("Fallback to non-streaming request successful")
+                                break
+                            except Exception as fallback_error:
+                                self.logger.error(f"Fallback request also failed: {str(fallback_error)}")
+                                raise
+                        else:
+                            raise
 
             if not response_content:
-                self.logger.error("No text content received in Anthropic streaming response")
-                raise ValueError("No text received from Claude API in streaming response")
+                self.logger.error("No text content received in Anthropic API response")
+                raise ValueError("No text received from Claude API response")
 
             # Parse the JSON response from the text
             matches_data = self._parse_ai_section_matches(response_content)
