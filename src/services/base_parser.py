@@ -154,17 +154,18 @@ class BaseParser:
 
     def _split_digest_and_bill(self, bill_html: str) -> Tuple[str, str]:
         """
-        Split the bill HTML into digest and bill text portions
+        Split the bill HTML into digest and bill text portions with enhanced robustness
+        for amended bills with complex markup.
         """
         soup = BeautifulSoup(bill_html, "html.parser")
-
-        # Try to find the digest section
-        digest_elem = soup.find(id="digesttext") or soup.find(string=lambda text: "LEGISLATIVE COUNSEL'S DIGEST" in text)
-
         digest_text = ""
         bill_text = ""
 
-        # If digest element found, extract text
+        # Find the bill container - try both specific and general IDs
+        bill_container = soup.find(id="bill_all") or soup.find(class_="bill-content")
+
+        # Try to find the digest section
+        digest_elem = soup.find(id="digesttext") or soup.find(string=lambda text: "LEGISLATIVE COUNSEL'S DIGEST" in text)
         if digest_elem:
             # Get the digest container
             if digest_elem.name:  # Is an element
@@ -176,46 +177,46 @@ class BaseParser:
                 # Extract all text from digest container
                 digest_text = digest_container.get_text(separator='\n', strip=True)
 
-        # Find the bill text section (after "The people of the State of California do enact as follows:")
+        # Find the enactment clause
         enactment_text = soup.find(string=lambda text: "The people of the State of California do enact as follows" in text)
 
-        if enactment_text:
-            # Get the parent element
-            enactment_elem = enactment_text if enactment_text.name else enactment_text.find_parent()
+        if enactment_text and bill_container:
+            # More robust approach - find the enactment clause position, then get everything after it
+            full_text = bill_container.get_text(separator='\n', strip=True)
+            enactment_pattern = r'The\s+people\s+of\s+the\s+State\s+of\s+California\s+do\s+enact\s+as\s+follows'
+            matches = re.search(enactment_pattern, full_text, re.DOTALL | re.IGNORECASE)
 
-            # Get all siblings after the enactment clause
-            bill_elements = []
-            current_elem = enactment_elem.find_next()
+            if matches:
+                bill_text = full_text[matches.end():].strip()
 
-            while current_elem:
-                bill_elements.append(current_elem.get_text(separator='\n', strip=True))
-                current_elem = current_elem.find_next_sibling()
-
-            # Join all the bill section elements
-            bill_text = '\n'.join(bill_elements)
-
-        # If extraction from HTML structure failed, use regex as fallback
+        # If the above approach didn't work, try the regex fallback
         if not digest_text or not bill_text:
             self.logger.warning("Using regex fallback for splitting digest and bill text")
-
-            # Get the entire text content
             full_text = soup.get_text(separator='\n', strip=True)
 
             # Try to find the Legislative Counsel's Digest
-            digest_match = re.search(r'LEGISLATIVE\s+COUNSEL[\'\']?S\s+DIGEST(.*?)(?:The\s+people\s+of\s+the\s+State\s+of\s+California\s+do\s+enact\s+as\s+follows)', 
-                                    full_text, 
-                                    re.DOTALL | re.IGNORECASE)
+            digest_match = re.search(
+                r'LEGISLATIVE\s+COUNSEL[\'\']?S\s+DIGEST(.*?)(?:The\s+people\s+of\s+the\s+State\s+of\s+California\s+do\s+enact\s+as\s+follows)', 
+                full_text, 
+                re.DOTALL | re.IGNORECASE
+            )
 
             if digest_match:
                 digest_text = digest_match.group(1).strip()
 
             # Try to find the bill text after enactment clause
-            bill_match = re.search(r'The\s+people\s+of\s+the\s+State\s+of\s+California\s+do\s+enact\s+as\s+follows(.*?)$', 
-                                  full_text, 
-                                  re.DOTALL | re.IGNORECASE)
+            bill_match = re.search(
+                r'The\s+people\s+of\s+the\s+State\s+of\s+California\s+do\s+enact\s+as\s+follows(.*?)$', 
+                full_text, 
+                re.DOTALL | re.IGNORECASE
+            )
 
             if bill_match:
                 bill_text = bill_match.group(1).strip()
+
+        # Log the results to verify content was properly extracted
+        self.logger.info(f"Digest text length: {len(digest_text)}")
+        self.logger.info(f"Bill text length: {len(bill_text)}")
 
         return digest_text, bill_text
 
