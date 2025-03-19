@@ -268,25 +268,25 @@ class BillScraper:
         """
         output_dir = "test_output"
         os.makedirs(output_dir, exist_ok=True)
-        
+
         self.logger.info("Cleaning amended bill HTML to normalize strikethrough and added text")
-        
+
         # Log initial state
         with open(os.path.join(output_dir, "bill_pre_clean.html"), "w", encoding="utf-8") as f:
             f.write(html_content)
-            
+
         # Log counts of amendment markup
         strike_pattern = r'<font color="#B30000"><strike>'
         blue_pattern = r'<font color="blue" class="blue_text"><i>'
         highlight_pattern = r'<b><span style=\'background-color:yellow\'>'
-        
+
         strike_count = len(re.findall(strike_pattern, html_content))
         blue_count = len(re.findall(blue_pattern, html_content))
         highlight_count = len(re.findall(highlight_pattern, html_content))
-        
+
         self.logger.info(f"Initial markup counts - strikethrough: {strike_count}, "
                         f"blue text: {blue_count}, highlights: {highlight_count}")
-                        
+
         # Log section markers before cleaning
         section_pattern = r'(?:SEC\.|SECTION)\s+\d+\.'
         pre_clean_sections = re.findall(section_pattern, html_content, re.IGNORECASE)
@@ -296,10 +296,6 @@ class BillScraper:
 
         try:
             soup = BeautifulSoup(html_content, "html.parser")
-
-            # Special handling for section headers - mark them before any text operations
-            # We'll handle both "SEC." and "SECTION" references in the text
-            # to ensure we eventually can place them on their own lines.
 
             # 1) Remove strikethrough text completely
             for strike_tag in soup.find_all('strike'):
@@ -325,35 +321,56 @@ class BillScraper:
                 if tag.name.lower().startswith("caml:"):
                     tag.decompose()
 
-            # 5) We now have a "clean" soup with amendments removed. Let's convert to string
-            #    so we can do some final regex passes. We'll do the same approach to add newlines
-            #    around SEC. and SECTION references.
+            # 4) Convert to string for regex operations
             html_str = str(soup)
 
-            # 6) Insert newlines around "SEC. X." references (and "SECTION X.")
-            #    so that the parser can properly detect them. We'll do it carefully:
-            #    - Pattern for capturing:
-            #      (A) optional preceding non-newline char
-            #      (B) "SEC." or "SECTION" plus some whitespace plus a digit + period
-            #    - Then put newlines around it. 
-            # << NEW / UPDATED >> 
-            html_str = re.sub(r'([^\n])(SEC\.\s+\d+\.)', r'\1\n\n\2', html_str, flags=re.IGNORECASE)
-            html_str = re.sub(r'(SEC\.\s+\d+\.)([^\n])', r'\1\n\2', html_str, flags=re.IGNORECASE)
+            # 5) IMPORTANT: Ensure proper separation of the enactment clause from the first section
+            html_str = re.sub(
+                r'(The people of the State of California do enact as follows:)\s*(?=(SEC\.|SECTION))',
+                r'\1\n\n',
+                html_str,
+                flags=re.IGNORECASE
+            )
 
-            # Also handle "SECTION n." 
-            html_str = re.sub(r'([^\n])(SECTION\s+\d+\.)', r'\1\n\n\2', html_str, flags=re.IGNORECASE)
-            html_str = re.sub(r'(SECTION\s+\d+\.)([^\n])', r'\1\n\2', html_str, flags=re.IGNORECASE)
+            # 6) Add significant spacing around section headers to make them stand out
+            # First, make sure there are double newlines before each section header
+            html_str = re.sub(
+                r'([^\n])((?:SEC\.|SECTION)\s+\d+\.)',
+                r'\1\n\n\2',
+                html_str,
+                flags=re.IGNORECASE
+            )
+
+            # Then, make sure there's a newline after each section header
+            html_str = re.sub(
+                r'((?:SEC\.|SECTION)\s+\d+\.)([^\n])',
+                r'\1\n\2',
+                html_str,
+                flags=re.IGNORECASE
+            )
+
+            # 7) Force a double newline before each section even if there's already a newline
+            html_str = re.sub(
+                r'\n(\s*(?:SEC\.|SECTION)\s+\d+\.)',
+                r'\n\n\1',
+                html_str,
+                flags=re.IGNORECASE
+            )
+
+            # 8) Normalize extra whitespace
+            html_str = re.sub(r' {2,}', ' ', html_str)
+            html_str = re.sub(r'\n{3,}', '\n\n', html_str)
 
             # Log final state after all cleaning
             output_dir = "test_output"
             post_clean_sections = re.findall(r'(?:SEC\.|SECTION)\s+\d+\.', html_str, re.IGNORECASE)
             self.logger.info(f"Section markers after cleaning: {len(post_clean_sections)}")
-            
+
             with open(os.path.join(output_dir, "bill_post_clean.html"), "w", encoding="utf-8") as f:
                 f.write(html_str)
             with open(os.path.join(output_dir, "post_clean_sections.txt"), "w", encoding="utf-8") as f:
                 f.write("\n".join(post_clean_sections))
-                
+
             # Create a "diff" of sections
             lost_sections = set(pre_clean_sections) - set(post_clean_sections)
             new_sections = set(post_clean_sections) - set(pre_clean_sections)
@@ -363,7 +380,7 @@ class BillScraper:
                     self.logger.warning(f"Lost sections: {sorted(lost_sections)}")
                 if new_sections:
                     self.logger.warning(f"New sections: {sorted(new_sections)}")
-                    
+
             return html_str
         except Exception as e:
             self.logger.error(f"Error cleaning amended bill HTML: {str(e)}")

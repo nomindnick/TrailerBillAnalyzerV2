@@ -3,6 +3,7 @@ BaseParser module for processing and parsing bill text from leginfo.legislature.
 """
 import re
 import logging
+import os
 from datetime import datetime
 from typing import List, Tuple, Optional, Dict, Any, Set
 from bs4 import BeautifulSoup
@@ -270,6 +271,52 @@ class BaseParser:
 
         return digest_sections
 
+    # Add this as a fallback method in base_parser.py
+    def _direct_section_extraction(self, normalized_text: str) -> List[BillSection]:
+        """
+        Fallback method to directly extract sections when regex patterns fail
+        """
+        bill_sections = []
+
+        # Find all section headers
+        section_markers = []
+
+        # Look for both "SECTION X." and "SEC. X."
+        for pattern in [r'\n\s*(SECTION\s+(\d+)\.)', r'\n\s*(SEC\.\s+(\d+)\.)']: 
+            markers = re.findall(pattern, normalized_text, flags=re.IGNORECASE)
+            section_markers.extend(markers)
+
+        # Sort markers by their position in the text
+        section_positions = []
+        for header, number in section_markers:
+            pos = normalized_text.find(header)
+            if pos != -1:
+                section_positions.append((pos, header, number))
+
+        section_positions.sort()
+
+        # Extract text between section headers
+        for i, (pos, header, number) in enumerate(section_positions):
+            start_pos = pos + len(header)
+
+            # Find end position
+            if i < len(section_positions) - 1:
+                end_pos = section_positions[i+1][0]
+            else:
+                end_pos = len(normalized_text)
+
+            section_text = normalized_text[start_pos:end_pos].strip()
+            if section_text:
+                bill_section = BillSection(
+                    number=number,
+                    original_label=header.strip(),
+                    text=section_text,
+                    code_references=self._extract_code_references(section_text)
+                )
+                bill_sections.append(bill_section)
+
+        return bill_sections
+    
     def _parse_bill_sections(self, bill_text: str) -> List[BillSection]:
         """
         Parse the bill text into a list of BillSection objects with improved pattern matching
@@ -279,11 +326,21 @@ class BaseParser:
             self.logger.warning("No bill text to parse")
             return bill_sections
 
+        # Write original bill text to debug file
+        debug_dir = "debug_output"
+        os.makedirs(debug_dir, exist_ok=True)
+        with open(os.path.join(debug_dir, "original_bill_text.txt"), "w", encoding="utf-8") as f:
+            f.write(bill_text)
+
         # Pre-process the text for more reliable section detection
         normalized_text = self._aggressive_normalize_improved(bill_text)
 
         # Log a sample for debugging
         self.logger.debug(f"Normalized text sample: {normalized_text[:500]}...")
+
+        # Write normalized text to debug file
+        with open(os.path.join(debug_dir, "normalized_text.txt"), "w", encoding="utf-8") as f:
+            f.write(normalized_text)
 
         # Try multiple section patterns with increasing flexibility
         section_patterns = [
@@ -312,35 +369,14 @@ class BaseParser:
 
         if not all_matches:
             self.logger.warning("Standard patterns failed, attempting direct section extraction")
-            # Direct approach - find all "SEC. X." headers and extract content between them
-            section_headers = re.findall(r'\n\s*(SEC\.\s+(\d+)\.)', normalized_text)
-            self.logger.info(f"Found {len(section_headers)} section headers directly")
+            bill_sections = self._direct_section_extraction(normalized_text)
+            if bill_sections:
+                self.logger.info(f"Direct extraction found {len(bill_sections)} sections")
+                bill_sections.sort(key=lambda x: int(x.number))
+                return bill_sections
 
-            if section_headers:
-                # Manual extraction between headers
-                for i, (header, number) in enumerate(section_headers):
-                    start_pos = normalized_text.find(header) + len(header)
-
-                    # Find the end by looking for the next section header or end of text
-                    if i < len(section_headers) - 1:
-                        next_header = section_headers[i+1][0]
-                        end_pos = normalized_text.find(next_header)
-                    else:
-                        end_pos = len(normalized_text)
-
-                    section_text = normalized_text[start_pos:end_pos].strip()
-
-                    # Create section object
-                    bill_section = BillSection(
-                        number=number,
-                        original_label=header,
-                        text=section_text,
-                        code_references=self._extract_code_references(section_text)
-                    )
-                    bill_sections.append(bill_section)
-
-        # Process regular matches
-        if all_matches and not bill_sections:
+        # Process regular matches if direct extraction didn't work
+        if all_matches:
             for match in all_matches:
                 section_num = match.group('number')
                 section_text = match.group('text').strip()
@@ -387,13 +423,20 @@ class BaseParser:
         text = re.sub(r'Section\s+(\d+)\s*\n\s*(\.\d+)', r'Section \1\2', text)
 
         # Ensure section headers are properly separated with newlines
-        text = re.sub(r'([^\n])(SEC\.|SECTION)', r'\1\n\2', text)
+        text = re.sub(r'([^\n])(SEC\.|SECTION)', r'\1\n\n\2', text)
 
         # Handle extra whitespace
         text = re.sub(r'\n\s+', '\n', text)
 
-        # Ensure "The people of the State of California do enact as follows:" is followed by a newline
-        text = re.sub(r'(The people of the State of California do enact as follows:)(?!\n)', r'\1\n', text, flags=re.IGNORECASE)
+        # Ensure "The people of the State of California do enact as follows:" is followed by double newlines
+        text = re.sub(r'(The people of the State of California do enact as follows:)(?!\n)', 
+                     r'\1\n\n', text, flags=re.IGNORECASE)
+
+        # Add double newlines before each section to ensure they're properly separated
+        text = re.sub(r'\n(\s*(?:SEC\.|SECTION)\s+\d+\.)', r'\n\n\1', text, flags=re.IGNORECASE)
+
+        # Make sure section headers are followed by a newline
+        text = re.sub(r'((?:SEC\.|SECTION)\s+\d+\.)([^\n])', r'\1\n\2', text, flags=re.IGNORECASE)
 
         return text
 
