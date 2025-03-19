@@ -50,30 +50,30 @@ class SectionMatcher:
                     4, 
                     "Starting section matching process",
                     1,
-                    len(digest_map)
+                    len(section_map)  # Changed from len(digest_map) to number of sections
                 )
 
             # Execute matching strategies in order of reliability
             matches = []
-            digest_count = len(digest_map)
-            current_digest = 1
+            section_count = len(section_map)
+            current_section = 1
 
             # 1. Exact code reference matching
             if progress_handler:
                 progress_handler.update_progress(
                     4, 
                     "Matching sections by code references",
-                    current_digest,
-                    digest_count
+                    current_section,
+                    section_count
                 )
 
             code_matches = self._match_by_code_references(digest_map, section_map)
             matches.extend(code_matches)
 
-            current_digest += len(code_matches) // 2  # Increment based on approximate matched items
+            current_section += len(code_matches) // 2
             if progress_handler:
                 progress_handler.update_substep(
-                    min(current_digest, digest_count),
+                    min(current_section, section_count),
                     "Code reference matching complete"
                 )
 
@@ -81,64 +81,64 @@ class SectionMatcher:
             section_matches = self._match_by_section_numbers(digest_map, section_map)
             matches.extend(section_matches)
 
-            current_digest += len(section_matches) // 2
+            current_section += len(section_matches) // 2
             if progress_handler:
                 progress_handler.update_substep(
-                    min(current_digest, digest_count),
+                    min(current_section, section_count),
                     "Section number matching complete"
                 )
 
-            # 3. Context-based matching for remaining unmatched items
-            remaining_digests = self._get_unmatched_digests(digest_map, matches)
+            # 3. Context-based matching for remaining unmatched sections
+            remaining_digests = digest_map  # Use all digest items for context
             remaining_sections = self._get_unmatched_sections(section_map, matches)
 
-            if remaining_digests and remaining_sections:
+            if remaining_sections:
                 if progress_handler:
                     progress_handler.update_substep(
-                        min(current_digest, digest_count),
-                        f"Performing contextual matching for {len(remaining_digests)} remaining sections"
+                        min(current_section, section_count),
+                        f"Performing contextual matching for {len(remaining_sections)} remaining sections"
                     )
 
-                # Process remaining digests one by one with progress updates
+                # Process remaining sections one by one with progress updates
                 context_matches = []
-                for i, (digest_id, digest_info) in enumerate(remaining_digests.items()):
+                for i, (section_id, section_info) in enumerate(remaining_sections.items()):
                     if progress_handler:
                         progress_handler.update_substep(
-                            min(current_digest + i, digest_count),
-                            f"Analyzing context for digest item {digest_id}"
+                            min(current_section + i, section_count),
+                            f"Analyzing context for bill section {section_id}"
                         )
 
-                    # Get context matches for this digest
-                    digest_matches = await self._match_by_context_single(
-                        digest_id,
-                        digest_info, 
-                        remaining_sections,
+                    # Get context matches for this section
+                    section_matches = await self._match_section_to_digest(
+                        section_id,
+                        section_info, 
+                        digest_map,
                         bill_text
                     )
-                    context_matches.extend(digest_matches)
+                    context_matches.extend(section_matches)
 
                 matches.extend(context_matches)
 
             # Validate and update skeleton with matches
             if progress_handler:
                 progress_handler.update_substep(
-                    digest_count,
+                    section_count,
                     "Finalizing section matching"
                 )
 
             validated_matches = self._validate_matches(matches)
             updated_skeleton = self._update_skeleton_with_matches(skeleton, validated_matches)
 
-            # Verify all digest items are matched
-            self._verify_complete_matching(updated_skeleton)
+            # Verify all sections are matched and all digest items have at least one section
+            self._verify_complete_matching(updated_skeleton, section_map)
 
             # Final progress update
             if progress_handler:
                 progress_handler.update_progress(
                     4, 
                     f"Section matching complete - {len(validated_matches)} matches found",
-                    digest_count,
-                    digest_count
+                    section_count,
+                    section_count
                 )
 
             return updated_skeleton
@@ -147,6 +147,104 @@ class SectionMatcher:
             self.logger.error(f"Error in section matching: {str(e)}")
             raise
 
+    async def _match_section_to_digest(
+        self,
+        section_id: str,
+        section_info: Dict[str, Any],
+        digest_map: Dict[str, Dict[str, Any]],
+        bill_text: str
+    ) -> List[MatchResult]:
+        """Match a single bill section to the appropriate digest item(s)"""
+        context_prompt = self._build_section_prompt(
+            section_id,
+            section_info,
+            digest_map
+        )
+        
+        # Determine which API to use
+        if self.use_anthropic:
+            # Using Anthropic API
+            system_prompt = (
+                "You are analyzing bill section to determine which digest item(s) "
+                "it implements. Return a JSON object with matches and confidence scores."
+            )
+
+            # Claude-specific parameters
+            params = {
+                "model": self.model,
+                "max_tokens": 64000,
+                "system": system_prompt,
+                "messages": [{"role": "user", "content": context_prompt}],
+                "stream": True  # Use streaming for long-running operations
+            }
+
+            # Set up extended thinking for Claude 3.7 models
+            if "claude-3-7" in self.model:
+                params["temperature"] = 1
+                params["thinking"] = {
+                    "type": "enabled", 
+                    "budget_tokens": 16000
+                }
+
+            self.logger.info(f"Using Anthropic API with model {self.model} (streaming enabled)")
+
+            # Process the streaming response
+            response_content = ""
+            try:
+                stream = await self.anthropic_client.messages.create(**params)
+                async for chunk in stream:
+                    if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'text'):
+                        response_content += chunk.delta.text
+            except Exception as e:
+                self.logger.error(f"Error during Anthropic API streaming: {str(e)}")
+                raise
+
+            if not response_content:
+                self.logger.error("No text content received in Anthropic streaming response")
+                raise ValueError("No text received from Claude API in streaming response")
+
+            # Parse the JSON response from the text
+            matches_data = self._parse_ai_section_matches(response_content)
+        else:
+            # Using OpenAI API
+            params = {
+                "model": self.model,
+                "messages": [
+                    {
+                        "role": "system", 
+                        "content": (
+                            "You are analyzing a bill section to determine which digest item(s) "
+                            "it implements. Return a JSON object with matches and confidence scores."
+                        )
+                    },
+                    {"role": "user", "content": context_prompt}
+                ],
+                "response_format": {"type": "json_object"}
+            }
+
+            # Add model-specific parameters for OpenAI models
+            if self.model.startswith("o"):  # o3-mini or o1 reasoning models
+                params["reasoning_effort"] = "high"
+            else:  # gpt-4o and other models
+                params["temperature"] = 0
+
+            self.logger.info(f"Using OpenAI API with model {self.model}")
+            response = await self.openai_client.chat.completions.create(**params)
+            matches_data = self._parse_ai_section_matches(response.choices[0].message.content)
+
+        results = []
+
+        for match in matches_data:
+            results.append(MatchResult(
+                digest_id=match["digest_id"],
+                section_id=section_id,
+                confidence=match["confidence"],
+                match_type="context",
+                supporting_evidence=match.get("evidence", {})
+            ))
+
+        return results
+        
     async def _match_by_context_single(
         self, 
         digest_id: str,
@@ -593,6 +691,47 @@ class SectionMatcher:
             if section_id not in matched_section_ids
         }
 
+    def _build_section_prompt(self, section_id: str, section_info: Dict[str, Any], digest_map: Dict[str, Dict[str, Any]]) -> str:
+        """Build detailed prompt for section to digest matching"""
+        digest_items_formatted = []
+        for digest_id, digest_info in digest_map.items():
+            # Format each digest item
+            item_text = f"Digest Item {digest_id}:\n"
+            item_text += f"Text: {digest_info['text']}\n"
+            if digest_info.get('existing_law'):
+                item_text += f"Existing Law: {digest_info['existing_law']}\n"
+            if digest_info.get('proposed_change'):
+                item_text += f"Proposed Change: {digest_info['proposed_change']}\n"
+            digest_items_formatted.append(item_text)
+        
+        # Join all digest items
+        all_digest_items = "\n".join(digest_items_formatted)
+        
+        return f"""Determine which digest item this bill section best implements:
+
+    Bill Section {section_id}:
+    {section_info['text']}
+
+    Available Digest Items:
+    {all_digest_items}
+
+    IMPORTANT: Select the SINGLE best matching digest item for this section. Choose only the one digest item that most directly corresponds to this bill section.
+
+    Analyze the text carefully and return your match in this JSON format:
+    {{
+        "matches": [
+            {{
+                "digest_id": "digest item id (e.g. 'change_1')",
+                "confidence": float,
+                "evidence": {{
+                    "key_terms": ["matched terms"],
+                    "thematic_match": "explanation",
+                    "action_alignment": "explanation"
+                }}
+            }}
+        ]
+    }}"""
+
     def _build_context_prompt(self, digest_info: Dict[str, Any], sections: Dict[str, Dict[str, Any]], bill_text: str) -> str:
         """Build detailed prompt for context matching"""
         return f"""Analyze which bill sections implement this digest item:
@@ -637,6 +776,33 @@ class SectionMatcher:
             formatted.append(f"Section {section_id}:\n{preview}\n")
         return "\n".join(formatted)
 
+    def _parse_ai_section_matches(self, content: str) -> List[Dict[str, Any]]:
+        """Parse section-to-digest matches from AI response"""
+        try:
+            # For Claude responses, we may need to extract JSON from a text response
+            if self.use_anthropic:
+                # First try direct JSON loading
+                try:
+                    data = json.loads(content)
+                except json.JSONDecodeError:
+                    # Try to extract JSON from text
+                    self.logger.warning(f"Invalid JSON from Claude, attempting to extract JSON: {content[:200]}...")
+                    json_start = content.find('{')
+                    json_end = content.rfind('}') + 1
+                    if json_start >= 0 and json_end > json_start:
+                        clean_json = content[json_start:json_end]
+                        data = json.loads(clean_json)
+                    else:
+                        raise ValueError("Cannot extract JSON from Claude response")
+            else:
+                # For OpenAI, we expect clean JSON
+                data = json.loads(content)
+
+            return data.get("matches", [])
+        except Exception as e:
+            self.logger.error(f"Error parsing AI section matches: {str(e)}")
+            return []
+            
     def _parse_ai_matches(self, content: str) -> List[Dict[str, Any]]:
         """Parse matches from AI response"""
         try:
@@ -793,15 +959,28 @@ class SectionMatcher:
 
         return skeleton
 
-    def _verify_complete_matching(self, skeleton: Dict[str, Any]) -> None:
-        """Verify all digest items have matches and log warnings for unmatched items"""
-        unmatched = []
+    def _verify_complete_matching(self, skeleton: Dict[str, Any], section_map: Dict[str, Dict[str, Any]]) -> None:
+        """
+        Verify all digest items have matches and all bill sections are matched to at least one digest item
+        """
+        # Check for unmatched digest items
+        unmatched_digests = []
         for change in skeleton["changes"]:
             if not change.get("bill_sections"):
-                unmatched.append(change["id"])
+                unmatched_digests.append(change["id"])
 
-        if unmatched:
-            self.logger.warning(f"Unmatched digest items: {', '.join(unmatched)}")
+        if unmatched_digests:
+            self.logger.warning(f"Unmatched digest items: {', '.join(unmatched_digests)}")
+            
+        # Check for unmatched bill sections
+        all_matched_sections = set()
+        for change in skeleton["changes"]:
+            all_matched_sections.update(change.get("bill_sections", []))
+            
+        unmatched_sections = set(section_map.keys()) - all_matched_sections
+        
+        if unmatched_sections:
+            self.logger.warning(f"Unmatched bill sections: {', '.join(unmatched_sections)}")
 
     def _get_linked_sections(self, change: Dict[str, Any], skeleton: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Get all bill sections that are linked to this change."""
