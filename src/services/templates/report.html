@@ -23,11 +23,47 @@
     <div class="summary-section">
         <h2 class="summary-header">Executive Summary</h2>
         <p><strong>Total Changes Identified:</strong> {{ changes|length }}</p>
-        <p><strong>Local Agency Impact:</strong> {{ metadata.get('local_impact_summary', 'N/A') }}</p>
-        <p><strong>State Agency Impact:</strong> {{ state_summary }}</p>
-        <p><strong>Practice Areas Affected (Primary Relevance):</strong>
+        <p><strong>Practice Areas Affected:</strong>
             {% if practice_areas %}
                 {{ practice_areas|join(', ') }}
+            {% else %}
+                None
+            {% endif %}
+        </p>
+        <p><strong>Local Agencies Impacted:</strong>
+            {% set impacted_agencies = [] %}
+            {% for change in changes %}
+                {% if change.local_agencies_impacted %}
+                    {% for agency in change.local_agencies_impacted %}
+                        {% if agency not in impacted_agencies %}
+                            {% set _ = impacted_agencies.append(agency) %}
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+            {% endfor %}
+            {% if impacted_agencies %}
+                {{ impacted_agencies|join(', ') }}
+            {% else %}
+                None
+            {% endif %}
+        </p>
+        <p><strong>Changes by Practice Group:</strong>
+            {% set practice_group_counts = {} %}
+            {% for change in changes %}
+                {% for pg in change.practice_groups %}
+                    {% if pg.relevance|lower == 'primary' %}
+                        {% if pg.name in practice_group_counts %}
+                            {% set _ = practice_group_counts.update({pg.name: practice_group_counts[pg.name] + 1}) %}
+                        {% else %}
+                            {% set _ = practice_group_counts.update({pg.name: 1}) %}
+                        {% endif %}
+                    {% endif %}
+                {% endfor %}
+            {% endfor %}
+            {% if practice_group_counts %}
+                {% for group, count in practice_group_counts.items() %}
+                    {{ group }}: {{ count }}{% if not loop.last %}, {% endif %}
+                {% endfor %}
             {% else %}
                 None
             {% endif %}
