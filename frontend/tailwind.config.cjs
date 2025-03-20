@@ -1,3 +1,4 @@
+// frontend/tailwind.config.cjs
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: ['class'], // or just 'class'
@@ -33,8 +34,15 @@ module.exports = {
         'ping-once': 'ping-once 0.8s cubic-bezier(0, 0, 0.2, 1)',
         'spin': 'spin 1s linear infinite',
         'bounce-in': 'bounce-in 0.7s ease-out',
+        'shake': 'shake 0.5s cubic-bezier(.36,.07,.19,.97) both',
       },
       keyframes: {
+        'shake': {
+          '10%, 90%': { transform: 'translate3d(-1px, 0, 0)' },
+          '20%, 80%': { transform: 'translate3d(2px, 0, 0)' },
+          '30%, 50%, 70%': { transform: 'translate3d(-3px, 0, 0)' },
+          '40%, 60%': { transform: 'translate3d(3px, 0, 0)' }
+        },
         'fade-in': {
           '0%': { opacity: '0' },
           '100%': { opacity: '1' }
