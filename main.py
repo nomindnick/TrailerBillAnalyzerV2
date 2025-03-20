@@ -55,8 +55,8 @@ json_builder = JsonBuilder()
 
 # Initialize OpenAI client (if used)
 try:
-    import openai
-    openai_client = openai.AsyncClient(api_key=os.environ.get('OPENAI_API_KEY'))
+    from openai import OpenAI
+    openai_client = OpenAI(api_key=os.environ.get('OPENAI_API_KEY'), base_url="https://api.openai.com/v1")
     logger.info("OpenAI client initialized")
 except (ImportError, Exception) as e:
     logger.warning(f"OpenAI client initialization failed: {str(e)}")
@@ -64,8 +64,8 @@ except (ImportError, Exception) as e:
 
 # Initialize Anthropic client (if used)
 try:
-    import anthropic
-    anthropic_client = anthropic.AsyncClient(api_key=os.environ.get('ANTHROPIC_API_KEY'))
+    from anthropic import AsyncAnthropic
+    anthropic_client = AsyncAnthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
     logger.info("Anthropic client initialized")
 except (ImportError, Exception) as e:
     logger.warning(f"Anthropic client initialization failed: {str(e)}")
