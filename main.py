@@ -36,13 +36,14 @@ app = Flask(__name__, static_folder='frontend/dist')
 CORS(app)  # Enable CORS for development
 socketio = SocketIO(app, 
                    cors_allowed_origins="*", 
-                   ping_timeout=300,  # Increase timeout
-                   ping_interval=10,  # More frequent pings
+                   ping_timeout=600,  # 10 minute timeout
+                   ping_interval=5,   # More frequent pings
                    reconnection=True, 
-                   reconnection_attempts=20,  # More reconnection attempts
-                   reconnection_delay=0.5,  # Faster initial reconnect
+                   reconnection_attempts=50,  # More reconnection attempts
+                   reconnection_delay=0.25,   # Faster initial reconnect
                    reconnection_delay_max=5,
                    async_mode='eventlet',
+                   async_handlers=True,  # Enable async handlers
                    logger=True,
                    engineio_logger=True)
 
