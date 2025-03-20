@@ -228,8 +228,6 @@ async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None,
         from openai import OpenAI
         openai_client = OpenAI(
             api_key=os.environ.get("OPENAI_API_KEY"),
-            base_url="https://api.openai.com/v1",
-            http_client=None,  # Use default client without proxy settings
             max_retries=2
         )
         anthropic_client = AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
