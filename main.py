@@ -35,15 +35,17 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, static_folder='frontend/dist')
 CORS(app)  # Enable CORS for development
 socketio = SocketIO(app, 
-                   cors_allowed_origins="*", 
-                   ping_timeout=600,  # 10 minute timeout
-                   ping_interval=5,   # More frequent pings
-                   reconnection=True, 
-                   reconnection_attempts=50,  # More reconnection attempts
-                   reconnection_delay=0.25,   # Faster initial reconnect
+                   cors_allowed_origins="*",
+                   ping_timeout=60,    # Shorter timeout to detect disconnects faster
+                   ping_interval=25,   # Standard ping interval
+                   reconnection=True,
+                   reconnection_attempts=0,  # Infinite reconnection attempts
+                   reconnection_delay=1,     # Start with 1 second delay
                    reconnection_delay_max=5,
                    async_mode='eventlet',
-                   async_handlers=True,  # Enable async handlers
+                   async_handlers=True,
+                   manage_session=True,      # Let server manage sessions
+                   max_http_buffer_size=5e8, # Larger buffer for analysis data
                    logger=True,
                    engineio_logger=True)
 
