@@ -46,11 +46,14 @@ const BillAnalyzer = () => {
   // New state for socket connection status
   const [socketConnected, setSocketConnected] = useState(false);
   const reconnectAttemptsRef = useRef(0);
-  const maxReconnectAttempts = 10;
-  const reconnectionIntervalRef = useRef(null); // Ref for reconnection interval
+  const MAX_RECONNECTS = 10; // Added constant for max reconnect attempts
+  const RECONNECT_DELAY = 2000; // Added constant for reconnect delay
 
+  // Ref for reconnection interval
+  const reconnectionIntervalRef = useRef(null);
   // Use a ref to keep track of the socket instance for cleanup
   const socketRef = useRef(null);
+  let pingInterval; // Declare pingInterval here
 
   // Available session years - add new ones at the top as they become available
   const availableSessionYears = [
@@ -89,12 +92,11 @@ const BillAnalyzer = () => {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
       reconnection: true,
-      reconnectionAttempts: maxReconnectAttempts,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      timeout: 60000, // Increased timeout
+      reconnectionAttempts: MAX_RECONNECTS,
+      reconnectionDelay: RECONNECT_DELAY,
+      timeout: 120000, // Increased timeout
       pingTimeout: 60000, // Increased ping timeout
-      pingInterval: 5000  // More frequent pings
+      pingInterval: 25000 // More frequent pings
     });
 
     socketRef.current = newSocket;
@@ -121,26 +123,38 @@ const BillAnalyzer = () => {
       }
     });
 
+    let isReconnecting = false;
+    let reconnectCount = 0;
     newSocket.on('disconnect', (reason) => {
       console.log('Socket disconnected:', reason);
       setSocketConnected(false);
-      if (isProcessing && reason !== 'io client disconnect') {
-        reconnectAttemptsRef.current += 1;
-        // Start reconnection interval if not already running
-        if (!reconnectionIntervalRef.current) {
-          reconnectionIntervalRef.current = setInterval(() => {
-            if (!newSocket.connected && reconnectAttemptsRef.current <= maxReconnectAttempts) {
-              console.log('Attempting to reconnect...');
-              newSocket.connect();
-            } else if (reconnectAttemptsRef.current > maxReconnectAttempts) {
-              clearInterval(reconnectionIntervalRef.current);
-              setError('Lost connection to server. Please try again later.');
-              setIsProcessing(false);
-            }
-          }, 2000);
-        }
+
+      if (isProcessing && reason !== 'io client disconnect' && !isReconnecting) {
+        isReconnecting = true;
+        const attemptReconnect = () => {
+          if (reconnectCount < MAX_RECONNECTS) {
+            console.log(`Attempting to reconnect (${reconnectCount + 1}/${MAX_RECONNECTS})...`);
+            reconnectCount++;
+            newSocket.connect();
+
+            // Check if connection was successful
+            setTimeout(() => {
+              if (!newSocket.connected) {
+                attemptReconnect();
+              }
+            }, RECONNECT_DELAY);
+          } else {
+            isReconnecting = false;
+            console.error('Maximum reconnection attempts reached');
+            setError('Lost connection to server. Please try again later.');
+            setIsProcessing(false);
+          }
+        };
+
+        attemptReconnect();
       }
     });
+
 
     newSocket.on('analysis_progress', (data) => {
       console.log('Progress update received:', data);
@@ -199,11 +213,17 @@ const BillAnalyzer = () => {
       setError(data.error || 'An unknown error occurred during analysis');
     });
 
+    // Add ping/pong to keep connection alive
+    pingInterval = setInterval(() => {
+      if (newSocket.connected) {
+        newSocket.emit('ping', { timestamp: Date.now() });
+      }
+    }, 20000);
+
+
     return () => {
       console.log('Cleaning up socket connection');
-      if (reconnectionIntervalRef.current) {
-        clearInterval(reconnectionIntervalRef.current);
-      }
+      clearInterval(pingInterval);
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
@@ -296,8 +316,8 @@ const BillAnalyzer = () => {
     }
   };
 
+
   useEffect(() => {
-    let pingInterval;
     if (socketRef.current && socketConnected && isProcessing) {
       pingInterval = setInterval(() => {
         try {
