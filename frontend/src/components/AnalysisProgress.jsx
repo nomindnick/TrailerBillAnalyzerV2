@@ -70,7 +70,13 @@ const AnalysisProgress = ({
   const getStepPercentage = (stepId) => {
     if (currentStep > stepId) return 100; // Completed steps
     if (stepId in stepProgress) return stepProgress[stepId]; // Steps with tracked progress
-    if (currentStep === stepId) return 20; // Active but no progress data yet
+    if (currentStep === stepId) {
+      // For active steps, show more granular progress based on substeps
+      if (progress.total > 0) {
+        return Math.round((progress.current / progress.total) * 100);
+      }
+      return 20; // Default initial progress for active step
+    }
     return 0; // Pending steps
   };
   

@@ -37,7 +37,8 @@ export default function BillAnalyzer() {
     { id: 2, name: "Parsing Text", description: "Extracting sections and digest items" },
     { id: 3, name: "Building Analysis Structure", description: "Creating structured data for analysis" },
     { id: 4, name: "Matching Bill Sections", description: "Connecting digest items to bill sections" },
-    { id: 5, name: "Generating Report", description: "Creating the final analysis report" }
+    { id: 5, name: "Analyzing Impacts", description: "Evaluating effects on public agencies" }, // New step
+    { id: 6, name: "Generating Report", description: "Creating the final analysis report" }
   ];
 
   // Add entrance animation when component mounts

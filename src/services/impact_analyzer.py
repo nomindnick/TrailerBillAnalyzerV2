@@ -71,16 +71,16 @@ class ImpactAnalyzer:
 
             if progress_handler:
                 progress_handler.update_progress(
-                    4,
+                    5,  # Changed from 4 to 5
                     "Starting impact analysis for local agencies",
-                    total_changes // 3,
+                    0,  # Start at 0
                     total_changes
                 )
 
             for i, change in enumerate(skeleton["changes"]):
                 if progress_handler:
                     progress_handler.update_substep(
-                        min(total_changes // 3 + i, total_changes),
+                        i + 1,  # Simplified progression from 1 to total_changes
                         f"Analyzing impacts for change {i+1} of {total_changes}"
                     )
 
@@ -98,12 +98,6 @@ class ImpactAnalyzer:
                 else:
                     change["impacts_local_agencies"] = False
                     change["local_agencies_impacted"] = []
-
-                if progress_handler and i < total_changes - 1:
-                    progress_handler.update_substep(
-                        min(total_changes // 3 + i + 1, total_changes),
-                        f"Completed analysis for change {i+1}"
-                    )
 
             self._update_skeleton_metadata(skeleton)
 
