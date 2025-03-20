@@ -1,0 +1,167 @@
+Server initialized for eventlet.
+2025-03-20 19:39:49,976 - engineio.server - INFO - Server initialized for eventlet.
+2025-03-20 19:39:50,181 - __main__ - INFO - Successfully patched httpx.AsyncClient.__init__
+2025-03-20 19:39:51,044 - __main__ - INFO - Successfully patched openai.AsyncClient.__init__
+2025-03-20 19:39:51,171 - __main__ - INFO - Successfully patched anthropic.AsyncClient.__init__
+2025-03-20 19:39:51,171 - __main__ - INFO - Removing 'proxies' from AsyncHttpxClientWrapper kwargs
+2025-03-20 19:39:51,268 - __main__ - INFO - OpenAI client initialized
+2025-03-20 19:39:51,268 - __main__ - INFO - Removing 'proxies' from httpx.AsyncClient kwargs
+2025-03-20 19:39:51,281 - __main__ - INFO - Anthropic client initialized
+2025-03-20 19:39:51,287 - __main__ - INFO - Starting web server on port 8080
+2025-03-20 19:39:51,335 - werkzeug - INFO -  * Restarting with stat
+Server initialized for eventlet.
+2025-03-20 19:39:52,852 - engineio.server - INFO - Server initialized for eventlet.
+2025-03-20 19:39:53,005 - __main__ - INFO - Successfully patched httpx.AsyncClient.__init__
+2025-03-20 19:39:53,544 - __main__ - INFO - Successfully patched openai.AsyncClient.__init__
+2025-03-20 19:39:53,611 - __main__ - INFO - Successfully patched anthropic.AsyncClient.__init__
+2025-03-20 19:39:53,611 - __main__ - INFO - Removing 'proxies' from AsyncHttpxClientWrapper kwargs
+2025-03-20 19:39:53,656 - __main__ - INFO - OpenAI client initialized
+2025-03-20 19:39:53,657 - __main__ - INFO - Removing 'proxies' from httpx.AsyncClient kwargs
+2025-03-20 19:39:53,670 - __main__ - INFO - Anthropic client initialized
+2025-03-20 19:39:53,675 - __main__ - INFO - Starting web server on port 8080
+2025-03-20 19:39:53,696 - werkzeug - WARNING -  * Debugger is active!
+2025-03-20 19:39:53,699 - werkzeug - INFO -  * Debugger PIN: 133-839-581
+(4639) wsgi starting up on http://0.0.0.0:8080
+(4639) accepted ('172.31.128.78', 53872)
+165.225.242.190,10.82.6.94,172.31.128.78 - - [20/Mar/2025 19:39:54] "GET / HTTP/1.1" 200 711 0.010590
+165.225.242.190,10.82.2.37,172.31.128.78 - - [20/Mar/2025 19:39:54] "GET /assets/index-2723057c.css HTTP/1.1" 200 22401 0.002177
+165.225.242.190,10.82.0.35,172.31.128.78 - - [20/Mar/2025 19:39:54] "GET /assets/index-bbc7cf1c.js HTTP/1.1" 200 304121 0.003066
+(4639) accepted ('172.31.128.78', 53882)
+lpp0VOqvpX6MgtziAAAA: Sending packet OPEN data {'sid': 'lpp0VOqvpX6MgtziAAAA', 'upgrades': [], 'pingTimeout': 120000, 'pingInterval': 15000, 'maxPayload': 1000000}
+2025-03-20 19:39:54,665 - engineio.server - INFO - lpp0VOqvpX6MgtziAAAA: Sending packet OPEN data {'sid': 'lpp0VOqvpX6MgtziAAAA', 'upgrades': [], 'pingTimeout': 120000, 'pingInterval': 15000, 'maxPayload': 1000000}
+lpp0VOqvpX6MgtziAAAA: Received request to upgrade to websocket
+2025-03-20 19:39:54,665 - engineio.server - INFO - lpp0VOqvpX6MgtziAAAA: Received request to upgrade to websocket
+lpp0VOqvpX6MgtziAAAA: Upgrade to websocket successful
+2025-03-20 19:39:54,665 - engineio.server - INFO - lpp0VOqvpX6MgtziAAAA: Upgrade to websocket successful
+lpp0VOqvpX6MgtziAAAA: Received packet MESSAGE data 0
+2025-03-20 19:39:54,707 - engineio.server - INFO - lpp0VOqvpX6MgtziAAAA: Received packet MESSAGE data 0
+2025-03-20 19:39:54,708 - __main__ - INFO - Client connected: UbpFk8EVZGN9Eyd1AAAB
+emitting event "connection_established" to UbpFk8EVZGN9Eyd1AAAB [/]
+2025-03-20 19:39:54,709 - socketio.server - INFO - emitting event "connection_established" to UbpFk8EVZGN9Eyd1AAAB [/]
+lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 2["connection_established",{"status":"connected","sid":"UbpFk8EVZGN9Eyd1AAAB"}]
+2025-03-20 19:39:54,709 - engineio.server - INFO - lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 2["connection_established",{"status":"connected","sid":"UbpFk8EVZGN9Eyd1AAAB"}]
+lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 0{"sid":"UbpFk8EVZGN9Eyd1AAAB"}
+2025-03-20 19:39:54,709 - engineio.server - INFO - lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 0{"sid":"UbpFk8EVZGN9Eyd1AAAB"}
+165.225.242.190,10.82.6.94,172.31.128.78 - - [20/Mar/2025 19:39:59] "POST /api/analyze HTTP/1.1" 200 308 0.001223
+2025-03-20 19:39:59,676 - __main__ - INFO - Emitting progress: step=1, message=Starting bill analysis, data={'step': 1, 'message': 'Starting bill analysis', 'analysis_id': 'analysis_1742499599644'}
+emitting event "analysis_progress" to all [/]
+2025-03-20 19:39:59,677 - socketio.server - INFO - emitting event "analysis_progress" to all [/]
+lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 2["analysis_progress",{"step":1,"message":"Starting bill analysis","analysis_id":"analysis_1742499599644"}]
+2025-03-20 19:39:59,677 - engineio.server - INFO - lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 2["analysis_progress",{"step":1,"message":"Starting bill analysis","analysis_id":"analysis_1742499599644"}]
+2025-03-20 19:39:59,678 - __main__ - INFO - Removing 'proxies' from AsyncHttpxClientWrapper kwargs
+2025-03-20 19:39:59,689 - __main__ - INFO - Removing 'proxies' from httpx.AsyncClient kwargs
+2025-03-20 19:39:59,700 - __main__ - INFO - Using model: gpt-4o-2024-08-06 for analysis (use_anthropic=False)
+2025-03-20 19:39:59,700 - __main__ - INFO - Emitting progress: step=1, message=Fetching bill text, data={'step': 1, 'message': 'Fetching bill text', 'analysis_id': 'analysis_1742499599644'}
+emitting event "analysis_progress" to all [/]
+2025-03-20 19:39:59,700 - socketio.server - INFO - emitting event "analysis_progress" to all [/]
+lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 2["analysis_progress",{"step":1,"message":"Fetching bill text","analysis_id":"analysis_1742499599644"}]
+2025-03-20 19:39:59,700 - engineio.server - INFO - lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 2["analysis_progress",{"step":1,"message":"Fetching bill text","analysis_id":"analysis_1742499599644"}]
+2025-03-20 19:39:59,701 - src.services.bill_scraper - INFO - Fetching bill AB173 from session 2023-2024
+2025-03-20 19:39:59,701 - src.services.bill_scraper - INFO - Request URL: https://leginfo.legislature.ca.gov/faces/billNavClient.xhtml?bill_id=202320240AB173
+2025-03-20 19:39:59,701 - src.services.bill_scraper - INFO - Fetching bill AB173, attempt 1/3
+2025-03-20 19:39:59,930 - src.services.bill_scraper - INFO - Response status: 200
+2025-03-20 19:40:00,018 - src.services.bill_scraper - INFO - Received HTML content of length: 151375
+2025-03-20 19:40:00,022 - src.services.bill_scraper - INFO - Starting bill parsing
+2025-03-20 19:40:00,165 - src.services.bill_scraper - INFO - Found bill content in container with id=bill_all
+2025-03-20 19:40:00,165 - src.services.bill_scraper - INFO - Using container 'bill_all' for bill text extraction
+2025-03-20 19:40:00,166 - src.services.bill_scraper - WARNING - Extracted text content is suspiciously short: 0 chars
+2025-03-20 19:40:00,166 - src.services.bill_scraper - INFO - Successfully extracted bill text: 64652 characters
+2025-03-20 19:40:00,166 - src.services.bill_scraper - INFO - Successfully parsed bill text of length 64652
+2025-03-20 19:40:00,288 - __main__ - INFO - Emitting progress: step=2, message=Parsing bill text, data={'step': 2, 'message': 'Parsing bill text', 'analysis_id': 'analysis_1742499599644'}
+emitting event "analysis_progress" to all [/]
+2025-03-20 19:40:00,288 - socketio.server - INFO - emitting event "analysis_progress" to all [/]
+lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 2["analysis_progress",{"step":2,"message":"Parsing bill text","analysis_id":"analysis_1742499599644"}]
+2025-03-20 19:40:00,289 - engineio.server - INFO - lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 2["analysis_progress",{"step":2,"message":"Parsing bill text","analysis_id":"analysis_1742499599644"}]
+2025-03-20 19:40:00,289 - src.services.base_parser - INFO - Starting bill parsing
+2025-03-20 19:40:00,294 - src.services.base_parser - INFO - Extracted bill number 'AB173' using regex
+2025-03-20 19:40:00,294 - src.services.base_parser - INFO - Extracted bill title using regex pattern
+2025-03-20 19:40:00,295 - src.services.base_parser - INFO - Extracted approval date 'July 02, 2024' using regex
+2025-03-20 19:40:00,296 - src.services.base_parser - INFO - Extracted filed date 'July 02, 2024' using regex
+2025-03-20 19:40:00,301 - src.services.base_parser - INFO - Starting to split digest and bill text
+2025-03-20 19:40:00,322 - src.services.base_parser - INFO - Found digest heading, looking for surrounding content
+2025-03-20 19:40:00,322 - src.services.base_parser - WARNING - Using regex fallback for splitting digest and bill text
+2025-03-20 19:40:00,323 - src.services.base_parser - INFO - Extracted digest text via regex: 13823 chars
+2025-03-20 19:40:00,325 - src.services.base_parser - INFO - Extracted bill text via regex: 46434 chars
+2025-03-20 19:40:00,325 - src.services.base_parser - INFO - Final digest text length: 13823
+2025-03-20 19:40:00,325 - src.services.base_parser - INFO - Final bill text length: 46434
+2025-03-20 19:40:00,351 - src.services.base_parser - INFO - Parsed 11 digest sections
+2025-03-20 19:40:00,351 - src.services.base_parser - INFO - Extracted 11 digest sections
+2025-03-20 19:40:00,364 - src.services.base_parser - INFO - Found SECTION 1.
+2025-03-20 19:40:00,366 - src.services.base_parser - INFO - Found 17 subsequent SEC. X. sections
+2025-03-20 19:40:00,417 - src.services.base_parser - INFO - Successfully extracted 18 bill sections
+2025-03-20 19:40:00,417 - src.services.base_parser - INFO - Extracted 18 bill sections
+2025-03-20 19:40:00,418 - src.services.base_parser - INFO - Matching 11 digest sections to 18 bill sections
+2025-03-20 19:40:00,473 - src.services.base_parser - WARNING - Found 11 unmatched digest sections after initial matching
+2025-03-20 19:40:00,473 - src.services.base_parser - INFO - Applying fallback matching for 11 digest sections and 18 bill sections
+2025-03-20 19:40:00,473 - src.services.base_parser - INFO - Matched 11 of 11 digest sections
+2025-03-20 19:40:00,474 - src.services.base_parser - INFO - Total matches: 11 - By code reference: 0, By explicit reference: 0, By code name: 0, By content similarity: 0, By fallback: 11
+2025-03-20 19:40:00,474 - src.services.base_parser - INFO - Completed parsing AB173 - Found 11 digest sections and 18 bill sections
+2025-03-20 19:40:00,474 - src.services.base_parser - INFO - Successfully matched 11 of 11 digest sections to bill sections
+2025-03-20 19:40:00,474 - src.services.section_matcher - INFO - Initialized SectionMatcher with model: gpt-4o-2024-08-06
+2025-03-20 19:40:00,474 - __main__ - INFO - Emitting progress: step=3, message=Building analysis structure, data={'step': 3, 'message': 'Building analysis structure', 'analysis_id': 'analysis_1742499599644'}
+emitting event "analysis_progress" to all [/]
+2025-03-20 19:40:00,475 - socketio.server - INFO - emitting event "analysis_progress" to all [/]
+lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 2["analysis_progress",{"step":3,"message":"Building analysis structure","analysis_id":"analysis_1742499599644"}]
+2025-03-20 19:40:00,475 - engineio.server - INFO - lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 2["analysis_progress",{"step":3,"message":"Building analysis structure","analysis_id":"analysis_1742499599644"}]
+2025-03-20 19:40:00,503 - src.services.section_matcher - INFO - Extracting bill sections from text of length 64652
+2025-03-20 19:40:00,511 - src.services.section_matcher - INFO - Found primary code reference: Government Code Section 8594.14
+2025-03-20 19:40:00,517 - src.services.section_matcher - INFO - Section 1 has code references: ['Government Code Section 8594.14']
+2025-03-20 19:40:00,520 - src.services.section_matcher - INFO - Section 2 has code references: ['Streets and Highways Code Section 2196.2']
+2025-03-20 19:40:00,520 - src.services.section_matcher - INFO - Found primary code reference: Government Code Section 13987
+2025-03-20 19:40:00,538 - src.services.section_matcher - INFO - Section 3 has code references: ['Government Code Section 13987', 'Public Utilities Code Section 99313', 'Public Utilities Code Section 99312.1']
+2025-03-20 19:40:00,545 - src.services.section_matcher - INFO - Found primary code reference: Public Resources Code Section 75226
+2025-03-20 19:40:00,550 - src.services.section_matcher - INFO - Section 6 has code references: ['Government Code Section 13987', 'Public Utilities Code Section 99313', 'Public Resources Code Section 75226', 'Public Utilities Code Section 99312.1']
+2025-03-20 19:40:00,550 - src.services.section_matcher - INFO - Found primary code reference: Public Utilities Code Section 187010
+2025-03-20 19:40:00,552 - src.services.section_matcher - INFO - Section 7 has code references: ['Public Utilities Code Section 187010']
+2025-03-20 19:40:00,552 - src.services.section_matcher - INFO - Found primary code reference: Public Utilities Code Section 187022
+2025-03-20 19:40:00,555 - src.services.section_matcher - INFO - Section 8 has code references: ['Public Utilities Code Section 187022']
+2025-03-20 19:40:00,555 - src.services.section_matcher - INFO - Found primary code reference: Public Utilities Code Section 187030
+2025-03-20 19:40:00,561 - src.services.section_matcher - INFO - Section 9 has code references: ['Public Utilities Code Section 187030']
+2025-03-20 19:40:00,561 - src.services.section_matcher - INFO - Found primary code reference: Public Utilities Code Section 187032
+2025-03-20 19:40:00,569 - src.services.section_matcher - INFO - Section 10 has code references: ['Public Utilities Code Section 187032']
+2025-03-20 19:40:00,569 - src.services.section_matcher - INFO - Found primary code reference: Public Utilities Code Section 187034
+2025-03-20 19:40:00,573 - src.services.section_matcher - INFO - Section 11 has code references: ['Public Utilities Code Section 187034']
+2025-03-20 19:40:00,574 - src.services.section_matcher - INFO - Found primary code reference: Streets and Highways Code Section 104.3
+2025-03-20 19:40:00,590 - src.services.section_matcher - INFO - Section 12 has code references: ['Streets and Highways Code Section 104.3', 'Health and Safety Code Section 39711', 'Health and Safety Code Section 39713']
+2025-03-20 19:40:00,596 - src.services.section_matcher - INFO - Section 15 has code references: ['Public Utilities Code Section 99313']
+2025-03-20 19:40:00,601 - src.services.section_matcher - INFO - Successfully extracted 17 bill sections: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17']
+2025-03-20 19:40:00,601 - __main__ - INFO - Emitting progress: step=4, message=Starting section matching process, data={'step': 4, 'message': 'Starting section matching process', 'current_substep': 1, 'total_substeps': 17, 'analysis_id': 'analysis_1742499599644'}
+emitting event "analysis_progress" to all [/]
+2025-03-20 19:40:00,601 - socketio.server - INFO - emitting event "analysis_progress" to all [/]
+lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 2["analysis_progress",{"step":4,"message":"Starting section matching process","current_substep":1,"total_substeps":17,"analysis_id":"analysis_1742499599644"}]
+2025-03-20 19:40:00,601 - engineio.server - INFO - lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 2["analysis_progress",{"step":4,"message":"Starting section matching process","current_substep":1,"total_substeps":17,"analysis_id":"analysis_1742499599644"}]
+2025-03-20 19:40:00,601 - __main__ - INFO - Emitting progress: step=4, message=Matching sections by code references, data={'step': 4, 'message': 'Matching sections by code references', 'current_substep': 1, 'total_substeps': 17, 'analysis_id': 'analysis_1742499599644'}
+emitting event "analysis_progress" to all [/]
+2025-03-20 19:40:00,601 - socketio.server - INFO - emitting event "analysis_progress" to all [/]
+lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 2["analysis_progress",{"step":4,"message":"Matching sections by code references","current_substep":1,"total_substeps":17,"analysis_id":"analysis_1742499599644"}]
+2025-03-20 19:40:00,602 - engineio.server - INFO - lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 2["analysis_progress",{"step":4,"message":"Matching sections by code references","current_substep":1,"total_substeps":17,"analysis_id":"analysis_1742499599644"}]
+2025-03-20 19:40:00,602 - __main__ - INFO - Emitting substep update: current=1, message=Code reference matching complete
+emitting event "analysis_progress" to all [/]
+2025-03-20 19:40:00,602 - socketio.server - INFO - emitting event "analysis_progress" to all [/]
+lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 2["analysis_progress",{"current_substep":1,"message":"Code reference matching complete","analysis_id":"analysis_1742499599644"}]
+2025-03-20 19:40:00,602 - engineio.server - INFO - lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 2["analysis_progress",{"current_substep":1,"message":"Code reference matching complete","analysis_id":"analysis_1742499599644"}]
+2025-03-20 19:40:00,602 - __main__ - INFO - Emitting substep update: current=1, message=Section number matching complete
+emitting event "analysis_progress" to all [/]
+2025-03-20 19:40:00,602 - socketio.server - INFO - emitting event "analysis_progress" to all [/]
+lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 2["analysis_progress",{"current_substep":1,"message":"Section number matching complete","analysis_id":"analysis_1742499599644"}]
+2025-03-20 19:40:00,602 - engineio.server - INFO - lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 2["analysis_progress",{"current_substep":1,"message":"Section number matching complete","analysis_id":"analysis_1742499599644"}]
+2025-03-20 19:40:00,603 - __main__ - INFO - Emitting substep update: current=1, message=Performing contextual matching for 17 remaining sections
+emitting event "analysis_progress" to all [/]
+2025-03-20 19:40:00,603 - socketio.server - INFO - emitting event "analysis_progress" to all [/]
+lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 2["analysis_progress",{"current_substep":1,"message":"Performing contextual matching for 17 remaining sections","analysis_id":"analysis_1742499599644"}]
+2025-03-20 19:40:00,603 - engineio.server - INFO - lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 2["analysis_progress",{"current_substep":1,"message":"Performing contextual matching for 17 remaining sections","analysis_id":"analysis_1742499599644"}]
+2025-03-20 19:40:00,603 - __main__ - INFO - Emitting substep update: current=1, message=Analyzing context for bill section 1
+emitting event "analysis_progress" to all [/]
+2025-03-20 19:40:00,603 - socketio.server - INFO - emitting event "analysis_progress" to all [/]
+lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 2["analysis_progress",{"current_substep":1,"message":"Analyzing context for bill section 1","analysis_id":"analysis_1742499599644"}]
+2025-03-20 19:40:00,603 - engineio.server - INFO - lpp0VOqvpX6MgtziAAAA: Sending packet MESSAGE data 2["analysis_progress",{"current_substep":1,"message":"Analyzing context for bill section 1","analysis_id":"analysis_1742499599644"}]
+2025-03-20 19:40:00,604 - src.services.section_matcher - INFO - Using OpenAI API with model gpt-4o-2024-08-06
+lpp0VOqvpX6MgtziAAAA: Received packet MESSAGE data 1
+2025-03-20 19:40:00,709 - engineio.server - INFO - lpp0VOqvpX6MgtziAAAA: Received packet MESSAGE data 1
+2025-03-20 19:40:00,709 - __main__ - INFO - Client disconnected: UbpFk8EVZGN9Eyd1AAAB
+165.225.242.190,10.82.4.12,172.31.128.78 - - [20/Mar/2025 19:40:00] "GET /socket.io/?EIO=4&transport=websocket HTTP/1.1" 200 0 6.076180
+2025-03-20 19:40:03,721 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-03-20 19:40:03,724 - __main__ - INFO - Emitting substep update: current=2, message=Analyzing context for bill section 2
+emitting event "analysis_progress" to all [/]
+2025-03-20 19:40:03,725 - socketio.server - INFO - emitting event "analysis_progress" to all [/]
+2025-03-20 19:40:03,725 - src.services.section_matcher - INFO - Using OpenAI API with model gpt-4o-2024-08-06
