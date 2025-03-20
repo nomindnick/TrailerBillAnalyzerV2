@@ -8,16 +8,14 @@ from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO
-from openai import OpenAI
-from anthropic import AsyncAnthropic
 
 # Import services
 from src.services.bill_scraper import BillScraper
 from src.services.base_parser import BaseParser
 from src.services.json_builder import JsonBuilder
 from src.services.section_matcher import SectionMatcher
-from src.services.impact_analyzer import ImpactAnalyzer  # Assuming you have this service
-from src.services.report_generator import ReportGenerator  # Assuming you have this service
+from src.services.impact_analyzer import ImpactAnalyzer
+from src.services.report_generator import ReportGenerator
 from src.models.practice_groups import PracticeGroups
 
 # Configure logging
@@ -53,10 +51,85 @@ bill_scraper = BillScraper()
 bill_parser = BaseParser()
 json_builder = JsonBuilder()
 
+# ===== Apply fixes for proxy issues =====
+# 1. First, try to patch httpx library directly
+try:
+    import httpx
+    # Save original init methods
+    original_async_client_init = httpx.AsyncClient.__init__
+
+    # Patch AsyncClient init to ignore proxies
+    def patched_async_client_init(self, *args, **kwargs):
+        if 'proxies' in kwargs:
+            logger.info("Removing 'proxies' from httpx.AsyncClient kwargs")
+            del kwargs['proxies']
+        return original_async_client_init(self, *args, **kwargs)
+
+    # Apply the patches
+    httpx.AsyncClient.__init__ = patched_async_client_init
+    logger.info("Successfully patched httpx.AsyncClient.__init__")
+except Exception as e:
+    logger.warning(f"Failed to patch httpx library: {str(e)}")
+
+# 2. Now patch OpenAI and Anthropic clients
+try:
+    import openai
+    from openai._base_client import AsyncHttpxClientWrapper
+
+    # Patch OpenAI AsyncClient
+    original_openai_async_init = openai.AsyncClient.__init__
+    def patched_openai_async_init(self, **kwargs):
+        if 'proxies' in kwargs:
+            logger.info("Removing 'proxies' from openai.AsyncClient kwargs")
+            del kwargs['proxies']
+        return original_openai_async_init(self, **kwargs)
+
+    # Patch AsyncHttpxClientWrapper
+    if hasattr(AsyncHttpxClientWrapper, '__init__'):
+        original_wrapper_init = AsyncHttpxClientWrapper.__init__
+        def patched_wrapper_init(self, **kwargs):
+            if 'proxies' in kwargs:
+                logger.info("Removing 'proxies' from AsyncHttpxClientWrapper kwargs")
+                del kwargs['proxies']
+            return original_wrapper_init(self, **kwargs)
+        AsyncHttpxClientWrapper.__init__ = patched_wrapper_init
+
+    # Apply the patches
+    openai.AsyncClient.__init__ = patched_openai_async_init
+    logger.info("Successfully patched openai.AsyncClient.__init__")
+
+except Exception as e:
+    logger.warning(f"Failed to patch OpenAI library: {str(e)}")
+
+try:
+    import anthropic
+
+    # Patch Anthropic AsyncClient
+    original_anthropic_async_init = anthropic.AsyncClient.__init__
+    def patched_anthropic_async_init(self, **kwargs):
+        if 'proxies' in kwargs:
+            logger.info("Removing 'proxies' from anthropic.AsyncClient kwargs")
+            del kwargs['proxies']
+        return original_anthropic_async_init(self, **kwargs)
+
+    # Apply the patches
+    anthropic.AsyncClient.__init__ = patched_anthropic_async_init
+    logger.info("Successfully patched anthropic.AsyncClient.__init__")
+
+except Exception as e:
+    logger.warning(f"Failed to patch Anthropic library: {str(e)}")
+
+# 3. Disable proxy environment variables
+proxy_env_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'ALL_PROXY']
+for var in proxy_env_vars:
+    if var in os.environ:
+        logger.info(f"Unsetting proxy environment variable: {var}")
+        del os.environ[var]
+
 # Initialize OpenAI client (if used)
 try:
-    from openai import OpenAI
-    openai_client = OpenAI(api_key=os.environ.get('OPENAI_API_KEY'), base_url="https://api.openai.com/v1")
+    import openai
+    openai_client = openai.AsyncClient(api_key=os.environ.get('OPENAI_API_KEY'))
     logger.info("OpenAI client initialized")
 except (ImportError, Exception) as e:
     logger.warning(f"OpenAI client initialization failed: {str(e)}")
@@ -64,6 +137,7 @@ except (ImportError, Exception) as e:
 
 # Initialize Anthropic client (if used)
 try:
+    import anthropic
     from anthropic import AsyncAnthropic
     anthropic_client = AsyncAnthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
     logger.info("Anthropic client initialized")
@@ -224,9 +298,11 @@ async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None,
         # Always calculate use_anthropic based on the final model name to ensure consistency
         use_anthropic = model.startswith("claude")
 
-        # Create clients
-        from openai import OpenAI
-        openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        # Create clients directly - proxies should be automatically filtered by our patches
+        import openai
+        from anthropic import AsyncAnthropic
+
+        openai_client = openai.AsyncClient(api_key=os.environ.get("OPENAI_API_KEY"))
         anthropic_client = AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
         logger.info(f"Using model: {model} for analysis (use_anthropic={use_anthropic})")
