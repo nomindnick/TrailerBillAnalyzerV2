@@ -1,18 +1,4 @@
-// Helper function to format elapsed time (reused from original)
-const formatElapsedTime = (start, now) => {
-  const elapsedMs = now - start;
-  const seconds = Math.floor(elapsedMs / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-
-  if (hours > 0) {
-    return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
-  } else if (minutes > 0) {
-    return `${minutes}m ${seconds % 60}s`;
-  } else {
-    return `${seconds}s`;
-  }
-};
+// frontend/src/components/BillAnalyzer.jsx
 
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
@@ -30,8 +16,11 @@ export default function BillAnalyzer() {
   const [startTime, setStartTime] = useState(null);
   const [elapsedTime, setElapsedTime] = useState(null);
   const [reportUrl, setReportUrl] = useState(null);
-  const [currentProgress, setCurrentProgress] = useState({ step: 0, message: '' });
-  const [substepProgress, setSubstepProgress] = useState(null);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [stepMessage, setStepMessage] = useState('');
+  const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [stepProgress, setStepProgress] = useState({});
+  const [expandedStepId, setExpandedStepId] = useState(null);
   const { theme, toggleTheme } = useTheme();
   const [model, setModel] = useState('gpt-4o-2024-08-06');
 
@@ -40,6 +29,15 @@ export default function BillAnalyzer() {
   const socketRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
   const [currentAnalysisId, setCurrentAnalysisId] = useState(null);
+
+  // Analysis steps definition
+  const analysisSteps = [
+    { id: 1, name: "Fetching Bill", description: "Retrieving bill text from legislature database" },
+    { id: 2, name: "Parsing Text", description: "Extracting sections and digest items" },
+    { id: 3, name: "Building Analysis Structure", description: "Creating structured data for analysis" },
+    { id: 4, name: "Matching Bill Sections", description: "Connecting digest items to bill sections" },
+    { id: 5, name: "Generating Report", description: "Creating the final analysis report" }
+  ];
 
   // Timer for elapsed time
   useEffect(() => {
@@ -98,20 +96,26 @@ export default function BillAnalyzer() {
 
     socket.on('analysis_progress', (data) => {
       console.log('Progress update received:', data);
+
       // Only process updates for current analysis
       if (!currentAnalysisId || data.analysis_id === currentAnalysisId) {
+        // Update step information if provided
         if (data.step) {
-          setCurrentProgress({
-            step: data.step,
-            message: data.message
-          });
+          setCurrentStep(data.step);
+          setStepMessage(data.message || '');
         }
+
+        // Update substep progress if provided
         if (data.current_substep !== undefined) {
-          setSubstepProgress({
+          setProgress({
             current: data.current_substep,
-            total: data.total_substeps,
-            message: data.message
+            total: data.total_substeps || 0
           });
+
+          // If there's a specific message for this substep
+          if (data.message) {
+            setStepMessage(data.message);
+          }
         }
       }
     });
@@ -163,6 +167,14 @@ export default function BillAnalyzer() {
     return () => clearInterval(pingInterval);
   }, [isProcessing]);
 
+  const onToggleExpand = (stepId) => {
+    if (expandedStepId === stepId) {
+      setExpandedStepId(null);
+    } else {
+      setExpandedStepId(stepId);
+    }
+  };
+
   const analyzeBill = async () => {
     if (!billNumber) {
       setError('Please enter a bill number');
@@ -173,13 +185,17 @@ export default function BillAnalyzer() {
       // Reset state
       setError(null);
       setIsProcessing(true);
-      setStartTime(Date.now());
+      const now = Date.now();
+      setStartTime(now);
       setReportUrl(null);
-      setCurrentProgress({ step: 0, message: '' });
-      setSubstepProgress(null);
+      setCurrentStep(1);
+      setStepMessage('Starting bill analysis');
+      setProgress({ current: 0, total: 0 });
+      setStepProgress({});
+      setExpandedStepId(null);
 
       // Generate unique analysis ID
-      const analysisId = `analysis_${Date.now()}`;
+      const analysisId = `analysis_${now}`;
       setCurrentAnalysisId(analysisId);
 
       // Ensure socket is connected
@@ -304,8 +320,14 @@ export default function BillAnalyzer() {
         {isProcessing && (
           <div className="space-y-4">
             <AnalysisProgress
-              currentProgress={currentProgress}
-              substepProgress={substepProgress}
+              currentStep={currentStep}
+              stepMessage={stepMessage}
+              steps={analysisSteps}
+              progress={progress}
+              startTime={startTime}
+              stepProgress={stepProgress}
+              expandedStepId={expandedStepId}
+              onToggleExpand={onToggleExpand}
             />
             <p className="text-sm text-gray-500 dark:text-gray-400">
               Time elapsed: {elapsedTime || '0s'}
@@ -324,3 +346,19 @@ export default function BillAnalyzer() {
     </div>
   );
 }
+
+// Helper function to format elapsed time
+const formatElapsedTime = (start, now) => {
+  const elapsedMs = now - start;
+  const seconds = Math.floor(elapsedMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+
+  if (hours > 0) {
+    return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+  } else if (minutes > 0) {
+    return `${minutes}m ${seconds % 60}s`;
+  } else {
+    return `${seconds}s`;
+  }
+};
