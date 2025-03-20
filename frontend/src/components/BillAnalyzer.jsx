@@ -47,6 +47,7 @@ const BillAnalyzer = () => {
   const [socketConnected, setSocketConnected] = useState(false);
   const reconnectAttemptsRef = useRef(0);
   const maxReconnectAttempts = 10;
+  const reconnectionIntervalRef = useRef(null); // Ref for reconnection interval
 
   // Use a ref to keep track of the socket instance for cleanup
   const socketRef = useRef(null);
@@ -104,6 +105,11 @@ const BillAnalyzer = () => {
       setSocketConnected(true);
       setError(null);
       reconnectAttemptsRef.current = 0;
+      // Clear any existing reconnection interval
+      if (reconnectionIntervalRef.current) {
+        clearInterval(reconnectionIntervalRef.current);
+        reconnectionIntervalRef.current = null;
+      }
     });
 
     newSocket.on('connect_error', (err) => {
@@ -120,12 +126,18 @@ const BillAnalyzer = () => {
       setSocketConnected(false);
       if (isProcessing && reason !== 'io client disconnect') {
         reconnectAttemptsRef.current += 1;
-        if (reconnectAttemptsRef.current <= maxReconnectAttempts) {
-          console.log(`Attempting to reconnect (${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`);
-        } else {
-          console.error('Maximum reconnection attempts reached');
-          setError('Lost connection to server. Please try again later.');
-          setIsProcessing(false);
+        // Start reconnection interval if not already running
+        if (!reconnectionIntervalRef.current) {
+          reconnectionIntervalRef.current = setInterval(() => {
+            if (!newSocket.connected && reconnectAttemptsRef.current <= maxReconnectAttempts) {
+              console.log('Attempting to reconnect...');
+              newSocket.connect();
+            } else if (reconnectAttemptsRef.current > maxReconnectAttempts) {
+              clearInterval(reconnectionIntervalRef.current);
+              setError('Lost connection to server. Please try again later.');
+              setIsProcessing(false);
+            }
+          }, 2000);
         }
       }
     });
@@ -189,6 +201,9 @@ const BillAnalyzer = () => {
 
     return () => {
       console.log('Cleaning up socket connection');
+      if (reconnectionIntervalRef.current) {
+        clearInterval(reconnectionIntervalRef.current);
+      }
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
