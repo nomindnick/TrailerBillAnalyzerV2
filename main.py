@@ -5,6 +5,8 @@ import os
 import sys
 from pathlib import Path
 from datetime import datetime
+import eventlet
+eventlet.monkey_patch()
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO
@@ -34,13 +36,15 @@ app = Flask(__name__, static_folder='frontend/dist')
 CORS(app)  # Enable CORS for development
 socketio = SocketIO(app, 
                    cors_allowed_origins="*", 
-                   ping_timeout=120,  # Increase ping timeout 
-                   ping_interval=15,  # More frequent pings
+                   ping_timeout=120,
+                   ping_interval=15,
                    reconnection=True, 
                    reconnection_attempts=10, 
                    reconnection_delay=1, 
                    reconnection_delay_max=5,
-                   async_mode='threading')  # Use threading mode for better reliability
+                   async_mode='eventlet',  # Switch to eventlet
+                   logger=True,  # Enable detailed logging
+                   engineio_logger=True)  # Enable engine.io logging
 
 # Create directory for reports
 REPORTS_DIR = Path("reports")

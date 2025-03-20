@@ -12,3 +12,7 @@ aiohttp==3.9.3
 python-dotenv==1.0.1
 pydyf==0.8.0
 httpx
+eventlet
+eventlet
+eventlet
+eventlet
