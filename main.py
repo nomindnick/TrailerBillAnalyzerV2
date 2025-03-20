@@ -365,7 +365,7 @@ async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None,
         }
 
         # Generate report
-        progress_handler.update_progress(6, "Generating final report")
+        progress_handler.update_progress(6, "Generating final report")  # Changed from 5 to 6
         report_generator = ReportGenerator()
         report_html = report_generator.generate_report(final_skeleton, bill_info, bill_text)
 

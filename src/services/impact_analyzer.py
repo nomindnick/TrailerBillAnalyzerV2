@@ -71,22 +71,33 @@ class ImpactAnalyzer:
 
             if progress_handler:
                 progress_handler.update_progress(
-                    5,  # Changed from 4 to 5
+                    5,  # Step 5 for impact analysis
                     "Starting impact analysis for local agencies",
                     0,  # Start at 0
                     total_changes
                 )
 
             for i, change in enumerate(skeleton["changes"]):
+                current_change = i + 1  # Human-readable count (1-based)
+
                 if progress_handler:
                     progress_handler.update_substep(
-                        i + 1,  # Simplified progression from 1 to total_changes
-                        f"Analyzing impacts for change {i+1} of {total_changes}"
+                        current_change,
+                        f"Analyzing substantive change {current_change} of {total_changes}"
                     )
 
                 sections = self._get_linked_sections(change, skeleton)
                 code_mods = self._get_code_modifications(change, skeleton)
                 change["bill_section_details"] = sections
+
+                # Before making API call, update with more specific info
+                if progress_handler:
+                    # Include the digest text preview for better context
+                    digest_preview = change['digest_text'][:60] + "..." if len(change['digest_text']) > 60 else change['digest_text']
+                    progress_handler.update_substep(
+                        current_change,
+                        f"Processing change {current_change}/{total_changes}: {digest_preview}"
+                    )
 
                 analysis = await self._analyze_change(change, sections, code_mods, skeleton)
                 self._update_change_with_analysis(change, analysis)
@@ -99,12 +110,23 @@ class ImpactAnalyzer:
                     change["impacts_local_agencies"] = False
                     change["local_agencies_impacted"] = []
 
+                # After API call completed, update progress with completion info
+                if progress_handler:
+                    # Get the count of affected agencies for the status message
+                    agency_count = len(local_agencies_mentioned)
+                    agency_msg = f"{agency_count} agencies affected" if agency_count > 0 else "No agencies affected"
+
+                    progress_handler.update_substep(
+                        current_change,
+                        f"Completed change {current_change}/{total_changes} ({agency_msg})"
+                    )
+
             self._update_skeleton_metadata(skeleton)
 
             if progress_handler:
                 progress_handler.update_substep(
                     total_changes,
-                    "Impact analysis complete"
+                    f"Impact analysis complete ({total_changes}/{total_changes})"
                 )
 
             return skeleton

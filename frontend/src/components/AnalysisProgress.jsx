@@ -71,11 +71,17 @@ const AnalysisProgress = ({
     if (currentStep > stepId) return 100; // Completed steps
     if (stepId in stepProgress) return stepProgress[stepId]; // Steps with tracked progress
     if (currentStep === stepId) {
-      // For active steps, show more granular progress based on substeps
-      if (progress.total > 0) {
+      // For active steps with progress data, calculate percentage
+      if (progress.total > 0 && progress.current > 0) {
         return Math.round((progress.current / progress.total) * 100);
       }
-      return 20; // Default initial progress for active step
+
+      // For section matching and impact analysis steps, show more accurate initial progress
+      if (stepId === 4 || stepId === 5) {
+        return 5; // Start at 5% to show it's just beginning
+      }
+
+      return 20; // Default initial progress for other active steps
     }
     return 0; // Pending steps
   };
@@ -88,13 +94,29 @@ const AnalysisProgress = ({
       blue: 'bg-blue-600',
       gray: 'bg-gray-300 dark:bg-gray-600'
     };
-    
+
+    // Add detailed X/Y counter for section matching and impact analysis steps
+    const showDetailedCounter = (stepId === 4 || stepId === 5) && 
+                               currentStep === stepId && 
+                               progress.total > 0;
+
     return (
-      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mt-2">
-        <div
-          className={`${colorClasses[color]} h-2 rounded-full transition-all duration-500 ease-out`}
-          style={{ width: `${percentage}%` }}
-        />
+      <div className="w-full space-y-1">
+        {/* Show X/Y counter for specific steps */}
+        {showDetailedCounter && (
+          <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
+            <span>Progress: {progress.current} of {progress.total}</span>
+            <span>{percentage}%</span>
+          </div>
+        )}
+
+        {/* Progress bar */}
+        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+          <div
+            className={`${colorClasses[color]} h-2 rounded-full transition-all duration-500 ease-out`}
+            style={{ width: `${percentage}%` }}
+          />
+        </div>
       </div>
     );
   };
@@ -225,10 +247,14 @@ const AnalysisProgress = ({
                     <div className={`mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 ${transitionClasses}`}>
                       {/* Step-specific content here */}
                       <div className="rounded-md bg-gray-100 dark:bg-gray-800 p-3 text-sm">
-                        {isActive && step.id === 4 && progress.total > 0 ? (
+                        {isActive && (step.id === 4 || step.id === 5) && progress.total > 0 ? (
                           <>
+                            <div className="text-sm text-gray-600 dark:text-gray-300 mb-2">
+                              {step.id === 4 && <span>Matching bill sections to digest items</span>}
+                              {step.id === 5 && <span>Analyzing impacts on local agencies</span>}
+                            </div>
                             <div className="text-sm text-gray-600 dark:text-gray-300 mb-1 flex justify-between">
-                              <span>Processing section {progress.current} of {progress.total}</span>
+                              <span>Processing {progress.current} of {progress.total}</span>
                               <span>{Math.round((progress.current / progress.total) * 100)}%</span>
                             </div>
                             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
@@ -239,6 +265,11 @@ const AnalysisProgress = ({
                                 }}
                               />
                             </div>
+                            {/* Add estimated time remaining */}
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-2 italic">
+                              {step.id === 4 && "This step typically takes 30-120 seconds depending on bill complexity"}
+                              {step.id === 5 && "This step typically takes 60-180 seconds depending on bill complexity"}
+                            </div>
                           </>
                         ) : isActive ? (
                           <div className="flex items-start text-blue-700 dark:text-blue-300">
@@ -248,6 +279,7 @@ const AnalysisProgress = ({
                               step.id === 2 ? "10-20 seconds" :
                               step.id === 3 ? "5-15 seconds" :
                               step.id === 4 ? "30-120 seconds" :
+                              step.id === 5 ? "60-180 seconds" :
                               "15-30 seconds"
                             } to complete.</span>
                           </div>

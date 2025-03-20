@@ -50,26 +50,24 @@ class SectionMatcher:
             section_map = self._extract_bill_sections(bill_text)
 
             # Log the start of the matching process
+            total_sections = len(section_map) 
             if progress_handler:
                 progress_handler.update_progress(
                     4, 
                     "Starting section matching process",
-                    1,
-                    len(section_map)  # Number of sections to process
+                    0,  # Start at 0
+                    total_sections  # Number of sections to process
                 )
 
             # Execute matching strategies in order of reliability
             matches = []
-            section_count = len(section_map)
-            current_section = 1
+            current_section = 0
 
             # 1. Exact code reference matching
             if progress_handler:
-                progress_handler.update_progress(
-                    4, 
-                    "Matching sections by code references",
+                progress_handler.update_substep(
                     current_section,
-                    section_count
+                    f"Identifying sections by code references (0/{total_sections})"
                 )
 
             code_matches = self._match_by_code_references(digest_map, section_map)
@@ -78,8 +76,8 @@ class SectionMatcher:
             current_section += len(code_matches) // 2
             if progress_handler:
                 progress_handler.update_substep(
-                    min(current_section, section_count),
-                    "Code reference matching complete"
+                    current_section,
+                    f"Matched {len(code_matches)} references ({current_section}/{total_sections})"
                 )
 
             # 2. Section number matching
@@ -89,8 +87,8 @@ class SectionMatcher:
             current_section += len(section_matches) // 2
             if progress_handler:
                 progress_handler.update_substep(
-                    min(current_section, section_count),
-                    "Section number matching complete"
+                    current_section,
+                    f"Matched {len(section_matches)} section numbers ({current_section}/{total_sections})"
                 )
 
             # 3. Context-based matching for ALL remaining bill sections
@@ -100,26 +98,26 @@ class SectionMatcher:
             if remaining_sections:
                 if progress_handler:
                     progress_handler.update_substep(
-                        min(current_section, section_count),
-                        f"Performing contextual matching for {len(remaining_sections)} remaining sections"
+                        current_section,
+                        f"Processing {len(remaining_sections)} remaining sections ({current_section}/{total_sections})"
                     )
 
                 # Process each bill section, matching it to a digest item
                 context_matches = []
-                
+
                 # Set up cache tracking for Anthropic
                 cache_hits = 0
-                total_sections = len(remaining_sections)
-                
+                total_remainder = len(remaining_sections)
+
                 for i, (section_id, section_info) in enumerate(remaining_sections.items()):
+                    section_num = i + 1
+                    overall_progress = current_section + section_num
+
                     if progress_handler:
-                        # Update the progress message to show cache info if using Claude
-                        progress_msg = f"Analyzing context for bill section {section_id}"
-                        if self.use_anthropic and cache_hits > 0:
-                            progress_msg += f" (using cached digest, {cache_hits}/{i} cache hits)"
-                            
+                        # Update the progress message with specific section information
+                        progress_msg = f"Matching bill text section {section_id} ({overall_progress}/{total_sections})"
                         progress_handler.update_substep(
-                            min(current_section + i, section_count),
+                            overall_progress,
                             progress_msg
                         )
 
@@ -130,25 +128,26 @@ class SectionMatcher:
                         digest_map,
                         bill_text
                     )
-                    
+
                     # Track cache hits for Claude API
                     if self.use_anthropic and self.digest_cache_created and i > 0:
                         cache_hits += 1
-                    
+
                     context_matches.extend(section_matches)
 
                 # Log final cache statistics if using Claude
-                if self.use_anthropic and total_sections > 1:
-                    cache_hit_rate = (cache_hits / max(1, total_sections - 1)) * 100  # Subtract 1 as first request creates cache
-                    self.logger.info(f"Claude API cache performance: {cache_hits}/{total_sections-1} sections used cache ({cache_hit_rate:.1f}%)")
-                
+                if self.use_anthropic and total_remainder > 1:
+                    cache_hit_rate = (cache_hits / max(1, total_remainder - 1)) * 100
+                    self.logger.info(f"Claude API cache performance: {cache_hits}/{total_remainder-1} sections used cache ({cache_hit_rate:.1f}%)")
+
                 matches.extend(context_matches)
+                current_section += len(remaining_sections)
 
             # Validate and update skeleton with matches
             if progress_handler:
                 progress_handler.update_substep(
-                    section_count,
-                    "Finalizing section matching"
+                    total_sections,
+                    f"Finalizing section matching ({total_sections}/{total_sections})"
                 )
 
             validated_matches = self._validate_matches(matches)
@@ -162,8 +161,8 @@ class SectionMatcher:
                 progress_handler.update_progress(
                     4, 
                     f"Section matching complete - {len(validated_matches)} matches found",
-                    section_count,
-                    section_count
+                    total_sections,
+                    total_sections
                 )
 
             return updated_skeleton
