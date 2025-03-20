@@ -48,6 +48,10 @@ const BillAnalyzer = () => {
   const reconnectAttemptsRef = useRef(0);
   const MAX_RECONNECTS = 10; // Added constant for max reconnect attempts
   const RECONNECT_DELAY = 2000; // Added constant for reconnect delay
+  const [socketStatus, setSocketStatus] = useState('disconnected');
+  const [retryCount, setRetryCount] = useState(0);
+  const maxRetries = 5;
+  const retryDelay = 2000;
 
   // Ref for reconnection interval
   const reconnectionIntervalRef = useRef(null);
@@ -90,71 +94,54 @@ const BillAnalyzer = () => {
 
     const newSocket = io(serverUrl, {
       path: '/socket.io',
-      transports: ['websocket', 'polling'],
+      transports: ['websocket'],
       reconnection: true,
-      reconnectionAttempts: MAX_RECONNECTS,
-      reconnectionDelay: RECONNECT_DELAY,
+      reconnectionAttempts: maxRetries,
+      reconnectionDelay: retryDelay,
       timeout: 120000, // Increased timeout
       pingTimeout: 60000, // Increased ping timeout
-      pingInterval: 25000 // More frequent pings
+      pingInterval: 25000, // More frequent pings
+      forceNew: true
     });
 
     socketRef.current = newSocket;
     setSocket(newSocket);
 
+    const reconnectSocket = () => {
+      if (retryCount < maxRetries) {
+        setRetryCount(prev => prev + 1);
+        setSocketStatus('reconnecting');
+        newSocket.connect();
+      } else {
+        setError('Connection lost. Please try again.');
+        setIsProcessing(false);
+      }
+    };
+
     newSocket.on('connect', () => {
       console.log('Socket connected successfully with ID:', newSocket.id);
       setSocketConnected(true);
-      setError(null);
-      reconnectAttemptsRef.current = 0;
-      // Clear any existing reconnection interval
-      if (reconnectionIntervalRef.current) {
-        clearInterval(reconnectionIntervalRef.current);
-        reconnectionIntervalRef.current = null;
-      }
+      setSocketStatus('connected');
+      setRetryCount(0);
     });
 
-    newSocket.on('connect_error', (err) => {
-      console.error('Socket connection error:', err);
-      setSocketConnected(false);
-      reconnectAttemptsRef.current += 1;
-      if (reconnectAttemptsRef.current > 3) { // Delay error message
-        setError('Error connecting to server. Please reload the page and try again.');
-      }
-    });
-
-    let isReconnecting = false;
-    let reconnectCount = 0;
     newSocket.on('disconnect', (reason) => {
       console.log('Socket disconnected:', reason);
       setSocketConnected(false);
+      setSocketStatus('disconnected');
 
-      if (isProcessing && reason !== 'io client disconnect' && !isReconnecting) {
-        isReconnecting = true;
-        const attemptReconnect = () => {
-          if (reconnectCount < MAX_RECONNECTS) {
-            console.log(`Attempting to reconnect (${reconnectCount + 1}/${MAX_RECONNECTS})...`);
-            reconnectCount++;
-            newSocket.connect();
-
-            // Check if connection was successful
-            setTimeout(() => {
-              if (!newSocket.connected) {
-                attemptReconnect();
-              }
-            }, RECONNECT_DELAY);
-          } else {
-            isReconnecting = false;
-            console.error('Maximum reconnection attempts reached');
-            setError('Lost connection to server. Please try again later.');
-            setIsProcessing(false);
-          }
-        };
-
-        attemptReconnect();
+      if (isProcessing && reason !== 'io client disconnect') {
+        setTimeout(reconnectSocket, retryDelay);
       }
     });
 
+    newSocket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
+      setSocketStatus('error');
+      if (isProcessing) {
+        setTimeout(reconnectSocket, retryDelay);
+      }
+    });
 
     newSocket.on('analysis_progress', (data) => {
       console.log('Progress update received:', data);
@@ -360,11 +347,11 @@ const BillAnalyzer = () => {
         </div>
 
         {/* Connection status indicator - more prominent now */}
-        {!socketConnected && (
+        {socketStatus !== 'connected' && (
           <div className="mb-4 p-3 bg-yellow-100 dark:bg-yellow-900 border border-yellow-200 dark:border-yellow-800 rounded-lg flex items-center text-yellow-800 dark:text-yellow-200">
             <AlertTriangle className="h-5 w-5 mr-2" />
             <span>
-              <strong>WebSocket disconnected:</strong> Waiting for connection to server...
+              <strong>WebSocket {socketStatus}:</strong> {socketStatus === 'reconnecting' ? `Retrying connection... (${retryCount}/${maxRetries})` : 'Waiting for connection to server...'}
               {isProcessing && " This will affect progress updates."}
             </span>
           </div>
@@ -447,7 +434,7 @@ const BillAnalyzer = () => {
             <div className="flex justify-end">
               <button
                 type="submit"
-                disabled={isProcessing || !billNumber}
+                disabled={isProcessing || !billNumber || socketStatus !== 'connected'}
                 className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 shadow-md hover:shadow-lg"
               >
                 {isProcessing ? 'Analyzing...' : 'Analyze Bill'}
