@@ -93,14 +93,18 @@ const AnalysisProgress = ({
 
   // Get step-specific progress data
   const getStepProgressData = (stepId) => {
-    if (stepId === 4 || stepId === 5) {
-      return progress;
+    if (stepId === currentStep) {
+      return {
+        current: progress.current || 0,
+        total: progress.total || 0,
+        percentage: progress.percentage || 0
+      };
     }
-    return stepProgress[stepId] || { current: 0, total: 0 };
+    return stepProgress[stepId] || { current: 0, total: 0, percentage: currentStep > stepId ? 100 : 0 };
   };
 
   // Helper function to render the progress indicator
-  const renderProgressIndicator = (stepId, percentage) => {
+  const renderProgressIndicator = (stepId) => {
     const color = getStepColor(stepId);
     const colorClasses = {
       green: 'bg-green-500',
