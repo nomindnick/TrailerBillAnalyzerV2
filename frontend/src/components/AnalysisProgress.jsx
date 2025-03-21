@@ -79,12 +79,12 @@ const AnalysisProgress = ({
       }
 
       // For section matching and impact analysis steps, show more accurate progress
-      if (stepId === 4 || stepId === 5) {
+      if ((stepId === 4 || stepId === 5) && currentStep === stepId) {
         // If we have progress data for the current step
-        if (progress.total > 0 && progress.current > 0) {
+        if (progress.total > 0) {
           return Math.round((progress.current / progress.total) * 100);
         }
-        return 5; // Start at 5% to show it's just beginning
+        return Math.min(5, progress.percentage || 0); // Start at 5% or use existing percentage
       }
 
       return 20; // Default initial progress for other active steps

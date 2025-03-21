@@ -119,23 +119,25 @@ export default function BillAnalyzer() {
 
           const progressPercentage = totalSubsteps > 0 ? Math.round((currentSubstep / totalSubsteps) * 100) : 0;
 
-          setProgress({
+          const progressData = {
             current: currentSubstep,
             total: totalSubsteps,
             percentage: progressPercentage
-          });
+          };
+
+          setProgress(progressData);
 
           // Store progress data for the current active step
           if (data.step > 0) {
             setStepProgressMap(prevMap => ({
               ...prevMap,
-              [data.step]: {
-                current: currentSubstep,
-                total: totalSubsteps,
-                percentage: progressPercentage
-              }
+              [data.step]: progressData
             }));
-            setCurrentStep(data.step);
+            
+            // Only update current step if it's different
+            if (data.step !== currentStep) {
+              setCurrentStep(data.step);
+            }
           }
 
           // If there's a specific message for this substep
