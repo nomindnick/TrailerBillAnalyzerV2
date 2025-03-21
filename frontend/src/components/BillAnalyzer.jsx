@@ -19,7 +19,7 @@ export default function BillAnalyzer() {
   const [currentStep, setCurrentStep] = useState(0);
   const [stepMessage, setStepMessage] = useState('');
   const [progress, setProgress] = useState({ current: 0, total: 0 });
-  const [stepProgress, setStepProgress] = useState({});
+  const [stepProgressMap, setStepProgressMap] = useState({});
   const [expandedStepId, setExpandedStepId] = useState(null);
   const { theme, toggleTheme } = useTheme();
   const [model, setModel] = useState('gpt-4o-2024-08-06');
@@ -37,7 +37,7 @@ export default function BillAnalyzer() {
     { id: 2, name: "Parsing Text", description: "Extracting sections and digest items" },
     { id: 3, name: "Building Analysis Structure", description: "Creating structured data for analysis" },
     { id: 4, name: "Matching Bill Sections", description: "Connecting digest items to bill sections" },
-    { id: 5, name: "Analyzing Impacts", description: "Evaluating effects on public agencies" }, // New step
+    { id: 5, name: "Analyzing Impacts", description: "Evaluating effects on public agencies" }, 
     { id: 6, name: "Generating Report", description: "Creating the final analysis report" }
   ];
 
@@ -114,10 +114,24 @@ export default function BillAnalyzer() {
 
         // Update substep progress if provided
         if (data.current_substep !== undefined) {
+          const currentSubstep = data.current_substep;
+          const totalSubsteps = data.total_substeps || 0;
+
           setProgress({
-            current: data.current_substep,
-            total: data.total_substeps || 0
+            current: currentSubstep,
+            total: totalSubsteps
           });
+
+          // Store progress data for the current active step
+          if (data.step > 0) {
+            setStepProgressMap(prevMap => ({
+              ...prevMap,
+              [data.step]: {
+                current: currentSubstep,
+                total: totalSubsteps
+              }
+            }));
+          }
 
           // If there's a specific message for this substep
           if (data.message) {
@@ -198,7 +212,7 @@ export default function BillAnalyzer() {
       setCurrentStep(1);
       setStepMessage('Starting bill analysis');
       setProgress({ current: 0, total: 0 });
-      setStepProgress({});
+      setStepProgressMap({});
       setExpandedStepId(null);
 
       // Generate unique analysis ID
@@ -386,7 +400,7 @@ export default function BillAnalyzer() {
                 steps={analysisSteps}
                 progress={progress}
                 startTime={startTime}
-                stepProgress={stepProgress}
+                stepProgress={stepProgressMap}
                 expandedStepId={expandedStepId}
                 onToggleExpand={onToggleExpand}
               />

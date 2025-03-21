@@ -15,18 +15,18 @@ const AnalysisProgress = ({
 }) => {
   const [elapsedTime, setElapsedTime] = useState('0s');
   const [animatedSteps, setAnimatedSteps] = useState(new Set());
-  
+
   // Update elapsed time every second
   useEffect(() => {
     if (!startTime) return;
-    
+
     const formatTime = (start) => {
       const now = new Date();
       const elapsedMs = now - start;
       const seconds = Math.floor(elapsedMs / 1000);
       const minutes = Math.floor(seconds / 60);
       const hours = Math.floor(minutes / 60);
-      
+
       if (hours > 0) {
         return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
       } else if (minutes > 0) {
@@ -35,19 +35,19 @@ const AnalysisProgress = ({
         return `${seconds}s`;
       }
     };
-    
+
     // Initial format
     setElapsedTime(formatTime(startTime));
-    
+
     // Set up interval
     const intervalId = setInterval(() => {
       setElapsedTime(formatTime(startTime));
     }, 1000);
-    
+
     // Clean up
     return () => clearInterval(intervalId);
   }, [startTime]);
-  
+
   // Track completed steps for animation
   useEffect(() => {
     if (currentStep > 0) {
@@ -58,34 +58,57 @@ const AnalysisProgress = ({
       }
     }
   }, [currentStep, animatedSteps]);
-  
+
   // Helper to calculate step color based on status
   const getStepColor = (stepId) => {
     if (currentStep > stepId) return 'green'; // Completed
     if (currentStep === stepId) return 'blue'; // Active
     return 'gray'; // Pending
   };
-  
+
   // Get completion percentage for a step
   const getStepPercentage = (stepId) => {
     if (currentStep > stepId) return 100; // Completed steps
-    if (stepId in stepProgress) return stepProgress[stepId]; // Steps with tracked progress
+
+    // For active steps
     if (currentStep === stepId) {
-      // For active steps with progress data, calculate percentage
-      if (progress.total > 0 && progress.current > 0) {
-        return Math.round((progress.current / progress.total) * 100);
+      // Check step-specific progress first
+      if (stepProgress[stepId] && stepProgress[stepId].total > 0) {
+        const { current, total } = stepProgress[stepId];
+        return Math.round((current / total) * 100);
       }
 
-      // For section matching and impact analysis steps, show more accurate initial progress
+      // For section matching and impact analysis steps, show more accurate progress
       if (stepId === 4 || stepId === 5) {
+        // If we have progress data for the current step
+        if (progress.total > 0 && progress.current > 0) {
+          return Math.round((progress.current / progress.total) * 100);
+        }
         return 5; // Start at 5% to show it's just beginning
       }
 
       return 20; // Default initial progress for other active steps
     }
+
     return 0; // Pending steps
   };
-  
+
+  // Get step-specific progress data
+  const getStepProgressData = (stepId) => {
+    // First check if we have step-specific progress in the map
+    if (stepProgress[stepId]) {
+      return stepProgress[stepId];
+    }
+
+    // If this is the current active step, use the current progress
+    if (currentStep === stepId) {
+      return progress;
+    }
+
+    // Default empty progress
+    return { current: 0, total: 0 };
+  };
+
   // Helper function to render the progress indicator
   const renderProgressIndicator = (stepId, percentage) => {
     const color = getStepColor(stepId);
@@ -95,17 +118,20 @@ const AnalysisProgress = ({
       gray: 'bg-gray-300 dark:bg-gray-600'
     };
 
-    // Add detailed X/Y counter for section matching and impact analysis steps
+    // Get step-specific progress data
+    const stepData = getStepProgressData(stepId);
+
+    // Show detailed X/Y counter for section matching and impact analysis steps
     const showDetailedCounter = (stepId === 4 || stepId === 5) && 
-                               currentStep === stepId && 
-                               progress.total > 0;
+                               (currentStep === stepId) && 
+                               stepData.total > 0;
 
     return (
       <div className="w-full space-y-1">
         {/* Show X/Y counter for specific steps */}
         {showDetailedCounter && (
           <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
-            <span>Progress: {progress.current} of {progress.total}</span>
+            <span>Progress: {stepData.current} of {stepData.total}</span>
             <span>{percentage}%</span>
           </div>
         )}
@@ -120,24 +146,24 @@ const AnalysisProgress = ({
       </div>
     );
   };
-  
+
   // Render a sparkle animation when a step completes
   const renderCompletionEffect = (stepId) => {
     if (!animatedSteps.has(stepId)) return null;
-    
+
     return (
       <div className="absolute -top-1 -right-1 text-yellow-400 animate-ping-once">
         <ZapIcon className="w-5 h-5" />
       </div>
     );
   };
-  
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg transition-all">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-xl font-semibold">Analysis Progress</h3>
-          
+
           {/* Elapsed Time Display */}
           <div className="flex items-center text-blue-600 dark:text-blue-400 font-medium">
             <Clock className="w-4 h-4 mr-1" />
@@ -168,20 +194,21 @@ const AnalysisProgress = ({
             const isPending = !isActive && !isComplete;
             const isExpanded = expandedStepId === step.id;
             const stepPercentage = getStepPercentage(step.id);
-            
+            const stepData = getStepProgressData(step.id);
+
             // Define classes for different states
             const bgColorClasses = isActive 
               ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' 
               : isComplete 
                 ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' 
                 : 'bg-gray-50 dark:bg-gray-900/20 border-gray-200 dark:border-gray-800';
-            
+
             const textColorClasses = isActive 
               ? 'text-blue-600 dark:text-blue-400' 
               : isComplete 
                 ? 'text-green-600 dark:text-green-400' 
                 : 'text-gray-500 dark:text-gray-400';
-                
+
             // Animation classes
             const animationClasses = isActive ? 'animate-pulse-subtle' : '';
             const transitionClasses = isComplete && animatedSteps.has(step.id) 
@@ -216,7 +243,7 @@ const AnalysisProgress = ({
                     <h3 className={`font-medium ${textColorClasses}`}>
                       {step.name}
                     </h3>
-                    
+
                     <div className="flex items-center space-x-2">
                       {/* Only show percentage if the step is active or complete */}
                       {(isActive || isComplete) && (
@@ -224,7 +251,7 @@ const AnalysisProgress = ({
                           {stepPercentage}%
                         </span>
                       )}
-                      
+
                       {/* Expand/Collapse icon */}
                       {isExpanded ? (
                         <ChevronUp className={`w-4 h-4 ${textColorClasses}`} />
@@ -236,32 +263,32 @@ const AnalysisProgress = ({
 
                   {/* Progress bar for all steps */}
                   {renderProgressIndicator(step.id, stepPercentage)}
-                  
+
                   {/* Step description - always visible */}
                   <p className="text-sm text-gray-600 dark:text-gray-300 mt-2">
                     {step.description}
                   </p>
-                  
+
                   {/* Expanded content */}
                   {isExpanded && (
                     <div className={`mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 ${transitionClasses}`}>
                       {/* Step-specific content here */}
                       <div className="rounded-md bg-gray-100 dark:bg-gray-800 p-3 text-sm">
-                        {isActive && (step.id === 4 || step.id === 5) && progress.total > 0 ? (
+                        {isActive && (step.id === 4 || step.id === 5) && stepData.total > 0 ? (
                           <>
                             <div className="text-sm text-gray-600 dark:text-gray-300 mb-2">
                               {step.id === 4 && <span>Matching bill sections to digest items</span>}
                               {step.id === 5 && <span>Analyzing impacts on local agencies</span>}
                             </div>
                             <div className="text-sm text-gray-600 dark:text-gray-300 mb-1 flex justify-between">
-                              <span>Processing {progress.current} of {progress.total}</span>
-                              <span>{Math.round((progress.current / progress.total) * 100)}%</span>
+                              <span>Processing {stepData.current} of {stepData.total}</span>
+                              <span>{Math.round((stepData.current / stepData.total) * 100)}%</span>
                             </div>
                             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                               <div
                                 className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                                 style={{
-                                  width: `${(progress.current / progress.total) * 100}%`,
+                                  width: `${(stepData.current / stepData.total) * 100}%`,
                                 }}
                               />
                             </div>
@@ -297,7 +324,7 @@ const AnalysisProgress = ({
                       </div>
                     </div>
                   )}
-                  
+
                   {/* Completion effect */}
                   {renderCompletionEffect(step.id)}
                 </div>
