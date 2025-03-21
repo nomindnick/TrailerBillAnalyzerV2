@@ -110,11 +110,12 @@ const AnalysisProgress = ({
 
     // Get step-specific progress data
     const stepData = getStepProgressData(stepId);
+    const percentage = getStepPercentage(stepId);
 
     // Show detailed X/Y counter for section matching and impact analysis steps
     const showDetailedCounter = (stepId === 4 || stepId === 5) && 
                                (currentStep === stepId) && 
-                               stepData.total > 0;
+                               stepData?.total > 0;
 
     return (
       <div className="w-full space-y-1">
