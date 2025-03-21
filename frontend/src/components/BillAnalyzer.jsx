@@ -133,7 +133,7 @@ export default function BillAnalyzer() {
               ...prevMap,
               [data.step]: progressData
             }));
-            
+
             // Only update current step if it's different
             if (data.step !== currentStep) {
               setCurrentStep(data.step);
@@ -273,6 +273,7 @@ export default function BillAnalyzer() {
 
   // Available session years - add new ones at the top as they become available
   const availableSessionYears = [
+    '2025-2026',
     '2023-2024',
     '2021-2022',
     '2019-2020',
