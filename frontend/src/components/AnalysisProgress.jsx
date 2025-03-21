@@ -93,14 +93,17 @@ const AnalysisProgress = ({
 
   // Get step-specific progress data
   const getStepProgressData = (stepId) => {
-    if (stepId === currentStep) {
+    if (currentStep > stepId) {
+      return { current: 100, total: 100, percentage: 100 };
+    }
+    if (currentStep === stepId) {
       return {
         current: progress.current || 0,
         total: progress.total || 0,
         percentage: progress.percentage || 0
       };
     }
-    return stepProgress[stepId] || { current: 0, total: 0, percentage: currentStep > stepId ? 100 : 0 };
+    return { current: 0, total: 0, percentage: 0 };
   };
 
   // Helper function to render the progress indicator
