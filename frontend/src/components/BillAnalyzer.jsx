@@ -405,7 +405,7 @@ export default function BillAnalyzer() {
                 currentStep={currentStep}
                 stepMessage={stepMessage}
                 steps={analysisSteps}
-                progress={progress}
+                progress={stepProgressMap[currentStep] || progress}
                 startTime={startTime}
                 stepProgress={stepProgressMap}
                 expandedStepId={expandedStepId}
