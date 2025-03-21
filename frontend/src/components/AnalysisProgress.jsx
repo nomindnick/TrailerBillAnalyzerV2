@@ -72,22 +72,20 @@ const AnalysisProgress = ({
 
     // For active steps
     if (currentStep === stepId) {
-      // Check step-specific progress first
-      if (stepProgress[stepId] && stepProgress[stepId].total > 0) {
-        const { current, total } = stepProgress[stepId];
-        return Math.round((current / total) * 100);
-      }
-
-      // For section matching and impact analysis steps, show more accurate progress
-      if ((stepId === 4 || stepId === 5) && currentStep === stepId) {
-        // If we have progress data for the current step
+      // For section matching and impact analysis steps
+      if (stepId === 4 || stepId === 5) {
         if (progress.total > 0) {
           return Math.round((progress.current / progress.total) * 100);
         }
-        return Math.min(5, progress.percentage || 0); // Start at 5% or use existing percentage
+        return Math.min(5, progress.percentage || 0);
       }
 
-      return 20; // Default initial progress for other active steps
+      // Check step-specific progress
+      if (stepProgress[stepId]?.total > 0) {
+        return Math.round((stepProgress[stepId].current / stepProgress[stepId].total) * 100);
+      }
+
+      return progress.percentage || 20; // Use global progress or default
     }
 
     return 0; // Pending steps
@@ -95,18 +93,10 @@ const AnalysisProgress = ({
 
   // Get step-specific progress data
   const getStepProgressData = (stepId) => {
-    // First check if we have step-specific progress in the map
-    if (stepProgress[stepId]) {
-      return stepProgress[stepId];
-    }
-
-    // If this is the current active step, use the current progress
-    if (currentStep === stepId) {
+    if (stepId === 4 || stepId === 5) {
       return progress;
     }
-
-    // Default empty progress
-    return { current: 0, total: 0 };
+    return stepProgress[stepId] || { current: 0, total: 0 };
   };
 
   // Helper function to render the progress indicator
