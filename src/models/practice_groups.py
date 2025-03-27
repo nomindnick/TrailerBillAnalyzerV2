@@ -37,7 +37,7 @@ class PracticeGroups:
             "Charter Schools": PracticeGroup(
                 name="Charter Schools",
                 description=(
-                    "Assists public agencies that authorize or oversee charter schools with all aspects of "
+                    "Assists school districts and county offices of education that authorize or oversee charter schools with all aspects of "
                     "charter school law. This includes reviewing new and renewal petitions, drafting and negotiating "
                     "MOUs, addressing facilities issues (including Proposition 39), and advising on special education "
                     "compliance within charter schools. Also handles oversight, revocations, and litigation or disputes "
@@ -103,7 +103,7 @@ class PracticeGroups:
                 description=(
                     "Serves cities, counties, and special districts with comprehensive legal counsel on public agency matters. "
                     "Areas include land use and zoning, environmental law (including CEQA and water issues), public contracting, "
-                    "fees, taxes and assessments, code enforcement, intergovernmental relations, elections and voting rights, "
+                    "fees, taxes and assessments, code enforcement, intergovernmental relations, law enforcement, elections and voting rights, "
                     "and open government compliance. Provides general counsel services, drafts ordinances, and represents "
                     "clients in municipal litigation, ensuring compliance with the complex legal framework surrounding local "
                     "governments."
@@ -122,7 +122,7 @@ class PracticeGroups:
             "Special Education": PracticeGroup(
                 name="Special Education",
                 description=(
-                    "Provides thorough counsel on all matters under IDEA, Section 504, and related laws. Handles due process "
+                    "Provides counsel on all matters under IDEA, Section 504, and related laws. Handles due process "
                     "hearings, mediations, CDE/OCR complaints, and litigation involving special education services. Advises on "
                     "IEPs, SELPA governance, mental health services, discipline of students with disabilities, Section 504 "
                     "plans, and dispute resolution. Offers training, policy guidance, and legal strategies to ensure "

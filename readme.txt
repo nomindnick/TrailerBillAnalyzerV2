@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This application is designed to assist attorneys working for a law firm that represents public agency clients in California to analyze and understand the implications of trailer bills. The application provides automated analysis of trailer bills and generates comprehensive reports detailing their impact on public agencies.
+This application assists attorneys working for a law firm that represents public agency clients in California to analyze and understand the implications of trailer bills. It provides automated analysis of trailer bills and generates comprehensive reports detailing their impact on public agencies.
 
 ### Core Functionality
 When a user enters a trailer bill number, the application:
@@ -29,6 +29,7 @@ The frontend is built using React with modern tooling:
 
 Key Components:
 - `BillAnalyzer.jsx`: Main interface component
+- `AnalysisProgress.jsx`: Real-time progress tracking
 - `DownloadMenu.jsx`: Report download interface
 - Custom UI components (buttons, dropdowns, alerts)
 
@@ -45,8 +46,8 @@ The backend is built on Flask with several key services:
    - `BillScraper`: Fetches bill text from leginfo.legislature.ca.gov
    - `BaseParser`: Performs initial regex-based text parsing
    - `JsonBuilder`: Creates structured data for analysis
-   - `SectionMatcher`: Links bill sections to digest items
-   - `ImpactAnalyzer`: Assesses public agency impacts
+   - `SectionMatcher`: Links bill sections to digest items (To be replaced with embeddings-based matching)
+   - `ImpactAnalyzer`: Assesses public agency impacts using LLMs
    - `ReportGenerator`: Creates formatted HTML/PDF reports
 
 3. **Models**
@@ -65,8 +66,9 @@ The backend is built on Flask with several key services:
 2. **Analysis Pipeline**
    - Bill text retrieval and parsing
    - Creation of JSON analysis skeleton
-   - AI-assisted section matching
-   - Impact analysis and practice group assignment
+   - Section matching using embeddings (planned upgrade)
+   - Practice group and agency type identification using embeddings (planned upgrade)
+   - Impact analysis using LLMs (continuing with current approach)
    - Report generation and storage
 
 3. **Output Generation**
@@ -75,42 +77,64 @@ The backend is built on Flask with several key services:
    - Downloadable reports via web interface
 
 ### AI Integration
-The application uses OpenAI's GPT-4 model for several key functions:
-- Matching bill sections to digest items
-- Analyzing impacts on public agencies
-- Determining practice group relevance
-- Generating impact analysis summaries
+The application uses a hybrid approach of embeddings and large language models (LLMs):
+
+**Current Implementation:**
+- LLMs for section matching, practice group categorization, and agency impact detection
+- LLMs for detailed impact analysis and action item generation
+
+**Planned Implementation:**
+- **Section Matching**: Replace LLM with vector embeddings to improve speed and accuracy
+- **Practice Group Assignment**: Use embeddings to calculate similarity between bill sections and practice group descriptions
+- **Agency Type Identification**: Implement embeddings to identify types of affected public agencies
+- **Impact Analysis**: Continue using LLMs (OpenAI or Claude) for detailed impact analysis, which analyzes how the substantive changes affect public agencies, generates action items, identifies deadlines, etc.
+
+This hybrid approach will:
+- Reduce API costs by using embeddings for classification tasks
+- Decrease completion time by optimizing the matching processes
+- Maintain high-quality, detailed impact analysis using LLMs for the core analytical tasks
+- Improve section matching accuracy through semantic similarity metrics
 
 ### File Organization
-```
 project/
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
+│   │   │   ├── BillAnalyzer.jsx
+│   │   │   ├── AnalysisProgress.jsx
+│   │   │   ├── DownloadMenu.jsx
+│   │   │   └── ui/
 │   │   ├── lib/
 │   │   └── styles/
+│   ├── public/
+│   ├── package.json
+│   └── vite.config.js
 ├── src/
 │   ├── models/
-│   │   └── bill_components.py
+│   │   ├── bill_components.py
+│   │   └── practice_groups.py
 │   ├── services/
 │   │   ├── bill_scraper.py
 │   │   ├── base_parser.py
 │   │   ├── json_builder.py
 │   │   ├── section_matcher.py
+│   │   ├── embeddings_matcher.py (planned)
 │   │   ├── impact_analyzer.py
-│   │   └── report_generator.py
+│   │   ├── report_generator.py
+│   │   └── rate_limiter.py
 │   └── utils/
 ├── templates/
 │   └── report.html
-└── main.py
-```
+├── reports/
+├── main.py
+└── readme.txt
 
 ## Key Features
 
 ### Analysis Features
 - Extraction of substantive legal changes
-- Public agency impact assessment
-- Practice group categorization
+- Public agency impact assessment using LLMs
+- Practice group categorization using embeddings (planned)
 - Action item identification
 - Context-aware analysis
 
@@ -122,11 +146,12 @@ project/
 - Section references
 
 ### User Interface Features
-- Real-time progress tracking
+- Real-time progress tracking with detailed step information
 - Dark/light theme support
 - Download options for reports
 - Error handling and feedback
 - Responsive design
+- AI model selection
 
 ## Deployment
 
@@ -153,11 +178,14 @@ The application is designed for deployment on Replit, taking advantage of its in
 ## Future Expansion
 
 The application is designed to be modular and extensible, with planned features including:
-1. Existing law context integration
-2. Historical analysis capabilities
-3. Enhanced AI analysis features
-4. Additional report formats
-5. Integration with law firm systems
+1. **Embeddings-Based Matching**: Replace LLM-based section matching with more efficient vector embeddings
+2. **Enhanced Practice Group Classification**: Use embeddings to improve practice area categorization
+3. **Agency Type Identification**: Implement embeddings to identify types of affected public agencies
+4. **Existing Law Context Integration**: Incorporate historical law context
+5. **Report Format Enhancements**: Add additional report formats and visualization options
+6. **User Authentication**: Add multi-user support with role-based access control
+7. **Integration with Law Firm Systems**: Connect with document management and billing systems
+8. **Batch Processing**: Enable analysis of multiple bills simultaneously
 
 ### Trailer Bill Structure
 The application processes California trailer bills, which follow a specific structure:
