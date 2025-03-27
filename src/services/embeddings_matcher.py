@@ -12,7 +12,7 @@ import numpy as np
 
 from openai import AsyncOpenAI
 
-aclient = AsyncOpenAI(api_key=openai_api_key)
+aclient = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 #################################################################
 # Utility functions for cosine similarity and asynchronous calls
