@@ -46,8 +46,8 @@ async def get_embedding(
         # If your code patches "openai" for proxies, it should still work.
         response = await aclient.embeddings.create(model=model,
         input=clean_text)
-        # Return the embedding vector
-        return response["data"][0]["embedding"]
+        # Return the embedding vector from the response object
+        return response.data[0].embedding
     except Exception as e:
         logging.error(f"Error fetching embedding: {str(e)}")
         return []
