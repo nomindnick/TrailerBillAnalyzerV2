@@ -107,38 +107,19 @@ export default function BillAnalyzer() {
       // Only process updates for current analysis
       if (!currentAnalysisId || data.analysis_id === currentAnalysisId) {
         // Update step information if provided
-        if (data.step) {
+        if (data.step !== undefined) {
           setCurrentStep(data.step);
-          setStepMessage(data.message || '');
+          if (data.message) {
+            setStepMessage(data.message);
+          }
         }
 
         // Update substep progress if provided
         if (data.current_substep !== undefined) {
-          const currentSubstep = data.current_substep;
-          const totalSubsteps = data.total_substeps || 0;
-
-          const progressPercentage = totalSubsteps > 0 ? Math.round((currentSubstep / totalSubsteps) * 100) : 0;
-
-          const progressData = {
-            current: currentSubstep,
-            total: totalSubsteps,
-            percentage: progressPercentage
-          };
-
-          setProgress(progressData);
-
-          // Store progress data for the current active step
-          if (data.step > 0) {
-            setStepProgressMap(prevMap => ({
-              ...prevMap,
-              [data.step]: progressData
-            }));
-
-            // Only update current step if it's different
-            if (data.step !== currentStep) {
-              setCurrentStep(data.step);
-            }
-          }
+          setProgress({
+            current: data.current_substep,
+            total: data.total_substeps || progress.total // Keep existing total if not provided
+          });
 
           // If there's a specific message for this substep
           if (data.message) {
