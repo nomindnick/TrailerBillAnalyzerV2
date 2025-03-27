@@ -22,7 +22,7 @@ export default function BillAnalyzer() {
   const [stepProgressMap, setStepProgressMap] = useState({});
   const [expandedStepId, setExpandedStepId] = useState(null);
   const { theme, toggleTheme } = useTheme();
-  const [model, setModel] = useState('gpt-4o-2024-08-06');
+  const [model, setModel] = useState('o3-mini-2025-01-31');
   const [animateForm, setAnimateForm] = useState(false);
 
   // Socket management
@@ -262,6 +262,7 @@ export default function BillAnalyzer() {
   ];
 
   const modelOptions = [
+    'o3-mini-2025-01-31', 
     'gpt-4o-2024-08-06',
     'claude-3-sonnet-20240229'
   ];
@@ -342,7 +343,9 @@ export default function BillAnalyzer() {
                 >
                   {modelOptions.map(option => (
                     <option key={option} value={option}>
-                      {option === 'gpt-4o-2024-08-06' ? 'GPT-4o (August 2024)' : 'Claude 3 Sonnet'}
+                      {option === 'o3-mini-2025-01-31' ? 'GPT-o3-mini (January 2025)' : 
+                       option === 'gpt-4o-2024-08-06' ? 'GPT-4o (August 2024)' : 
+                       'Claude 3.7 Extended Reasoning'}
                     </option>
                   ))}
                 </select>

@@ -186,7 +186,7 @@ class SectionMatcher:
             section_info,
             digest_map
         )
-        
+
         # Determine which API to use
         if self.use_anthropic:
             # Using Anthropic API with prompt caching for digest items
@@ -201,17 +201,17 @@ class SectionMatcher:
             bill_section_part = prompt_parts[0]  # Contains the bill section to analyze
             digest_items_part = "Available Digest Items:" + prompt_parts[1].split("IMPORTANT REQUIREMENTS:")[0]
             requirements_part = "IMPORTANT REQUIREMENTS:" + prompt_parts[1].split("IMPORTANT REQUIREMENTS:")[1]
-            
+
             # Check for supported models for caching
             cache_supported = (
                 "claude-3-7" in self.model or
                 "claude-3-5" in self.model or
                 "claude-3" in self.model
             )
-            
+
             if cache_supported:
                 self.logger.info(f"Using Anthropic API with model {self.model} (with prompt caching)")
-                
+
                 # Build system with caching enabled for the digest items
                 system_messages = [
                     {
@@ -224,7 +224,7 @@ class SectionMatcher:
                         "cache_control": {"type": "ephemeral"}
                     }
                 ]
-                
+
                 # Claude-specific parameters with caching
                 params = {
                     "model": self.model,
@@ -238,7 +238,7 @@ class SectionMatcher:
                     ],
                     "stream": True  # Use streaming for long-running operations
                 }
-                
+
                 # Set up extended thinking for Claude 3.7 models
                 if "claude-3-7" in self.model:
                     params["temperature"] = 1
@@ -249,7 +249,7 @@ class SectionMatcher:
             else:
                 # Fallback to regular API without caching for unsupported models
                 self.logger.info(f"Using Anthropic API with model {self.model} (without prompt caching, unsupported model)")
-                
+
                 # Regular parameters without caching
                 params = {
                     "model": self.model,
@@ -258,7 +258,7 @@ class SectionMatcher:
                     "messages": [{"role": "user", "content": context_prompt}],
                     "stream": True  # Use streaming for long-running operations
                 }
-                
+
                 # Set up extended thinking for Claude 3.7 models
                 if "claude-3-7" in self.model:
                     params["temperature"] = 1
@@ -271,12 +271,12 @@ class SectionMatcher:
             response_content = ""
             max_retries = 3
             retry_delay = 2  # Starting delay in seconds
-            
+
             for retry_attempt in range(max_retries + 1):
                 try:
                     # Make the API call
                     stream = await self.anthropic_client.messages.create(**params)
-                    
+
                     # Track cache usage if available
                     if hasattr(stream, 'usage'):
                         usage = stream.usage
@@ -285,20 +285,20 @@ class SectionMatcher:
                             self.logger.info(f"Cache created with {usage.cache_creation_input_tokens} tokens")
                         elif hasattr(usage, 'cache_read_input_tokens') and usage.cache_read_input_tokens > 0:
                             self.logger.info(f"Cache hit: {usage.cache_read_input_tokens} tokens read from cache")
-                    
+
                     # Process streaming response
                     response_content = ""  # Reset for each attempt
                     async for chunk in stream:
                         if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'text'):
                             response_content += chunk.delta.text
-                    
+
                     # If we get here, the API call succeeded
                     break
-                    
+
                 except Exception as e:
                     error_str = str(e)
                     is_overloaded = "overloaded_error" in error_str.lower() or "overloaded" in error_str.lower()
-                    
+
                     if is_overloaded and retry_attempt < max_retries:
                         # Only retry on Overloaded errors
                         wait_time = retry_delay * (2 ** retry_attempt)  # Exponential backoff
@@ -312,7 +312,7 @@ class SectionMatcher:
                             self.logger.error(f"Error during Anthropic API streaming after {max_retries} retries: {error_str}")
                         else:
                             self.logger.error(f"Error during Anthropic API streaming: {error_str}")
-                        
+
                         # Try falling back to non-streaming for overloaded errors
                         if is_overloaded:
                             self.logger.info("Attempting fallback to non-streaming request...")
@@ -320,7 +320,7 @@ class SectionMatcher:
                                 # Clone params but remove streaming
                                 non_streaming_params = params.copy()
                                 non_streaming_params.pop("stream", None)
-                                
+
                                 # Make non-streaming request
                                 response = await self.anthropic_client.messages.create(**non_streaming_params)
                                 response_content = response.content[0].text
@@ -357,9 +357,12 @@ class SectionMatcher:
             }
 
             # Add model-specific parameters for OpenAI models
-            if self.model.startswith("o"):  # o3-mini or o1 reasoning models
-                params["reasoning_effort"] = "high"
+            if "o3-mini" in self.model or "o1" in self.model:  # Reasoning models
+                self.logger.info(f"Using OpenAI API with reasoning model {self.model}")
+                # Use temperature instead of reasoning_effort to avoid compatibility issues
+                params["temperature"] = 0
             else:  # gpt-4o and other models
+                self.logger.info(f"Using OpenAI API with model {self.model}")
                 params["temperature"] = 0
 
             self.logger.info(f"Using OpenAI API with model {self.model}")
