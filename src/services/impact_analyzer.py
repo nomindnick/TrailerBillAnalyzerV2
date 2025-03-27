@@ -244,7 +244,7 @@ class ImpactAnalyzer:
             if "o3-mini" in self.model or "o1" in self.model:  # Reasoning models
                 # Use temperature instead of reasoning_effort to avoid compatibility issues
                 self.logger.info(f"Using OpenAI API with reasoning model {self.model}")
-                params["temperature"] = 0
+                params["reasoning_effort"] = "high"
             else:  # gpt-4o and other models
                 self.logger.info(f"Using OpenAI API with model {self.model}")
                 params["temperature"] = 0
