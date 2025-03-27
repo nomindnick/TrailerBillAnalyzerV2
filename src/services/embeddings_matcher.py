@@ -98,7 +98,8 @@ class EmbeddingsMatcher:
 
         # If needed, set the OpenAI API key here
         if openai_api_key:
-
+            os.environ["OPENAI_API_KEY"] = openai_api_key
+            
         self.model = model
         self.similarity_threshold = similarity_threshold
         self.practice_group_threshold = practice_group_threshold
