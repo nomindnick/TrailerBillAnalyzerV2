@@ -32,11 +32,11 @@ class PracticeGroups:
             "Charter Schools": PracticeGroup(
                 name="Charter Schools",
                 description=(
-                    "Assists school districts and county offices of education that authorize or oversee charter schools "
-                    "with all aspects of charter school law. This includes reviewing new and renewal petitions, drafting "
-                    "and negotiating MOUs, addressing facilities issues (including Proposition 39), and advising on special "
-                    "education compliance within charter schools. Also handles oversight, revocations, and litigation or "
-                    "disputes regarding charter school operations and facilities use."
+                    "Assists school districts and county offices of education that authorize or oversee charter schools with all aspects of "
+                    "charter school law. This includes reviewing new and renewal petitions, drafting and negotiating "
+                    "MOUs, addressing facilities issues (including Proposition 39), and advising on special education "
+                    "compliance within charter schools. Also handles oversight, revocations, and litigation or disputes "
+                    "regarding charter school operations and facilities use."
                 )
             ),
             "Facilities and Business": PracticeGroup(
@@ -91,9 +91,12 @@ class PracticeGroups:
                 name="Municipal",
                 description=(
                     "Serves cities, counties, and special districts with comprehensive legal counsel on public agency matters. "
-                    "Areas include land use and zoning, environmental law (CEQA/water), public contracting, fees, taxes, "
-                    "assessments, code enforcement, intergovernmental relations, law enforcement, elections, open government "
-                    "compliance, and municipal litigation."
+
+                    "Areas include land use and zoning, environmental law (including CEQA and water issues), public contracting, "
+                    "fees, taxes and assessments, code enforcement, intergovernmental relations, law enforcement, elections and voting rights, "
+                    "and open government compliance. Provides general counsel services, drafts ordinances, and represents "
+                    "clients in municipal litigation, ensuring compliance with the complex legal framework surrounding local "
+                    "governments."
                 )
             ),
             "Public Finance": PracticeGroup(
@@ -108,8 +111,10 @@ class PracticeGroups:
                 name="Special Education",
                 description=(
                     "Provides counsel on all matters under IDEA, Section 504, and related laws. Handles due process "
-                    "hearings, mediations, CDE/OCR complaints, and litigation. Advises on IEPs, SELPA governance, "
-                    "mental health services, discipline of students with disabilities, and Section 504 compliance."
+                    "hearings, mediations, CDE/OCR complaints, and litigation involving special education services. Advises on "
+                    "IEPs, SELPA governance, mental health services, discipline of students with disabilities, Section 504 "
+                    "plans, and dispute resolution. Offers training, policy guidance, and legal strategies to ensure "
+                    "compliance and protect the rights of students and educational agencies alike."
                 )
             ),
             "Student": PracticeGroup(

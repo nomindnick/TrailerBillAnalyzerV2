@@ -13,6 +13,7 @@ eventlet.monkey_patch()
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO
+from dotenv import load_dotenv
 
 # Import services
 from src.services.bill_scraper import BillScraper
@@ -22,6 +23,9 @@ from src.services.impact_analyzer import ImpactAnalyzer
 from src.services.report_generator import ReportGenerator
 from src.models.practice_groups import PracticeGroups
 from src.services.embeddings_matcher import EmbeddingsMatcher
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
