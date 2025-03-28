@@ -16,10 +16,12 @@ from dotenv import load_dotenv
 from src.services.bill_scraper import BillScraper
 from src.services.base_parser import BaseParser
 from src.services.json_builder import JsonBuilder
-from src.services.section_matcher import SectionMatcher
-from src.services.impact_analyzer import ImpactAnalyzer
+from src.services.embeddings_matcher import EmbeddingsMatcher  # New import
+from src.services.embeddings_impact_analyzer import EmbeddingsImpactAnalyzer  # New import
 from src.services.report_generator import ReportGenerator
 from src.models.practice_groups import PracticeGroups
+from src.models.agency_types import AgencyTypes  # New import
+from src.services.embeddings_service import EmbeddingsService  # New import
 
 # Load environment variables from .env file
 load_dotenv()
@@ -57,6 +59,10 @@ socketio = SocketIO(app,
 # Create directory for reports
 REPORTS_DIR = Path("reports")
 REPORTS_DIR.mkdir(exist_ok=True)
+
+# Create directory for embeddings cache
+EMBEDDINGS_CACHE_DIR = Path("embeddings_cache")
+EMBEDDINGS_CACHE_DIR.mkdir(exist_ok=True)
 
 # Initialize services
 bill_scraper = BillScraper()
@@ -208,6 +214,9 @@ def analyze_bill():
     model = data.get('model', 'gpt-4o-2024-08-06')
     analysis_id = data.get('analysisId')  # Get the analysis ID
 
+    # Default embedding model
+    embedding_model = "text-embedding-3-large" 
+
     # Determine if we should use Anthropic based on the model name
     use_anthropic = model.startswith('claude')
 
@@ -222,6 +231,7 @@ def analyze_bill():
                 year=session_year, 
                 use_anthropic=use_anthropic, 
                 model=model,
+                embedding_model=embedding_model,
                 analysis_id=analysis_id  # Make sure parameter names match function definition
             )
         )
@@ -293,7 +303,15 @@ def serve(path):
     else:
         return send_from_directory(app.static_folder, 'index.html')
 
-async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None, analysis_id=None, progress_handler=None):
+async def analyze_bill_async(
+    bill_number, 
+    year, 
+    use_anthropic=False, 
+    model=None,
+    embedding_model="text-embedding-3-large",
+    analysis_id=None, 
+    progress_handler=None
+):
     """Asynchronous bill analysis"""
     try:
         # Create progress handler if not provided
@@ -317,7 +335,15 @@ async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None,
         openai_client = openai.AsyncClient(api_key=os.environ.get("OPENAI_API_KEY"))
         anthropic_client = AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
-        logger.info(f"Using model: {model} for analysis (use_anthropic={use_anthropic})")
+        logger.info(f"Using LLM model: {model} for analysis (use_anthropic={use_anthropic})")
+        logger.info(f"Using embedding model: {embedding_model} for matching and classification")
+
+        # Initialize the embeddings service (will be shared among components)
+        embeddings_service = EmbeddingsService(
+            openai_client,
+            embedding_model=embedding_model,
+            cache_dir="embeddings_cache"
+        )
 
         # Create bill scraper
         bill_scraper = BillScraper()
@@ -337,8 +363,15 @@ async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None,
         # Load practice groups
         practice_groups = PracticeGroups()
 
-        # Create section matcher with specified model
-        section_matcher = SectionMatcher(openai_client, model=model, anthropic_client=anthropic_client)
+        # Load agency types
+        agency_types = AgencyTypes()
+
+        # Create embeddings matcher (replaces section matcher)
+        embeddings_matcher = EmbeddingsMatcher(
+            openai_client,
+            embedding_model=embedding_model,
+            embedding_dimensions=1024
+        )
 
         # Create JSON builder
         json_builder = JsonBuilder()
@@ -347,13 +380,21 @@ async def analyze_bill_async(bill_number, year, use_anthropic=False, model=None,
         progress_handler.update_progress(3, "Building analysis structure")
         skeleton = json_builder.create_skeleton(parsed_bill.digest_sections, parsed_bill.bill_sections)
 
-        # Match sections to digest items
-        matched_skeleton = await section_matcher.match_sections(skeleton, bill_text, progress_handler)
+        # Match sections to digest items using embeddings
+        progress_handler.update_progress(4, "Matching sections using embeddings")
+        matched_skeleton = await embeddings_matcher.match_sections(skeleton, bill_text, progress_handler)
 
-        # Create impact analyzer with the SAME model as the section matcher
-        impact_analyzer = ImpactAnalyzer(openai_client, practice_groups, model=model, anthropic_client=anthropic_client)
+        # Create embeddings-based impact analyzer
+        impact_analyzer = EmbeddingsImpactAnalyzer(
+            openai_client,
+            practice_groups,
+            embedding_model=embedding_model,
+            llm_model=model,
+            anthropic_client=anthropic_client
+        )
 
-        # Analyze impacts
+        # Analyze impacts with embeddings
+        progress_handler.update_progress(5, "Analyzing impacts with embeddings and AI")
         analyzed_skeleton = await impact_analyzer.analyze_changes(matched_skeleton, progress_handler)
 
         # Update metadata
