@@ -1,0 +1,64 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Flask Server",
+            "type": "python",
+            "request": "launch",
+            "module": "flask",
+            "env": {
+                "FLASK_APP": "main.py",
+                "FLASK_DEBUG": "1"
+            },
+            "args": [
+                "run",
+                "--no-debugger",
+                "--no-reload",
+                "--host=0.0.0.0",
+                "--port=8080"
+            ],
+            "jinja": true,
+            "justMyCode": false
+        },
+        {
+            "name": "Python: SocketIO Server",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "args": [
+                "--server"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "Python: CLI Mode",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "args": [
+                "${input:billNumber}",
+                "--year",
+                "${input:sessionYear}",
+                "--output",
+                "output"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        }
+    ],
+    "inputs": [
+        {
+            "id": "billNumber",
+            "type": "promptString",
+            "description": "Enter the bill number (e.g., AB173)",
+            "default": "AB173"
+        },
+        {
+            "id": "sessionYear",
+            "type": "promptString",
+            "description": "Enter the session year",
+            "default": "2023"
+        }
+    ]
+}
