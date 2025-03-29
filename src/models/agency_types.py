@@ -31,88 +31,67 @@ class AgencyTypes:
 
     def __init__(self):
         self._agency_types: Dict[str, AgencyType] = {
-            "City": AgencyType(
-                name="City",
-                description="A city is a general law or charter municipality that provides local government and services to residents in an urban area.",
-                keywords=["city", "cities", "municipality", "municipalities", "town", "local government"],
-                examples=["City of San Francisco", "City of Los Angeles", "City of San Diego"]
-            ),
-
-            "County": AgencyType(
-                name="County",
-                description="A county is a political and geographic subdivision of a state that provides various services to residents across a region.",
-                keywords=["county", "counties", "board of supervisors", "county government"],
-                examples=["County of Los Angeles", "County of San Diego", "County of Orange"]
-            ),
-
             "School District": AgencyType(
                 name="School District",
-                description="A school district is a special-purpose local government entity that operates public primary and secondary schools within a defined area.",
-                keywords=["school district", "unified school district", "elementary school district", "high school district", "K-12 district"],
-                examples=["Los Angeles Unified School District", "San Diego Unified School District", "Long Beach Unified School District"]
-            ),
-
-            "Community College District": AgencyType(
-                name="Community College District",
-                description="A community college district is a special-purpose local government entity that operates public community colleges within a defined area.",
-                keywords=["community college district", "college district", "junior college district", "two-year college"],
-                examples=["Los Angeles Community College District", "San Diego Community College District", "Peralta Community College District"]
-            ),
-
-            "Special District": AgencyType(
-                name="Special District",
-                description="A special district is a local government agency formed to provide a specific service such as water, fire protection, parks, or sanitation within a designated area.",
-                keywords=["special district", "utility district", "water district", "fire district", "park district", "sanitation district", "irrigation district"],
-                examples=["East Bay Municipal Utility District", "Metropolitan Water District", "San Francisco Bay Area Rapid Transit District (BART)"]
-            ),
-
-            "Joint Powers Authority": AgencyType(
-                name="Joint Powers Authority",
-                description="A joint powers authority (JPA) is an entity formed by two or more public agencies to jointly exercise common powers, typically to provide shared services or regional planning.",
-                keywords=["joint powers authority", "JPA", "joint powers agreement", "regional authority", "joint agency", "joint exercise of powers", "interagency cooperation"],
-                examples=["Association of Bay Area Governments (ABAG)", "South Bay Cities Council of Governments", "Sacramento Area Council of Governments (SACOG)"]
+                description="A local educational agency (LEA) that operates K-12 public schools within a specific geographic area. School districts are governed by elected school boards and are responsible for implementing state education requirements, maintaining school facilities, hiring staff, and providing educational services to students.",
+                keywords=["school district", "unified school district", "elementary school district", "high school district", "K-12 district", "LEA", "local educational agency", "school board", "board of education", "public school", "superintendent", "LCFF", "local control funding formula"],
+                examples=["Los Angeles Unified School District", "San Diego Unified School District", "Long Beach Unified School District", "Fresno Unified School District", "elementary school district", "high school district"]
             ),
 
             "Charter School": AgencyType(
                 name="Charter School",
-                description="A charter school is a publicly funded independent school established under a charter with a local school district, county office of education, or the state board of education.",
-                keywords=["charter school", "public charter", "charter academy", "charter network", "charter management organization", "CMO"],
-                examples=["Green Dot Public Schools", "KIPP Schools", "Aspire Public Schools"]
+                description="A publicly funded independent school established under a charter with a local school district, county office of education, or the state board of education. Charter schools have more flexibility in their operations but must meet accountability requirements specified in their charter petition.",
+                keywords=["charter school", "public charter", "charter academy", "charter network", "charter management organization", "CMO", "charter petition", "charter authorizer", "charter renewal", "independent charter", "dependent charter", "SB 740", "Prop 39", "authorizing agency"],
+                examples=["Green Dot Public Schools", "KIPP Schools", "Aspire Public Schools", "independent charter school", "network charter"]
             ),
 
             "County Office of Education": AgencyType(
                 name="County Office of Education",
-                description="A county office of education (COE) provides educational programs, services, and support to school districts within a county, often focusing on specialized education and administrative services.",
-                keywords=["county office of education", "COE", "county superintendent of schools", "county department of education"],
-                examples=["Los Angeles County Office of Education", "San Diego County Office of Education", "Orange County Department of Education"]
+                description="A regional educational agency that provides services to school districts within a county, including specialized educational programs, fiscal oversight, credentialing, curriculum support, and staff development. COEs also operate schools for specific student populations and serve as an intermediary between local districts and the state.",
+                keywords=["county office of education", "COE", "county superintendent of schools", "county board of education", "SELPA", "alternative education", "court schools", "juvenile court schools", "regional occupational program", "ROP", "county committee on school district organization"],
+                examples=["Los Angeles County Office of Education", "San Diego County Office of Education", "Orange County Department of Education", "county committee", "county board"]
             ),
 
-            "Law Enforcement Agency": AgencyType(
-                name="Law Enforcement Agency",
-                description="A local law enforcement agency such as police departments, sheriff's offices, and other agencies responsible for enforcing laws and maintaining public safety at the local level.",
-                keywords=["police department", "sheriff", "sheriff's department", "law enforcement", "public safety agency", "county sheriff", "city police"],
-                examples=["Los Angeles Police Department", "San Diego Sheriff's Department", "San Francisco Police Department"]
+            "Community College": AgencyType(
+                name="Community College",
+                description="A public two-year college that offers associate degrees, certificates, and transfer programs. Community colleges are governed by locally elected boards of trustees and are part of the California Community College system, serving as open-access institutions providing higher education, career technical education, and workforce development.",
+                keywords=["community college", "community college district", "junior college", "two-year college", "CCC", "California Community Colleges", "board of trustees", "academic senate", "associate degree", "certificate program", "transfer program", "AB 1725", "student equity", "SSSP", "guided pathways"],
+                examples=["Los Angeles Community College District", "San Diego Community College District", "Peralta Community College District", "City College of San Francisco", "community college district"]
             ),
 
-            "Transit Agency": AgencyType(
-                name="Transit Agency",
-                description="A public agency responsible for operating public transportation services within a specific geographical area, including bus, rail, and other transit systems.",
-                keywords=["transit agency", "transportation authority", "transit district", "public transportation", "transit operator", "bus agency", "transit system"],
-                examples=["Los Angeles County Metropolitan Transportation Authority (Metro)", "San Francisco Municipal Transportation Agency (SFMTA)", "AC Transit"]
+            "City": AgencyType(
+                name="City",
+                description="A general law or charter municipality that provides local government services to residents in an incorporated area. Cities have police powers to regulate local affairs including land use, public safety, infrastructure, utilities, and community services. Cities are governed by elected city councils and operate under either general law or their own charter.",
+                keywords=["city", "town", "municipality", "incorporated city", "general law city", "charter city", "city council", "mayor", "city manager", "municipal code", "ordinance", "city attorney", "city clerk", "planning commission", "zoning", "redevelopment", "public works", "police department", "fire department"],
+                examples=["City of Los Angeles", "City of San Diego", "City of San Francisco", "City of Sacramento", "municipal government", "incorporated area"]
             ),
 
-            "Housing Authority": AgencyType(
-                name="Housing Authority",
-                description="A public agency that provides affordable housing assistance to low-income residents through programs such as public housing and Section 8 vouchers.",
-                keywords=["housing authority", "public housing agency", "housing commission", "housing department", "affordable housing agency"],
-                examples=["Housing Authority of the City of Los Angeles", "San Diego Housing Commission", "Oakland Housing Authority"]
+            "County": AgencyType(
+                name="County",
+                description="A political subdivision of the state that provides a wide range of services to residents in both incorporated and unincorporated areas. Counties administer state and federal programs, maintain public records, conduct elections, assess property, collect taxes, and provide health and social services. They are governed by elected boards of supervisors.",
+                keywords=["county", "board of supervisors", "county executive", "county administrator", "county counsel", "sheriff", "district attorney", "assessor", "tax collector", "recorder", "elections", "public health", "social services", "probation", "public guardian", "county hospital", "mental health services", "unincorporated area"],
+                examples=["County of Los Angeles", "County of San Diego", "County of Orange", "County of Sacramento", "county government", "unincorporated county"]
+            ),
+
+            "Special District": AgencyType(
+                name="Special District",
+                description="An independent local government agency formed to provide specific services within a defined area. Special districts focus on particular functions such as water, fire protection, healthcare, parks, cemeteries, mosquito abatement, or transit. They are governed by elected or appointed boards and typically have taxing or fee authority to fund their operations.",
+                keywords=["special district", "independent special district", "dependent special district", "utility district", "water district", "fire district", "healthcare district", "hospital district", "park district", "recreation district", "sanitation district", "cemetery district", "mosquito abatement district", "irrigation district", "resource conservation district", "community services district", "CSD", "municipal utility district", "MUD", "transit district"],
+                examples=["East Bay Municipal Utility District", "Metropolitan Water District", "Sacramento Municipal Utility District", "San Francisco Bay Area Rapid Transit District (BART)", "water district", "fire protection district", "healthcare district"]
+            ),
+
+            "Joint Powers Authority": AgencyType(
+                name="Joint Powers Authority",
+                description="A legal entity created by agreement between two or more public agencies to jointly exercise common powers. JPAs enable collaboration across jurisdictional boundaries for regional planning, shared services, risk pooling, financing, or infrastructure projects. They are governed by appointed boards representing the member agencies.",
+                keywords=["joint powers authority", "JPA", "joint powers agreement", "regional authority", "joint agency", "joint exercise of powers", "interagency cooperation", "Government Code 6500", "risk pool", "insurance pool", "financing authority", "regional planning", "shared services", "transportation authority", "waste management authority", "water authority"],
+                examples=["Association of Bay Area Governments (ABAG)", "California Joint Powers Insurance Authority", "South Bay Cities Council of Governments", "Sacramento Area Council of Governments (SACOG)", "Southern California Association of Governments (SCAG)"]
             ),
 
             "No Local Agency Impact": AgencyType(
                 name="No Local Agency Impact",
-                description="The bill section does not directly or indirectly impact any local public agencies.",
-                keywords=["no impact", "no local impact", "state only", "no agency impact", "non-local", "state agency only"],
-                examples=["State departments only", "Private organizations only", "No effect on local bodies"]
+                description="The legislative change does not directly or indirectly impact any local public agencies. The provisions only affect state agencies, private entities, or individuals without creating requirements, funding changes, or regulatory impacts for local government entities.",
+                keywords=["no impact", "no local impact", "state only", "no agency impact", "non-local", "state agency only", "private entity", "individual", "no local government", "no jurisdiction", "state department", "state board", "state commission"],
+                examples=["State departments only", "Private organizations only", "No effect on local bodies", "State-level oversight only", "No local agency requirements"]
             )
         }
 

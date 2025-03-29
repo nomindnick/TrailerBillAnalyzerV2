@@ -65,10 +65,10 @@ class EmbeddingsImpactAnalyzer:
         self.llm_model = llm_model
         self.use_anthropic = llm_model.startswith("claude")
 
-        # Similarity thresholds for classification
-        self.practice_group_threshold = 0.7  # Threshold for primary practice group
-        self.practice_group_secondary_threshold = 0.62  # Threshold for secondary practice group
-        self.agency_impact_threshold = 0.68  # Threshold for detecting agency impact
+        # Lower the similarity thresholds substantially
+        self.practice_group_threshold = 0.65  # Threshold for primary practice group
+        self.practice_group_secondary_threshold = 0.58  # Threshold for secondary practice group
+        self.agency_impact_threshold = 0.55  # Much lower threshold for detecting agency impact
 
         self.logger.info(f"Initialized EmbeddingsImpactAnalyzer with embedding model: {embedding_model} and LLM model: {llm_model}")
 
@@ -78,6 +78,20 @@ class EmbeddingsImpactAnalyzer:
         self.agency_type_embeddings = None
         self.agency_type_names = None
 
+    def _is_transportation_related(self, text: str) -> bool:
+        """Check if the text is related to transportation"""
+        transportation_keywords = [
+            "transportation", "transit", "highway", "road", "street", "traffic", "bicycle", "pedestrian",
+            "freeway", "corridor", "active transportation", "public transportation", "rail", "vehicle",
+            "congestion", "high-speed rail", "infrastructure", "bridge", "caltrans", "department of transportation"
+        ]
+
+        text_lower = text.lower()
+        matches = [keyword for keyword in transportation_keywords if keyword in text_lower]
+
+        # If we have multiple transportation keywords, it's transportation-related
+        return len(matches) >= 2
+    
     async def analyze_changes(
         self,
         skeleton: Dict[str, Any],
@@ -284,39 +298,98 @@ class EmbeddingsImpactAnalyzer:
         for i, agency_embedding in enumerate(self.agency_type_embeddings):
             similarity = self.embeddings_service.cosine_similarity(text_embedding, agency_embedding)
             agency_name = self.agency_type_names[i]
+            similarities.append((agency_name, similarity))
 
-            # Skip "No Local Agency Impact" for individual matching
-            if agency_name != "No Local Agency Impact":
-                similarities.append((agency_name, similarity))
+            # Add detailed debug logging
+            self.logger.debug(f"Change {change['id']} - Agency {agency_name} similarity: {similarity:.4f}")
 
-        # Sort by similarity (highest first)
-        similarities.sort(key=lambda x: x[1], reverse=True)
+        # Log all similarities for debugging
+        similarities_sorted = sorted(similarities, key=lambda x: x[1], reverse=True)
+        self.logger.info(f"Change {change['id']} - Top 3 agency matches: {similarities_sorted[:3]}")
 
-        # Check if no agency impact is the highest match
-        no_impact_idx = self.agency_type_names.index("No Local Agency Impact")
-        no_impact_similarity = self.embeddings_service.cosine_similarity(
-            text_embedding, 
-            self.agency_type_embeddings[no_impact_idx]
-        )
+        # Sort by similarity (highest first) excluding "No Local Agency Impact"
+        non_no_impact_similarities = [(name, score) for name, score in similarities if name != "No Local Agency Impact"]
+        non_no_impact_similarities.sort(key=lambda x: x[1], reverse=True)
 
-        # If "No Local Agency Impact" has the highest similarity above threshold,
-        # return empty list (no agencies impacted)
-        highest_agency_similarity = similarities[0][1] if similarities else 0
-        if no_impact_similarity > highest_agency_similarity and no_impact_similarity > self.agency_impact_threshold:
+        # Get the "No Local Agency Impact" score
+        no_impact_score = next((score for name, score in similarities if name == "No Local Agency Impact"), 0)
+        self.logger.info(f"Change {change['id']} - No impact score: {no_impact_score:.4f}, " +
+                        f"Best agency score: {non_no_impact_similarities[0][1] if non_no_impact_similarities else 0:.4f}")
+
+        # IMPORTANT: Lower the threshold significantly
+        # Use a much lower threshold to be more inclusive
+        self.agency_impact_threshold = 0.55
+
+        # Only consider "No Local Agency Impact" if it's significantly higher than other matches
+        if (no_impact_score > non_no_impact_similarities[0][1] * 1.15 if non_no_impact_similarities else True) and no_impact_score > self.agency_impact_threshold:
+            self.logger.info(f"Change {change['id']} - No local agency impact detected")
             return []
 
-        # Otherwise, return all agency types with similarity above threshold
+        # Return all agency types with similarity above threshold
         impacted_agencies = [
-            agency_name for agency_name, score in similarities 
-            if score >= self.agency_impact_threshold
+            agency_name for agency_name, score in non_no_impact_similarities 
+            if score >= self.agency_impact_threshold and agency_name != "No Local Agency Impact"
         ]
 
         # Always include at least the top match if it has reasonable similarity
-        if similarities and not impacted_agencies and similarities[0][1] >= 0.65:
-            impacted_agencies.append(similarities[0][0])
+        if non_no_impact_similarities and not impacted_agencies and non_no_impact_similarities[0][1] >= 0.5:
+            top_match = non_no_impact_similarities[0][0]
+            self.logger.info(f"Change {change['id']} - Including top agency match {top_match} with score {non_no_impact_similarities[0][1]:.4f}")
+            impacted_agencies.append(top_match)
+
+        # Force inclusion of potentially relevant agencies for transportation-related text
+        transportation_keywords = ["transportation", "transit", "highway", "road", "street", "traffic", "bicycle", "pedestrian"]
+        cities_keywords = ["city", "cities", "municipal", "town", "local government"]
+        counties_keywords = ["county", "counties", "board of supervisors"]
+
+        has_transportation = any(keyword in combined_text.lower() for keyword in transportation_keywords)
+        has_cities = any(keyword in combined_text.lower() for keyword in cities_keywords)
+        has_counties = any(keyword in combined_text.lower() for keyword in counties_keywords)
+
+        # Heuristic rules
+        if has_transportation:
+            if "City" not in impacted_agencies and has_cities:
+                impacted_agencies.append("City")
+                self.logger.info(f"Change {change['id']} - Heuristically adding City due to transportation + city keywords")
+
+            if "County" not in impacted_agencies and has_counties:
+                impacted_agencies.append("County")
+                self.logger.info(f"Change {change['id']} - Heuristically adding County due to transportation + county keywords")
+
+            if "Special District" not in impacted_agencies and "transit" in combined_text.lower():
+                impacted_agencies.append("Special District")
+                self.logger.info(f"Change {change['id']} - Heuristically adding Special District due to transit keywords")
+
+        # Add common agencies that are often impacted
+        if "funding" in combined_text.lower() and "local" in combined_text.lower():
+            if "City" not in impacted_agencies:
+                impacted_agencies.append("City")
+                self.logger.info(f"Change {change['id']} - Heuristically adding City due to local funding keywords")
+            if "County" not in impacted_agencies:
+                impacted_agencies.append("County")
+                self.logger.info(f"Change {change['id']} - Heuristically adding County due to local funding keywords")
+
+        # Log the detected agencies
+        if impacted_agencies:
+            self.logger.info(f"Change {change['id']} - Detected {len(impacted_agencies)} impacted agency types: {impacted_agencies}")
+        else:
+            self.logger.info(f"Change {change['id']} - No agencies detected after all checks")
 
         return impacted_agencies
 
+    def _format_sections(self, sections: List[Dict[str, Any]]) -> str:
+        """Format the list of sections for the prompt"""
+        formatted = []
+        for section in sections:
+            text = f"Section {section['number']}:\n"
+            text += f"Text: {section['text'][:500]}..." if len(section['text']) > 500 else f"Text: {section['text']}\n"
+            if section.get('code_modifications'):
+                text += "\nModifies:\n"
+                for mod in section['code_modifications']:
+                    text += f"- {mod['code_name']} Section {mod['section']} ({mod.get('action', 'unknown')})\n"
+            formatted.append(text)
+        return "\n".join(formatted)
+    
     async def _analyze_change_with_llm(
         self,
         change: Dict[str, Any],
@@ -538,26 +611,33 @@ Proposed Changes:
         """
         Create minimal analysis for changes with no local agency impact
         """
-        change.update({
-            "substantive_change": "This change does not appear to have a direct impact on local public agencies.",
-            "local_agency_impact": "No direct impact on local agencies identified.",
-            "key_action_items": [],
-            "deadlines": [],
-            "requirements": [],
-            "impacts_local_agencies": False
-        })
+        # Check if we've identified practice groups that might suggest agency impact
+        has_agency_related_practice_groups = False
+        agency_related_groups = ["Charter Schools", "Facilities and Business", "Municipal", "Student", "Special Education"]
+        for group in change.get("practice_groups", []):
+            if group.get("name") in agency_related_groups:
+                has_agency_related_practice_groups = True
+                break
 
-    def _format_sections(self, sections: List[Dict[str, Any]]) -> str:
-        formatted = []
-        for section in sections:
-            text = f"Section {section['number']}:\n"
-            text += f"Text: {section['text']}\n"
-            if section.get('code_modifications'):
-                text += "Modifies:\n"
-                for mod in section['code_modifications']:
-                    text += f"- {mod['code_name']} Section {mod['section']} ({mod['action']})\n"
-            formatted.append(text)
-        return "\n".join(formatted)
+        # If we have agency-related practice groups but no detected agency impact, leave message about uncertainty
+        if has_agency_related_practice_groups:
+            change.update({
+                "substantive_change": "This change may affect local public agencies, but specific impacts require further analysis.",
+                "local_agency_impact": "Potential impacts on local agencies based on subject matter, but specific requirements need detailed legal review.",
+                "key_action_items": ["Review for potential applicability to your agency"],
+                "deadlines": [],
+                "requirements": [],
+                "impacts_local_agencies": False
+            })
+        else:
+            change.update({
+                "substantive_change": "This change does not appear to have a direct impact on local public agencies.",
+                "local_agency_impact": "No direct impact on local agencies identified.",
+                "key_action_items": [],
+                "deadlines": [],
+                "requirements": [],
+                "impacts_local_agencies": False
+            })
 
     def _format_code_mods(self, mods: List[Dict[str, Any]]) -> str:
         formatted = []
