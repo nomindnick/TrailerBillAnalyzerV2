@@ -12,16 +12,12 @@ class AgencyImpactLevel(Enum):
 @dataclass
 class AgencyType:
     """
-    Represents a type of local public agency with description for embedding comparison
+    Represents a type of local public agency with description for LLM reference
     """
     name: str
     description: str
     keywords: List[str]
     examples: List[str]
-
-    def format_for_embedding(self) -> str:
-        """Format agency type info for embedding generation"""
-        return f"{self.name}: {self.description} Examples: {', '.join(self.examples)}. Keywords: {', '.join(self.keywords)}"
 
 
 class AgencyTypes:
@@ -109,10 +105,6 @@ class AgencyTypes:
         """Get agency type by name"""
         return self._agency_types.get(name)
 
-    def get_all_formatted_for_embedding(self) -> List[str]:
-        """Get all agency types formatted for embedding"""
-        return [agency.format_for_embedding() for agency in self._agency_types.values()]
-
     def get_all_by_name(self) -> Dict[str, str]:
-        """Get dictionary mapping agency names to their embedding text"""
-        return {agency.name: agency.format_for_embedding() for agency in self._agency_types.values()}
+        """Get dictionary mapping agency names to their descriptions"""
+        return {agency.name: agency.description for agency in self._agency_types.values()}

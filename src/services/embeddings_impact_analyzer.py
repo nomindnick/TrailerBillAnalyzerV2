@@ -9,7 +9,7 @@ from collections import defaultdict
 
 from src.services.embeddings_service import EmbeddingsService
 from src.models.practice_groups import PracticeGroups, PracticeGroupRelevance
-from src.models.agency_types import AgencyTypes, AgencyImpactLevel
+from src.models.agency_types import AgencyTypes
 
 
 @dataclass
@@ -35,8 +35,9 @@ class ChangeAnalysis:
 
 class EmbeddingsImpactAnalyzer:
     """
-    Enhanced analyzer for determining local agency impacts using embeddings for
-    practice group and agency type identification, with LLM used only for detailed analysis.
+    Two-stage impact analyzer that uses:
+    1. Embeddings for binary classification (impacts local agencies or not)
+    2. LLM for detailed analysis of changes that potentially impact local agencies
     """
 
     def __init__(
@@ -58,47 +59,38 @@ class EmbeddingsImpactAnalyzer:
         self.embeddings_service = EmbeddingsService(
             openai_client,
             embedding_model=embedding_model,
-            embedding_dimensions=768  # Use lower dimension for these simpler classifications
+            embedding_dimensions=768  # Smaller dimensions are sufficient for binary classification
         )
 
         # Set up LLM model for detailed analysis
         self.llm_model = llm_model
         self.use_anthropic = llm_model.startswith("claude")
 
-        # Lower the similarity thresholds substantially
-        self.practice_group_threshold = 0.65  # Threshold for primary practice group
-        self.practice_group_secondary_threshold = 0.58  # Threshold for secondary practice group
-        self.agency_impact_threshold = 0.55  # Much lower threshold for detecting agency impact
+        # Threshold for binary classification (impacts local agencies)
+        self.impact_threshold = 0.60  # Threshold for "impacts local agencies"
 
-        self.logger.info(f"Initialized EmbeddingsImpactAnalyzer with embedding model: {embedding_model} and LLM model: {llm_model}")
+        # Cache the impact/no-impact embeddings
+        self.impact_embedding = None
+        self.no_impact_embedding = None
 
-        # Cache the practice group embeddings
-        self.practice_group_embeddings = None
-        self.practice_group_names = None
-        self.agency_type_embeddings = None
-        self.agency_type_names = None
-
-    def _is_transportation_related(self, text: str) -> bool:
-        """Check if the text is related to transportation"""
-        transportation_keywords = [
-            "transportation", "transit", "highway", "road", "street", "traffic", "bicycle", "pedestrian",
-            "freeway", "corridor", "active transportation", "public transportation", "rail", "vehicle",
-            "congestion", "high-speed rail", "infrastructure", "bridge", "caltrans", "department of transportation"
+        # List of practice groups that signal likely local agency impacts
+        self.local_agency_practice_groups = [
+            "Municipal", "Facilities and Business", "Public Finance", 
+            "Charter Schools", "School District", "Student", "Special Education",
+            "Governance"
         ]
 
-        text_lower = text.lower()
-        matches = [keyword for keyword in transportation_keywords if keyword in text_lower]
+        self.logger.info(f"Initialized Two-Stage EmbeddingsImpactAnalyzer with embedding model: {embedding_model} and LLM model: {llm_model}")
 
-        # If we have multiple transportation keywords, it's transportation-related
-        return len(matches) >= 2
-    
     async def analyze_changes(
         self,
         skeleton: Dict[str, Any],
         progress_handler=None
     ) -> Dict[str, Any]:
         """
-        Analyze changes with enhanced impact detection and progress reporting
+        Two-stage analysis of changes:
+        1. Binary classification using embeddings (impacts local agencies or not)
+        2. Detailed LLM analysis only for changes that potentially impact local agencies
         """
         try:
             total_changes = len(skeleton["changes"])
@@ -111,9 +103,11 @@ class EmbeddingsImpactAnalyzer:
                     total_changes
                 )
 
-            # Initialize the embeddings for practice groups and agency types (one-time)
-            await self._initialize_embeddings()
+            # Initialize the embeddings for binary classification (one-time)
+            await self._initialize_binary_embeddings()
 
+            # Process each change
+            binary_classification_results = []
             for i, change in enumerate(skeleton["changes"]):
                 current_change = i + 1  # Human-readable count (1-based)
 
@@ -137,39 +131,47 @@ class EmbeddingsImpactAnalyzer:
                         f"Processing change {current_change}/{total_changes}: {digest_preview}"
                     )
 
-                # 1. Identify practice groups using embeddings
-                await self._identify_practice_groups(change, sections)
+                # STAGE 1: Binary classification using embeddings
+                impacts_local_agencies = await self._binary_classification(change, sections)
+                binary_classification_results.append((change['id'], impacts_local_agencies))
 
-                # 2. Identify impacted agency types using embeddings
-                impacted_agencies = await self._identify_impacted_agencies(change, sections)
+                # Store the binary classification result
+                change["impacts_local_agencies"] = impacts_local_agencies
 
-                # Store agency impact results
-                if impacted_agencies:
-                    change["impacts_local_agencies"] = True
-                    change["local_agencies_impacted"] = impacted_agencies
-                else:
-                    change["impacts_local_agencies"] = False
-                    change["local_agencies_impacted"] = []
+                # STAGE 2: Detailed LLM analysis only if potentially impacts local agencies
+                if impacts_local_agencies:
+                    self.logger.info(f"Change {change['id']} may impact local agencies - proceeding with LLM analysis")
 
-                # Only perform detailed LLM analysis if there's a local agency impact
-                if change["impacts_local_agencies"]:
-                    # 3. Generate detailed impact analysis using LLM
+                    # LLM identifies both practice groups and impacted agencies
                     analysis = await self._analyze_change_with_llm(change, sections, code_mods, skeleton)
                     self._update_change_with_analysis(change, analysis)
+
+                    # Apply post-processing to handle inconsistencies
+                    self._apply_heuristic_corrections(change)
+
+                    # After LLM analysis, update progress with completion info
+                    if progress_handler:
+                        # Get the count of affected agencies for the status message
+                        agency_count = len(change.get("local_agencies_impacted", []))
+                        agency_msg = f"{agency_count} agencies affected" if agency_count > 0 else "No agencies affected"
+
+                        progress_handler.update_substep(
+                            current_change,
+                            f"Completed detailed analysis for change {current_change}/{total_changes} ({agency_msg})"
+                        )
                 else:
-                    # For non-impacted changes, create minimal analysis
+                    self.logger.info(f"Change {change['id']} has no impact on local agencies - skipping LLM analysis")
+                    # For non-impacted changes, create minimal analysis without LLM
                     self._create_minimal_analysis(change)
 
-                # After analysis completed, update progress with completion info
-                if progress_handler:
-                    # Get the count of affected agencies for the status message
-                    agency_count = len(impacted_agencies)
-                    agency_msg = f"{agency_count} agencies affected" if agency_count > 0 else "No agencies affected"
+                    if progress_handler:
+                        progress_handler.update_substep(
+                            current_change,
+                            f"Completed change {current_change}/{total_changes} (No local agency impact)"
+                        )
 
-                    progress_handler.update_substep(
-                        current_change,
-                        f"Completed change {current_change}/{total_changes} ({agency_msg})"
-                    )
+            # Log the binary classification results for monitoring
+            self.logger.info(f"Binary classification results: {binary_classification_results}")
 
             # Update overall metadata of the skeleton
             self._update_skeleton_metadata(skeleton)
@@ -186,196 +188,194 @@ class EmbeddingsImpactAnalyzer:
             self.logger.error(f"Error analyzing changes: {str(e)}")
             raise
 
-    async def _initialize_embeddings(self):
-        """Initialize the embeddings for practice groups and agency types"""
-        if self.practice_group_embeddings is None:
-            # Format practice groups for embedding
-            practice_group_data = []
-            practice_group_names = []
-
-            for group_name, group in self.practice_groups.groups.items():
-                practice_group_data.append(group.format_for_prompt())
-                practice_group_names.append(group_name)
-
-            # Generate embeddings for all practice groups
-            self.logger.info(f"Generating embeddings for {len(practice_group_data)} practice groups")
-            self.practice_group_embeddings = await self.embeddings_service.get_embeddings_batch(practice_group_data)
-            self.practice_group_names = practice_group_names
-
-        if self.agency_type_embeddings is None:
-            # Format agency types for embedding
-            agency_type_data = self.agency_types.get_all_formatted_for_embedding()
-            agency_type_names = list(self.agency_types.agency_names)
-
-            # Generate embeddings for all agency types
-            self.logger.info(f"Generating embeddings for {len(agency_type_data)} agency types")
-            self.agency_type_embeddings = await self.embeddings_service.get_embeddings_batch(agency_type_data)
-            self.agency_type_names = agency_type_names
-
-    async def _identify_practice_groups(self, change: Dict[str, Any], sections: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    def _apply_heuristic_corrections(self, change: Dict[str, Any]) -> None:
         """
-        Identify relevant practice groups using embeddings
-
-        Args:
-            change: The change object to analyze
-            sections: Bill sections implementing this change
-
-        Returns:
-            List of practice group information
+        Apply heuristic corrections to address inconsistencies between practice groups 
+        and identified agency impacts.
         """
-        # Combine text from change and sections for embedding
+        # If no agencies are identified but we have municipal or similar practice groups
+        if not change.get("local_agencies_impacted") and change.get("practice_groups"):
+            local_group_identified = False
+            primary_local_groups = []
+
+            # Check if any practice groups signal local agency involvement
+            for group in change.get("practice_groups", []):
+                if group.get("name") in self.local_agency_practice_groups:
+                    local_group_identified = True
+                    if group.get("relevance") == "primary":
+                        primary_local_groups.append(group.get("name"))
+
+            # If we have local-focused practice groups but no identified agencies, add defaults
+            if local_group_identified:
+                self.logger.info(f"Applying heuristic correction for change {change.get('id')}: "
+                                f"Practice groups suggest local impact but no agencies identified")
+
+                default_agencies = []
+
+                # Add specific agencies based on practice group
+                if "Municipal" in primary_local_groups:
+                    default_agencies.extend(["City", "County"])
+
+                if "Public Finance" in primary_local_groups:
+                    default_agencies.extend(["City", "County", "Special District"])
+
+                if "Facilities and Business" in primary_local_groups:
+                    default_agencies.extend(["City", "County", "School District"])
+
+                if "Charter Schools" in primary_local_groups or "School District" in primary_local_groups:
+                    default_agencies.extend(["School District", "Charter School"])
+
+                if "Governance" in primary_local_groups:
+                    default_agencies.extend(["City", "County"])
+
+                # If we've identified default agencies, update the change
+                if default_agencies:
+                    # Remove duplicates and sort
+                    default_agencies = sorted(list(set(default_agencies)))
+
+                    change["local_agencies_impacted"] = default_agencies
+                    change["impacts_local_agencies"] = True
+
+                    # Add an explanation to the impact description
+                    original_impact = change.get("local_agency_impact", "No direct impact on local agencies.")
+
+                    if "No direct impact" in original_impact:
+                        impact_desc = f"While specific impacts are not detailed in the bill text, this change likely affects {', '.join(default_agencies)} based on the practice groups involved. Further legal analysis may be needed to determine specific compliance requirements."
+                    else:
+                        impact_desc = original_impact
+
+                    change["local_agency_impact"] = impact_desc
+
+                    self.logger.info(f"Added default agencies {default_agencies} based on practice groups")
+
+        # Check for transportation-related content
+        if not change.get("local_agencies_impacted") and self._is_transportation_related(change):
+            self.logger.info(f"Transportation-related change detected for {change.get('id')}, adding default agencies")
+            change["local_agencies_impacted"] = ["City", "County", "Special District"]
+            change["impacts_local_agencies"] = True
+
+            # Add an explanation
+            change["local_agency_impact"] = ("This transportation-related change may affect City, County, and "
+                                          "Special District agencies involved in transportation infrastructure "
+                                          "and services. Further analysis is recommended to determine specific impacts.")
+
+    def _is_transportation_related(self, change: Dict[str, Any]) -> bool:
+        """Check if the change is related to transportation"""
         combined_text = f"{change['digest_text']} {change.get('existing_law', '')} {change.get('proposed_change', '')}"
 
-        # Add section texts if available
-        for section in sections:
-            combined_text += f" {section.get('text', '')}"
-
-        # Generate embedding for the combined text
-        text_embedding = await self.embeddings_service.get_embedding(combined_text)
-
-        # Calculate similarity with all practice groups
-        similarities = []
-        for i, pg_embedding in enumerate(self.practice_group_embeddings):
-            similarity = self.embeddings_service.cosine_similarity(text_embedding, pg_embedding)
-            similarities.append((self.practice_group_names[i], similarity))
-
-        # Sort by similarity (highest first)
-        similarities.sort(key=lambda x: x[1], reverse=True)
-
-        # Determine primary and secondary practice groups
-        practice_groups_result = []
-
-        # The most similar group above threshold is primary
-        if similarities and similarities[0][1] >= self.practice_group_threshold:
-            primary_group = similarities[0][0]
-            practice_groups_result.append({
-                "name": primary_group,
-                "relevance": "primary",
-                "justification": f"This change most directly relates to {primary_group} practices and requirements."
-            })
-
-            # Add secondary groups that are above secondary threshold but not the primary
-            for group_name, score in similarities[1:]:
-                if score >= self.practice_group_secondary_threshold:
-                    practice_groups_result.append({
-                        "name": group_name,
-                        "relevance": "secondary",
-                        "justification": f"This change has secondary implications for {group_name} practices."
-                    })
-
-                    # Limit to at most 2 secondary groups
-                    if len(practice_groups_result) >= 3:
-                        break
-
-        # Store the result in the change object
-        change["practice_groups"] = practice_groups_result
-
-        return practice_groups_result
-
-    async def _identify_impacted_agencies(self, change: Dict[str, Any], sections: List[Dict[str, Any]]) -> List[str]:
-        """
-        Identify local agency types impacted by this change using embeddings
-
-        Args:
-            change: The change object to analyze
-            sections: Bill sections implementing this change
-
-        Returns:
-            List of impacted agency type names
-        """
-        # Combine text from change and sections for embedding
-        combined_text = f"{change['digest_text']} {change.get('existing_law', '')} {change.get('proposed_change', '')}"
-
-        # Add section texts if available
-        for section in sections:
-            combined_text += f" {section.get('text', '')}"
-
-        # Generate embedding for the combined text
-        text_embedding = await self.embeddings_service.get_embedding(combined_text)
-
-        # Calculate similarity with all agency types
-        similarities = []
-        for i, agency_embedding in enumerate(self.agency_type_embeddings):
-            similarity = self.embeddings_service.cosine_similarity(text_embedding, agency_embedding)
-            agency_name = self.agency_type_names[i]
-            similarities.append((agency_name, similarity))
-
-            # Add detailed debug logging
-            self.logger.debug(f"Change {change['id']} - Agency {agency_name} similarity: {similarity:.4f}")
-
-        # Log all similarities for debugging
-        similarities_sorted = sorted(similarities, key=lambda x: x[1], reverse=True)
-        self.logger.info(f"Change {change['id']} - Top 3 agency matches: {similarities_sorted[:3]}")
-
-        # Sort by similarity (highest first) excluding "No Local Agency Impact"
-        non_no_impact_similarities = [(name, score) for name, score in similarities if name != "No Local Agency Impact"]
-        non_no_impact_similarities.sort(key=lambda x: x[1], reverse=True)
-
-        # Get the "No Local Agency Impact" score
-        no_impact_score = next((score for name, score in similarities if name == "No Local Agency Impact"), 0)
-        self.logger.info(f"Change {change['id']} - No impact score: {no_impact_score:.4f}, " +
-                        f"Best agency score: {non_no_impact_similarities[0][1] if non_no_impact_similarities else 0:.4f}")
-
-        # IMPORTANT: Lower the threshold significantly
-        # Use a much lower threshold to be more inclusive
-        self.agency_impact_threshold = 0.55
-
-        # Only consider "No Local Agency Impact" if it's significantly higher than other matches
-        if (no_impact_score > non_no_impact_similarities[0][1] * 1.15 if non_no_impact_similarities else True) and no_impact_score > self.agency_impact_threshold:
-            self.logger.info(f"Change {change['id']} - No local agency impact detected")
-            return []
-
-        # Return all agency types with similarity above threshold
-        impacted_agencies = [
-            agency_name for agency_name, score in non_no_impact_similarities 
-            if score >= self.agency_impact_threshold and agency_name != "No Local Agency Impact"
+        transportation_keywords = [
+            "transportation", "transit", "highway", "road", "street", "traffic", "bicycle", "pedestrian",
+            "freeway", "corridor", "active transportation", "public transportation", "rail", "vehicle",
+            "congestion", "high-speed rail", "infrastructure", "bridge", "caltrans", "department of transportation"
         ]
 
-        # Always include at least the top match if it has reasonable similarity
-        if non_no_impact_similarities and not impacted_agencies and non_no_impact_similarities[0][1] >= 0.5:
-            top_match = non_no_impact_similarities[0][0]
-            self.logger.info(f"Change {change['id']} - Including top agency match {top_match} with score {non_no_impact_similarities[0][1]:.4f}")
-            impacted_agencies.append(top_match)
+        text_lower = combined_text.lower()
+        matches = [keyword for keyword in transportation_keywords if keyword in text_lower]
 
-        # Force inclusion of potentially relevant agencies for transportation-related text
-        transportation_keywords = ["transportation", "transit", "highway", "road", "street", "traffic", "bicycle", "pedestrian"]
-        cities_keywords = ["city", "cities", "municipal", "town", "local government"]
-        counties_keywords = ["county", "counties", "board of supervisors"]
+        # If we have multiple transportation keywords, it's transportation-related
+        return len(matches) >= 2
 
-        has_transportation = any(keyword in combined_text.lower() for keyword in transportation_keywords)
-        has_cities = any(keyword in combined_text.lower() for keyword in cities_keywords)
-        has_counties = any(keyword in combined_text.lower() for keyword in counties_keywords)
+    async def _initialize_binary_embeddings(self):
+        """Initialize the embeddings for binary classification (impacts vs. no impact)"""
+        if self.impact_embedding is None:
+            # Define text descriptions for binary classification
+            impact_text = """
+            The legislative change has direct or indirect impacts on local public agencies like cities, counties, 
+            school districts, community colleges, special districts, or joint powers authorities. 
+            The change may create new requirements, modify existing obligations, affect funding, change reporting 
+            requirements, alter deadlines, impact operations, modify authority, change permitted activities, 
+            impose new processes, or otherwise affect the legal framework in which local agencies operate.
 
-        # Heuristic rules
-        if has_transportation:
-            if "City" not in impacted_agencies and has_cities:
-                impacted_agencies.append("City")
-                self.logger.info(f"Change {change['id']} - Heuristically adding City due to transportation + city keywords")
+            Impacts may be substantive even if they are indirect. For example, changes to state funding formulas 
+            that affect money distributed to local agencies, modifications to state regulations that local agencies 
+            must enforce, or changes to programs that local agencies participate in all constitute impacts.
 
-            if "County" not in impacted_agencies and has_counties:
-                impacted_agencies.append("County")
-                self.logger.info(f"Change {change['id']} - Heuristically adding County due to transportation + county keywords")
+            If the bill mentions specific types of local agencies (cities, counties, school districts, etc.), 
+            creates new requirements that local agencies must follow, provides new funding that local agencies 
+            can access, or modifies existing programs that local agencies participate in, it likely has impact.
+            """
 
-            if "Special District" not in impacted_agencies and "transit" in combined_text.lower():
-                impacted_agencies.append("Special District")
-                self.logger.info(f"Change {change['id']} - Heuristically adding Special District due to transit keywords")
+            no_impact_text = """
+            The legislative change has absolutely no impact on local public agencies. The change only affects 
+            state agencies, private entities, or individuals. It creates no new requirements, obligations, 
+            funding changes, deadlines, operational impacts, or any other effects for cities, counties, 
+            school districts, community colleges, special districts, or other local government entities.
 
-        # Add common agencies that are often impacted
-        if "funding" in combined_text.lower() and "local" in combined_text.lower():
-            if "City" not in impacted_agencies:
-                impacted_agencies.append("City")
-                self.logger.info(f"Change {change['id']} - Heuristically adding City due to local funding keywords")
-            if "County" not in impacted_agencies:
-                impacted_agencies.append("County")
-                self.logger.info(f"Change {change['id']} - Heuristically adding County due to local funding keywords")
+            The bill makes no mention of local governments, contains no provisions that local agencies must
+            implement or comply with, provides no funding that flows to local agencies, and does not modify
+            any programs that local agencies participate in.
 
-        # Log the detected agencies
-        if impacted_agencies:
-            self.logger.info(f"Change {change['id']} - Detected {len(impacted_agencies)} impacted agency types: {impacted_agencies}")
+            The change operates entirely at the state level, with state agencies as the sole governmental 
+            entities affected by its provisions. No local officials have any responsibilities under this change,
+            and no local services, functions, or authorities are affected in any way.
+            """
+
+            # Generate embeddings for binary classification
+            self.logger.info("Generating embeddings for binary classification")
+            self.impact_embedding = await self.embeddings_service.get_embedding(impact_text)
+            self.no_impact_embedding = await self.embeddings_service.get_embedding(no_impact_text)
+
+    async def _binary_classification(self, change: Dict[str, Any], sections: List[Dict[str, Any]]) -> bool:
+        """
+        Perform binary classification to determine if the change might impact local agencies
+
+        Args:
+            change: The change object to analyze
+            sections: Bill sections implementing this change
+
+        Returns:
+            bool: True if the change potentially impacts local agencies, False otherwise
+        """
+        # Combine text from change and sections for embedding
+        combined_text = f"{change['digest_text']} {change.get('existing_law', '')} {change.get('proposed_change', '')}"
+
+        # Add section texts if available (first 1000 chars of each section)
+        for section in sections:
+            section_text = section.get('text', '')
+            if section_text:
+                combined_text += f" {section_text[:1000]}"
+
+        # Check for obvious keywords indicating local agency impact before embedding
+        local_impact_keywords = [
+            "city", "cities", "county", "counties", "school district", "community college", 
+            "special district", "local agency", "local government", "local educational agency",
+            "LEA", "local authority", "municipality", "municipal", "board of supervisors",
+            "city council", "board of education", "school board", "local jurisdiction",
+            "local transportation", "local public", "local entities", "local authorities"
+        ]
+
+        # Check if any of the keywords are present in the combined text
+        keyword_match = any(keyword.lower() in combined_text.lower() for keyword in local_impact_keywords)
+
+        if keyword_match:
+            self.logger.info(f"Change {change['id']} contains local agency keywords - classifying as potential impact")
+            return True
+
+        # No obvious keywords, use embedding comparison
+        text_embedding = await self.embeddings_service.get_embedding(combined_text)
+
+        # Calculate similarity with "impact" and "no impact" embeddings
+        impact_similarity = self.embeddings_service.cosine_similarity(text_embedding, self.impact_embedding)
+        no_impact_similarity = self.embeddings_service.cosine_similarity(text_embedding, self.no_impact_embedding)
+
+        self.logger.info(f"Change {change['id']} - Impact similarity: {impact_similarity:.4f}, No impact similarity: {no_impact_similarity:.4f}")
+
+        # Classify as potential impact if:
+        # 1. Impact similarity exceeds the threshold, OR
+        # 2. Impact similarity is significantly greater than no-impact similarity
+        impacts_local_agencies = (impact_similarity >= self.impact_threshold) or (impact_similarity > no_impact_similarity * 1.15)
+
+        if impacts_local_agencies:
+            self.logger.info(f"Change {change['id']} classified as potentially impacting local agencies")
         else:
-            self.logger.info(f"Change {change['id']} - No agencies detected after all checks")
+            self.logger.info(f"Change {change['id']} classified as not impacting local agencies")
 
-        return impacted_agencies
+        # Transportation-related texts are often relevant to local agencies, so add a special check
+        if not impacts_local_agencies and self._is_transportation_related(change):
+            self.logger.info(f"Change {change['id']} appears transportation-related - classifying as potential impact")
+            return True
+
+        return impacts_local_agencies
 
     def _format_sections(self, sections: List[Dict[str, Any]]) -> str:
         """Format the list of sections for the prompt"""
@@ -389,7 +389,7 @@ class EmbeddingsImpactAnalyzer:
                     text += f"- {mod['code_name']} Section {mod['section']} ({mod.get('action', 'unknown')})\n"
             formatted.append(text)
         return "\n".join(formatted)
-    
+
     async def _analyze_change_with_llm(
         self,
         change: Dict[str, Any],
@@ -398,23 +398,22 @@ class EmbeddingsImpactAnalyzer:
         skeleton: Dict[str, Any]
     ) -> ChangeAnalysis:
         """
-        Generate comprehensive analysis of a change using LLM for detailed narrative
-
-        This is only called for changes that impact local agencies.
+        Generate comprehensive analysis of a change using LLM, which now includes:
+        1. Identifying specific impacted agency types
+        2. Identifying relevant practice groups
+        3. Detailed impact analysis
         """
-        # Store the bill section details directly in the change object
-        change["bill_section_details"] = sections
-
-        # Build a simplified prompt without asking for practice groups (already done with embeddings)
-        # and without asking for agency identification (already done with embeddings)
-        prompt = self._build_simplified_analysis_prompt(change, sections, code_mods)
+        # Updated prompt to include practice group and agency identification
+        prompt = self._build_comprehensive_prompt(change, sections, code_mods)
 
         # Determine which API to use
         if self.use_anthropic:
             # Using Anthropic API
             system_prompt = (
                 "You are a legal expert analyzing legislative changes affecting local public agencies. "
+                "Your task includes identifying affected agency types, relevant practice groups, and analyzing impacts. "
                 "Focus on practical implications, compliance requirements, and deadlines. "
+                "Be thorough in identifying all potential local agency impacts, even if they are indirect. "
                 "Provide concise, action-oriented analysis in JSON format."
             )
 
@@ -490,7 +489,9 @@ class EmbeddingsImpactAnalyzer:
                         "role": "system",
                         "content": (
                             "You are a legal expert analyzing legislative changes affecting local public agencies. "
+                            "Your task includes identifying affected agency types, relevant practice groups, and analyzing impacts. "
                             "Focus on practical implications, compliance requirements, and deadlines. "
+                            "Be thorough in identifying all potential local agency impacts, even if they are indirect. "
                             "Provide concise, action-oriented analysis in JSON format."
                         )
                     },
@@ -515,6 +516,7 @@ class EmbeddingsImpactAnalyzer:
             response = await self.openai_client.chat.completions.create(**params)
             analysis_data = json.loads(response.choices[0].message.content)
 
+        # Process impact details from JSON
         impacts_list = []
         for impact_dict in analysis_data["agency_impacts"]:
             raw_deadline = impact_dict.get("deadline")
@@ -536,60 +538,102 @@ class EmbeddingsImpactAnalyzer:
                 )
             )
 
+        # Store the identified local agency types directly in the change object
+        change["local_agencies_impacted"] = [impact.agency_type for impact in impacts_list]
+
+        # Update with practice group information from LLM
+        practice_groups = []
+        for pg in analysis_data.get("practice_groups", []):
+            practice_groups.append({
+                "name": pg["name"],
+                "relevance": pg["relevance"],
+                "justification": pg.get("justification", "")
+            })
+
+        change["practice_groups"] = practice_groups
+
         return ChangeAnalysis(
             summary=analysis_data["summary"],
             impacts=impacts_list,
-            practice_groups=[],  # Empty since we've already identified practice groups with embeddings
+            practice_groups=practice_groups,
             action_items=analysis_data["action_items"],
             deadlines=analysis_data["deadlines"],
             requirements=analysis_data["requirements"]
         )
 
-    def _build_simplified_analysis_prompt(self, change, sections, code_mods) -> str:
+    def _build_comprehensive_prompt(self, change, sections, code_mods) -> str:
         """
-        Build a simplified prompt for LLM analysis that doesn't ask for practice groups
-        or agency identification since we've already done that with embeddings.
+        Build a comprehensive prompt for LLM analysis that includes:
+        1. Practice group identification
+        2. Agency type identification
+        3. Detailed impact analysis
         """
-        # List the agencies that have been identified through embeddings
-        agencies_str = "No agencies identified."
-        if change.get("local_agencies_impacted") and len(change.get("local_agencies_impacted")) > 0:
-            agencies_str = ", ".join(change.get("local_agencies_impacted"))
+        # Provide the available practice groups
+        practice_groups_text = self.practice_groups.get_prompt_text(detail_level="brief")
 
-        instruction_block = (
-            "Focus your analysis on the following pre-identified local agencies: " + agencies_str + "\n\n"
-            "Your summary must:\n"
-            "(1) Clearly explain the specific change this bill is making.\n"
-            "(2) Explain how these specific local agencies are impacted.\n"
-            "(3) Describe what actions these agencies need to take to comply.\n\n"
-            "Return the following JSON structure:\n"
-            "{\n"
-            "  \"summary\": \"Explanation of change and impacts on specified agencies\",\n"
-            "  \"agency_impacts\": [\n"
-            "     {\n"
-            "       \"agency_type\": \"one of the pre-identified agency types\",\n"
-            "       \"impact_type\": \"type of impact\",\n"
-            "       \"description\": \"detailed explanation\",\n"
-            "       \"deadline\": \"YYYY-MM-DD or null\",\n"
-            "       \"requirements\": [\"req1\", \"req2\"]\n"
-            "     }\n"
-            "  ],\n"
-            "  \"action_items\": [\"action1\", \"action2\"],\n"
-            "  \"deadlines\": [\n"
-            "    {\n"
-            "      \"date\": \"YYYY-MM-DD\",\n"
-            "      \"description\": \"deadline details\",\n"
-            "      \"affected_agencies\": [\"agency types\"]\n"
-            "    }\n"
-            "  ],\n"
-            "  \"requirements\": [\"req1\", \"req2\"]\n"
-            "}\n"
-        )
+        # Provide valid agency types
+        agency_types_text = "\n".join([
+            f"{agency.name}: {agency.description[:100]}..." 
+            for agency in self.agency_types.agency_types.values()
+        ])
+
+        instruction_block = f"""
+You're analyzing a legislative change affecting California state laws to determine:
+1. Which LOCAL AGENCIES are impacted (if any), including indirectly
+2. Which PRACTICE GROUPS are relevant
+3. The SPECIFIC IMPACTS and required actions for affected agencies
+
+## IMPORTANT: LOCAL AGENCY IMPACT DETERMINATION
+- A bill impacts local agencies if it creates new requirements, changes duties, affects funding, modifies powers, requires compliance, or changes programs in which local agencies participate
+- INDIRECT IMPACTS COUNT: If state-level changes filter down to local agencies (e.g., through funding formulas, programs they participate in, or regulations they must enforce), this counts as impact
+- Be thorough in identifying ALL potentially affected local agency types - err on the side of inclusion rather than exclusion
+- Even if impacts are minor or potential rather than certain, identify the agency types that might be affected
+
+## AGENCY TYPES (use these exact names)
+{agency_types_text}
+
+## PRACTICE GROUPS (use these exact names)
+{practice_groups_text}
+
+Return the following JSON structure:
+{{
+  "summary": "Explanation of change and impacts on local agencies",
+  "agency_impacts": [
+    {{
+      "agency_type": "name from agency types list",
+      "impact_type": "type of impact",
+      "description": "detailed explanation",
+      "deadline": "YYYY-MM-DD or null",
+      "requirements": ["req1", "req2"]
+    }}
+  ],
+  "practice_groups": [
+    {{
+      "name": "name from practice groups list",
+      "relevance": "primary or secondary",
+      "justification": "why this practice group is relevant"
+    }}
+  ],
+  "action_items": ["action1", "action2"],
+  "deadlines": [
+    {{
+      "date": "YYYY-MM-DD",
+      "description": "deadline details",
+      "affected_agencies": ["agency types"]
+    }}
+  ],
+  "requirements": ["req1", "req2"]
+}}
+
+IMPORTANT: Be thorough in identifying all potential local agency impacts, even minor or indirect ones. If NO local agencies are impacted, return an empty array for agency_impacts.
+"""
 
         section_info = self._format_sections(sections)
         code_mods_text = self._format_code_mods(code_mods)
 
         return f"""{instruction_block}
-Analyze this legislative change and its impact on the specified local public agencies:
+
+Analyze this legislative change and its impact on local public agencies:
 
 Digest Text:
 {change['digest_text']}
@@ -611,33 +655,16 @@ Proposed Changes:
         """
         Create minimal analysis for changes with no local agency impact
         """
-        # Check if we've identified practice groups that might suggest agency impact
-        has_agency_related_practice_groups = False
-        agency_related_groups = ["Charter Schools", "Facilities and Business", "Municipal", "Student", "Special Education"]
-        for group in change.get("practice_groups", []):
-            if group.get("name") in agency_related_groups:
-                has_agency_related_practice_groups = True
-                break
-
-        # If we have agency-related practice groups but no detected agency impact, leave message about uncertainty
-        if has_agency_related_practice_groups:
-            change.update({
-                "substantive_change": "This change may affect local public agencies, but specific impacts require further analysis.",
-                "local_agency_impact": "Potential impacts on local agencies based on subject matter, but specific requirements need detailed legal review.",
-                "key_action_items": ["Review for potential applicability to your agency"],
-                "deadlines": [],
-                "requirements": [],
-                "impacts_local_agencies": False
-            })
-        else:
-            change.update({
-                "substantive_change": "This change does not appear to have a direct impact on local public agencies.",
-                "local_agency_impact": "No direct impact on local agencies identified.",
-                "key_action_items": [],
-                "deadlines": [],
-                "requirements": [],
-                "impacts_local_agencies": False
-            })
+        change.update({
+            "substantive_change": "This change does not appear to have a direct impact on local public agencies.",
+            "local_agency_impact": "No direct impact on local agencies identified.",
+            "key_action_items": [],
+            "deadlines": [],
+            "requirements": [],
+            "impacts_local_agencies": False,
+            "local_agencies_impacted": [],
+            "practice_groups": []  # Empty practice groups
+        })
 
     def _format_code_mods(self, mods: List[Dict[str, Any]]) -> str:
         formatted = []
@@ -650,13 +677,10 @@ Proposed Changes:
 
     def _update_change_with_analysis(self, change: Dict[str, Any], analysis: ChangeAnalysis) -> None:
         """Update change object with analysis results"""
-        # Keep the practice groups that were identified by embeddings
-        original_practice_groups = change.get("practice_groups", [])
-
         change.update({
             "substantive_change": analysis.summary,
             "local_agency_impact": self._format_agency_impacts(analysis.impacts),
-            "practice_groups": original_practice_groups,  # Keep the embedding-identified practice groups
+            "practice_groups": analysis.practice_groups,  # Now from LLM
             "key_action_items": analysis.action_items,
             "deadlines": analysis.deadlines,
             "requirements": analysis.requirements,
@@ -681,6 +705,11 @@ Proposed Changes:
             if c.get("impacts_local_agencies")
         ]
 
+        # Collect all impacted agency types across all changes
+        all_impacted_agencies = set()
+        for change in skeleton["changes"]:
+            all_impacted_agencies.update(change.get("local_agencies_impacted", []))
+
         primary_groups = set()
         for change in skeleton["changes"]:
             for group in change.get("practice_groups", []):
@@ -690,7 +719,8 @@ Proposed Changes:
         skeleton["metadata"].update({
             "has_agency_impacts": bool(impacting_changes),
             "impacting_changes_count": len(impacting_changes),
-            "practice_groups_affected": sorted(primary_groups)
+            "practice_groups_affected": sorted(primary_groups),
+            "impacted_agencies": sorted(all_impacted_agencies)
         })
 
     def _get_linked_sections(self, change: Dict[str, Any], skeleton: Dict[str, Any]) -> List[Dict[str, Any]]:
