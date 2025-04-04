@@ -1,0 +1,1933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bill Analysis Report - AB173</title>
+    <style>
+        
+            /* Base styles */
+            @page {
+                margin: 2cm;
+                @bottom-center {
+                    content: &#34;Page &#34; counter(page) &#34; of &#34; counter(pages);
+                    font-size: 10pt;
+                    color: #666;
+                }
+            }
+            
+            body {
+                font-family: &#39;Segoe UI&#39;, Tahoma, Geneva, Verdana, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 20px;
+                background-color: #f9f9f9;
+            }
+            
+            /* Header styles */
+            .header {
+                text-align: center;
+                margin-bottom: 2rem;
+                padding-bottom: 1rem;
+                border-bottom: 2px solid #ddd;
+                page-break-after: avoid;
+            }
+            
+            .bill-title {
+                font-size: 2rem;
+                color: #2c3e50;
+                margin-bottom: 0.75rem;
+                line-height: 1.2;
+            }
+            
+            .subtitle {
+                font-size: 1.2rem;
+                color: #7f8c8d;
+                margin-bottom: 0.5rem;
+            }
+            
+            /* Summary section */
+            .metadata {
+                background-color: #f5f5f5;
+                padding: 1.25rem;
+                border-radius: 5px;
+                margin-bottom: 2rem;
+                border-left: 4px solid #3498db;
+                page-break-inside: avoid;
+            }
+            
+            .summary-section {
+                margin-bottom: 2rem;
+                background-color: #fff;
+                padding: 1.5rem;
+                border-radius: 5px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                page-break-inside: avoid;
+            }
+            
+            .summary-header {
+                margin-top: 0;
+                color: #2c3e50;
+                border-bottom: 2px solid #ecf0f1;
+                padding-bottom: 0.75rem;
+                font-size: 1.5rem;
+            }
+            
+            /* Change boxes */
+            .change-boxes {
+                display: flex;
+                flex-direction: column;
+                gap: 2.5rem;
+            }
+            
+            .change-box {
+                border: 1px solid #ddd;
+                border-radius: 5px;
+                overflow: hidden;
+                background-color: #fff;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                margin-bottom: 2rem;
+                page-break-inside: avoid;
+            }
+            
+            .change-header {
+                background-color: #3498db;
+                color: white;
+                padding: 0.75rem 1.25rem;
+                font-weight: bold;
+                font-size: 1.2rem;
+            }
+            
+            .change-content {
+                padding: 1rem;
+            }
+            
+            .change-box p {
+                margin: 0.75rem 0;
+            }
+            
+            .change-box h4 {
+                color: #2c3e50;
+                margin: 1.5rem 0 0.75rem 0;
+                font-size: 1.15rem;
+                border-bottom: 1px solid #eee;
+                padding-bottom: 0.4rem;
+            }
+            
+            /* Lists */
+            .change-box ul {
+                margin: 0.75rem 0;
+                padding-left: 2rem;
+            }
+            
+            .change-box ul li {
+                margin-bottom: 0.5rem;
+                position: relative;
+                list-style-type: disc;
+            }
+            
+            .change-box ul li::marker {
+                content: &#34;• &#34;;
+                color: #3498db;
+                font-weight: bold;
+            }
+            
+            /* Practice areas */
+            .practice-areas {
+                margin: 1.5rem 0;
+                background-color: #f8f9fa;
+                padding: 1.25rem;
+                border-radius: 5px;
+                border-left: 4px solid #2ecc71;
+            }
+            
+            .practice-area {
+                display: inline-block;
+                background-color: #e1f5fe;
+                padding: 0.4rem 0.7rem;
+                margin: 0.3rem;
+                border-radius: 3px;
+                font-size: 0.9rem;
+                color: #0288d1;
+            }
+            
+            .primary-area {
+                background-color: #b3e5fc;
+                color: #01579b;
+                font-weight: bold;
+            }
+            
+            /* Section information */
+            .section-list {
+                background-color: #f5f5f5;
+                padding: 1rem 1.25rem;
+                margin: 1rem 0;
+                border-radius: 5px;
+                font-size: 0.95rem;
+            }
+            
+            .section-reference {
+                font-weight: bold;
+                color: #e74c3c;
+            }
+            
+            .bill-text-section {
+                background-color: #f9f9f9;
+                border-left: 3px solid #ccc;
+                padding: 1.25rem;
+                margin: 1rem 0;
+                font-family: monospace;
+                font-size: 0.9rem;
+                overflow-x: auto;
+                white-space: pre-wrap;
+            }
+            
+            /* Action items */
+            .action-items {
+                background-color: #fff3e0;
+                padding: 1.25rem;
+                margin: 1.25rem 0;
+                border-radius: 5px;
+                border-left: 4px solid #ff9800;
+            }
+            
+            .deadline {
+                color: #d32f2f;
+                font-weight: bold;
+            }
+            
+            /* Section headers */
+            .report-section {
+                margin-bottom: 3.5rem;
+                page-break-before: auto;
+            }
+            
+            .report-section-title {
+                background-color: #2c3e50;
+                color: white;
+                padding: 1.25rem;
+                margin: 2.5rem 0 1.75rem 0;
+                border-radius: 5px;
+                font-size: 1.5rem;
+                box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+                page-break-after: avoid;
+            }
+                        
+            /* Footer */
+            .footer {
+                margin-top: 3.5rem;
+                text-align: center;
+                font-size: 0.9rem;
+                color: #7f8c8d;
+                padding-top: 1rem;
+                border-top: 1px solid #ddd;
+            }
+            
+            /* Print-specific styles */
+            @media print {
+                body {
+                    padding: 0;
+                    background: white;
+                    font-size: 12pt;
+                    color: black;
+                }
+                
+                .change-box {
+                    break-inside: avoid;
+                    page-break-inside: avoid;
+                    margin-bottom: 20mm;
+                    border: 1px solid #ccc;
+                }
+                
+                .change-header {
+                    background-color: #3498db !important;
+                    color: white !important;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
+                
+                .header, 
+                .metadata, 
+                .summary-section, 
+                .practice-areas {
+                    page-break-inside: avoid;
+                }
+                
+                .report-section-title {
+                    page-break-after: avoid;
+                    background-color: #2c3e50 !important;
+                    color: white !important;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
+                
+                .action-items {
+                    page-break-inside: avoid;
+                    background-color: #fff3e0 !important;
+                    border-left: 4px solid #ff9800 !important;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
+                
+                a {
+                    text-decoration: underline;
+                    color: blue !important;
+                }
+                
+                .change-box ul li {
+                    list-style-type: disc !important;
+                }
+                
+                .change-box ul li::before {
+                    content: &#34;• &#34;;
+                    color: #3498db !important;
+                    font-weight: bold;
+                    display: inline-block; 
+                    width: 1em;
+                    margin-left: -1em;
+                }
+                
+                .section-list,
+                .practice-areas {
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
+            }
+        
+    </style>
+</head>
+<body data-date="April 04, 2025">
+    <!-- Report Header -->
+    <div class="header">
+        <h1 class="bill-title">Bill Analysis Report</h1>
+        <p><strong>Bill Number:</strong> AB173</p>
+        <p><strong>Chapter Number:</strong> </p>
+        <p><strong>Title:</strong> An act to amend Sections 8594.14 and 13987 of, to add Sections 13986 and 14669.24 to, and to add and repeal Section 14108 of, the Government Code, to amend Section 75226 of the Public Resources Cod...</p>
+        <p><strong>Date Approved:</strong> 2024-07-02 00:00:00</p>
+        <p><strong>Analysis by:</strong> Claude 3.7 Sonnet (Deep Thinking)</p>
+    </div>
+
+    <!-- Executive Summary -->
+    <div class="summary-section">
+        <h2 class="summary-header">Executive Summary</h2>
+        <p><strong>Total Changes Identified:</strong> 11</p>
+        <p><strong>Practice Areas Affected:</strong>
+            
+                Facilities and Business, Governance, Labor and Employment, Litigation, Municipal, Public Finance
+            
+        </p>
+        <p><strong>Local Agencies Impacted:</strong>
+            
+            
+                
+            
+                
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                
+            
+                
+                    
+                        
+                    
+                        
+                    
+                        
+                    
+                        
+                    
+                
+            
+                
+                    
+                        
+                    
+                        
+                    
+                        
+                    
+                
+            
+                
+                    
+                        
+                    
+                        
+                    
+                
+            
+                
+                    
+                        
+                    
+                        
+                    
+                        
+                    
+                        
+                    
+                
+            
+                
+                    
+                        
+                    
+                        
+                    
+                        
+                    
+                        
+                    
+                
+            
+                
+                    
+                        
+                    
+                        
+                    
+                        
+                    
+                        
+                    
+                
+            
+                
+                    
+                        
+                    
+                        
+                    
+                
+            
+                
+                    
+                        
+                    
+                        
+                    
+                        
+                    
+                        
+                    
+                        
+                            
+                        
+                    
+                
+            
+                
+            
+            
+                City, County, Special District, Joint Powers Authority, School District
+            
+        </p>
+        <p><strong>Changes by Practice Group:</strong>
+            
+            
+                
+            
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                
+                    
+                
+            
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                
+                    
+                
+            
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                
+            
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                
+            
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                
+                    
+                
+                    
+                
+            
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                
+                    
+                
+            
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                
+            
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                
+            
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                
+                    
+                
+            
+                
+            
+            
+                
+                    Municipal: 8, 
+                
+                    Public Finance: 4
+                
+            
+        </p>
+    </div>
+
+    <!-- Sections by Practice Group or No Local Impact -->
+    
+    <div class="report-section">
+        <h2 class="report-section-title">Practice Group: Municipal</h2>
+
+        <div class="change-boxes">
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 2.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary -->
+                    <p><strong>Summary:</strong><br>
+                       This legislation requires the Secretary of Transportation to identify alternative funding for grade separation projects that lost previous funding due to budget reversions in 2024. The Transportation Agency must prioritize projects at risk of losing federal/local funding or facing schedule delays, and report to the Legislature by April 30, 2025. This change impacts local agencies that sponsor or benefit from grade separation projects, particularly cities, counties, and special districts involved in transportation infrastructure.
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <ul class="agency-list">
+                        
+                            <li>City</li>
+                        
+                            <li>County</li>
+                        
+                            <li>Special District</li>
+                        
+                            <li>Joint Powers Authority</li>
+                        
+                        </ul>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       City: Cities that had grade separation projects with funding reverted under the Budget Act of 2024 may be eligible for alternative state funding. This presents an opportunity for cities to secure replacement funding for at-risk projects, particularly those with federal matching requirements or facing schedule delays. (Deadline: April 30, 2025)
+County: Counties with grade separation projects that lost funding due to the 2024 budget reversions may qualify for replacement funding. The Transportation Agency is authorized to directly allocate funds to prioritized projects, creating a pathway for counties to secure support for critical infrastructure. (Deadline: April 30, 2025)
+Special District: Transportation-focused special districts (e.g., transit districts, transportation authorities) that sponsor grade separation projects affected by 2024 funding reversions may be eligible for alternative state funding. This provides an opportunity to salvage projects at risk of losing matching funds or facing delays. (Deadline: April 30, 2025)
+Joint Powers Authority: JPAs formed for transportation infrastructure purposes may benefit from this legislation if they oversee grade separation projects that lost funding. The direct allocation authority granted to the Transportation Agency creates a mechanism for JPAs to secure alternative funding for critical projects. (Deadline: April 30, 2025)
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+                    <div class="action-items">
+                        <h4>Key Action Items</h4>
+                        <ul class="action-list">
+                            
+                            <li>Review transportation project portfolios to identify grade separation projects affected by 2024 funding reversions</li>
+                            
+                            <li>Document and quantify risks to federal or local funding commitments for affected projects</li>
+                            
+                            <li>Prepare evidence of potential schedule delays that could result from funding gaps</li>
+                            
+                            <li>Engage with Transportation Agency, Caltrans, and California Transportation Commission regarding funding needs</li>
+                            
+                            <li>Monitor the Transportation Agency&#39;s process for identifying and allocating alternative funding</li>
+                            
+                            <li>Prepare funding requests that align with the prioritization criteria established by the Transportation Agency</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+                    <div class="action-items">
+                        <h4>Deadlines</h4>
+                        
+                            <!-- Use list format for just a few deadlines -->
+                            <ul class="deadline-list">
+                                
+                                <li>
+                                    <strong class="deadline">2025-04-30</strong>:
+                                    Deadline for the Secretary of Transportation to report to the Legislature on funding identified for impacted grade separation projects
+                                    
+                                    (Affected agencies: City, County, Special District, Joint Powers Authority)
+                                    
+                                </li>
+                                
+                            </ul>
+                        
+                    </div>
+                    
+
+                    <!-- Additional Requirements -->
+                    
+                    <div class="action-items">
+                        <h4>Additional Requirements</h4>
+                        <ul class="requirements-list">
+                            
+                            <li>Identify grade separation projects that had funding reverted pursuant to the Budget Act of 2024</li>
+                            
+                            <li>Document risks to federal and local funding commitments</li>
+                            
+                            <li>Provide evidence of potential project schedule delays</li>
+                            
+                            <li>Engage with state transportation officials to highlight project needs and funding gaps</li>
+                            
+                            <li>Monitor Transportation Agency announcements regarding alternative funding opportunities</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+                    <div class="practice-areas">
+                        <h4>Relevant Practice Groups</h4>
+                        <ul class="practice-groups-list">
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Municipal (primary)
+                                </span>
+                                
+                                  - This practice group directly supports cities, counties, and special districts that may need to navigate the process of securing alternative funding for their grade separation projects.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Public Finance (primary)
+                                </span>
+                                
+                                  - The legislation creates potential funding opportunities that will require expertise in public agency financing, particularly for complex infrastructure projects with multiple funding sources.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Facilities and Business (secondary)
+                                </span>
+                                
+                                  - Grade separation projects are major facilities investments, and this practice group would support local agencies in addressing the business and facility aspects of these infrastructure projects.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Litigation (secondary)
+                                </span>
+                                
+                                  - Potential disputes could arise related to funding allocations, project prioritization, or contracts affected by funding changes, requiring litigation support.
+                                
+                            </li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 3.</span>, 
+                            
+                                <span class="section-reference">SEC. 6.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary -->
+                    <p><strong>Summary:</strong><br>
+                       This legislation expands the accountability program for the distribution of transportation funds from the Greenhouse Gas Reduction Fund to regional transportation planning agencies (RTPAs) through 2027-28. It creates new requirements for RTAs to submit updated regional short-term financial plans and transit operator data to the Transportation Agency to receive funding. These requirements indirectly impact local transit agencies operated by cities, counties, and special districts that receive formula-based transit funding.
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <ul class="agency-list">
+                        
+                            <li>Special District</li>
+                        
+                            <li>City</li>
+                        
+                            <li>County</li>
+                        
+                            <li>Joint Powers Authority</li>
+                        
+                        </ul>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       Special District: Transit agencies operated as special districts will be indirectly affected as they will need to provide transit operator data to their regional transportation planning agency (RTPA) for inclusion in the region&#39;s submission to the Transportation Agency. This data is required for eligibility to receive funds from the Transit and Intercity Rail Capital Program through FY 2027-28. (Deadline: July 01, 2025)
+City: Cities that operate transit services will be indirectly affected as they will need to provide transit operator data to their regional transportation planning agency (RTPA) for inclusion in the region&#39;s submission to the Transportation Agency. This data is necessary for eligibility to receive transit funding through the expanded accountability program. (Deadline: July 01, 2025)
+County: Counties that operate transit services will be indirectly affected as they will need to provide transit operator data to their regional transportation planning agency (RTPA) for inclusion in the region&#39;s submission to the Transportation Agency. This data is necessary for eligibility to receive transit funding through the expanded accountability program. (Deadline: July 01, 2025)
+Joint Powers Authority: Transit agencies operated as JPAs will be indirectly affected as they will need to provide transit operator data to their regional transportation planning agency (RTPA) for inclusion in the region&#39;s submission to the Transportation Agency. This is required to maintain eligibility for formula-based transit funding through FY 2027-28. (Deadline: July 01, 2025)
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+                    <div class="action-items">
+                        <h4>Key Action Items</h4>
+                        <ul class="action-list">
+                            
+                            <li>Review transit operator data collection processes to ensure readiness for providing required information to regional transportation planning agencies</li>
+                            
+                            <li>Monitor Transportation Agency guidelines for the distribution of funds, which may be modified for fiscal years 2025-26, 2026-27, and 2027-28</li>
+                            
+                            <li>Coordinate with regional transportation planning agencies to understand their specific timeline and requirements for data submission</li>
+                            
+                            <li>Prepare for potential changes in the formula-based funding allocations from the Transit and Intercity Rail Capital Program</li>
+                            
+                            <li>Plan for continued compliance with the accountability program requirements through fiscal year 2027-28</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+                    <div class="action-items">
+                        <h4>Deadlines</h4>
+                        
+                            <!-- Use table format for multiple deadlines -->
+                            <table class="deadline-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Description</th>
+                                        <th>Affected Agencies</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    
+                                    <tr>
+                                        <td><strong class="deadline">2025-07-01</strong></td>
+                                        <td>Approximate deadline for local transit agencies to provide updated transit operator data to their regional transportation planning agency for FY 2025-26 funding eligibility</td>
+                                        <td>City, County, Special District, Joint Powers Authority</td>
+                                    </tr>
+                                    
+                                    <tr>
+                                        <td><strong class="deadline">2026-07-01</strong></td>
+                                        <td>Approximate deadline for local transit agencies to provide updated transit operator data to their regional transportation planning agency for FY 2026-27 funding eligibility</td>
+                                        <td>City, County, Special District, Joint Powers Authority</td>
+                                    </tr>
+                                    
+                                    <tr>
+                                        <td><strong class="deadline">2027-07-01</strong></td>
+                                        <td>Approximate deadline for local transit agencies to provide updated transit operator data to their regional transportation planning agency for FY 2027-28 funding eligibility</td>
+                                        <td>City, County, Special District, Joint Powers Authority</td>
+                                    </tr>
+                                    
+                                </tbody>
+                            </table>
+                        
+                    </div>
+                    
+
+                    <!-- Additional Requirements -->
+                    
+                    <div class="action-items">
+                        <h4>Additional Requirements</h4>
+                        <ul class="requirements-list">
+                            
+                            <li>Transit agencies must collect and maintain accurate transit operator data for submission to regional transportation planning agencies</li>
+                            
+                            <li>Local agencies must comply with any updated guidelines issued by the Transportation Agency for distribution of funds</li>
+                            
+                            <li>Transit agencies must maintain eligibility for formula-based transit funding by fulfilling all accountability program requirements through FY 2027-28</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+                    <div class="practice-areas">
+                        <h4>Relevant Practice Groups</h4>
+                        <ul class="practice-groups-list">
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Municipal (primary)
+                                </span>
+                                
+                                  - This practice group is primarily relevant as it deals with funding and reporting requirements affecting local transit agencies operated by cities, counties, and special districts. The expanded accountability program directly affects how these agencies access transportation funding.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Public Finance (secondary)
+                                </span>
+                                
+                                  - The legislation impacts the distribution of transit funding from the Greenhouse Gas Reduction Fund to local agencies through 2027-28, making this practice area relevant for advising on funding eligibility and compliance with financial reporting requirements.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Governance (secondary)
+                                </span>
+                                
+                                  - Local transit agency boards and governing bodies will need to ensure compliance with the expanded accountability program requirements to maintain eligibility for transit funding, which involves governance decisions and oversight.
+                                
+                            </li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 4.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary -->
+                    <p><strong>Summary:</strong><br>
+                       This legislative change requires the California Department of Transportation (Caltrans) to compile and submit annual reports to the Legislature about its zero-emission vehicle fleet, including vehicle performance and charging infrastructure. While the reporting requirement applies specifically to Caltrans (a state agency), local agencies are indirectly impacted because they must comply with the broader Advanced Clean Fleets Regulation referenced in the existing law, which mandates transitioning local government fleets to zero-emission vehicles.
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <ul class="agency-list">
+                        
+                            <li>City</li>
+                        
+                            <li>County</li>
+                        
+                            <li>Special District</li>
+                        
+                        </ul>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       City: Cities are subject to the Advanced Clean Fleets Regulation mentioned in the existing law, which requires local government fleets to transition to zero-emission vehicles. While this bill doesn&#39;t create new direct requirements for cities, the data collected and reported by Caltrans will likely inform future state policies affecting local agency fleet transitions.
+County: Counties are subject to the Advanced Clean Fleets Regulation mentioned in the existing law, which requires local government fleets to transition to zero-emission vehicles. While this bill doesn&#39;t create new direct requirements for counties, the data collected and reported by Caltrans will likely inform future state policies affecting local agency fleet transitions.
+Special District: Special districts that maintain vehicle fleets are subject to the Advanced Clean Fleets Regulation mentioned in the existing law. While this bill doesn&#39;t create new direct requirements for special districts, the data collected and reported by Caltrans will likely inform future state policies affecting local agency fleet transitions.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+                    <div class="action-items">
+                        <h4>Key Action Items</h4>
+                        <ul class="action-list">
+                            
+                            <li>Monitor Caltrans&#39; annual reports starting in 2025 for insights on zero-emission vehicle performance that could inform local agency fleet transition plans</li>
+                            
+                            <li>Review current compliance with the Advanced Clean Fleets Regulation for local government fleets</li>
+                            
+                            <li>Evaluate budgetary implications of transitioning to zero-emission vehicles based on data from Caltrans&#39; reporting</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+
+                    <!-- Additional Requirements -->
+                    
+                    <div class="action-items">
+                        <h4>Additional Requirements</h4>
+                        <ul class="requirements-list">
+                            
+                            <li>Continue compliance with existing Advanced Clean Fleets Regulation requirements for local government fleets</li>
+                            
+                            <li>Consider findings from Caltrans&#39; annual reports when planning future vehicle purchases and infrastructure investments</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+                    <div class="practice-areas">
+                        <h4>Relevant Practice Groups</h4>
+                        <ul class="practice-groups-list">
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Municipal (primary)
+                                </span>
+                                
+                                  - This practice group serves cities, counties, and special districts that need to navigate compliance with the Advanced Clean Fleets Regulation and plan for the potential impact of future zero-emission vehicle policies informed by Caltrans&#39; reporting.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Facilities and Business (secondary)
+                                </span>
+                                
+                                  - This practice group supports local agencies in addressing operational and facility-related issues, including fleet management and the infrastructure needed for zero-emission vehicles.
+                                
+                            </li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 5.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary -->
+                    <p><strong>Summary:</strong><br>
+                       This legislation authorizes the Department of General Services to enter into a lease-purchase agreement or lease with option to purchase for a build-to-suit office facility to replace the DMV field office in San Francisco. While primarily affecting state agencies, there is a potential indirect impact on the City and County of San Francisco due to the mixed-use development provision that may include affordable housing.
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <ul class="agency-list">
+                        
+                            <li>City</li>
+                        
+                            <li>County</li>
+                        
+                        </ul>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       City: The bill authorizes a mixed-use development that may include affordable housing in San Francisco. This could affect the City&#39;s housing inventory, urban planning considerations, and potentially trigger coordination with city departments regarding permits, infrastructure, or services.
+County: As this affects the City and County of San Francisco specifically, county departments may need to coordinate with state agencies regarding the development, particularly if affordable housing components are included.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+                    <div class="action-items">
+                        <h4>Key Action Items</h4>
+                        <ul class="action-list">
+                            
+                            <li>Monitor development of the DMV project for potential impacts on city planning and services</li>
+                            
+                            <li>Prepare for potential coordination with state agencies if affordable housing is included in the project</li>
+                            
+                            <li>Review local ordinances or processes that might apply to the mixed-use development</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+
+                    <!-- Additional Requirements -->
+                    
+                    <div class="action-items">
+                        <h4>Additional Requirements</h4>
+                        <ul class="requirements-list">
+                            
+                            <li>No immediate requirements, but potential future coordination between state agencies and local government on the mixed-use development</li>
+                            
+                            <li>Potential involvement in housing-related aspects if affordable housing is included in the project</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+                    <div class="practice-areas">
+                        <h4>Relevant Practice Groups</h4>
+                        <ul class="practice-groups-list">
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Municipal (primary)
+                                </span>
+                                
+                                  - The bill potentially affects municipal operations in San Francisco through the mixed-use development that may include affordable housing, requiring coordination between state and local agencies.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Facilities and Business (secondary)
+                                </span>
+                                
+                                  - The mixed-use development provision could involve facility-related issues for the City and County of San Francisco, particularly regarding permitting, infrastructure connections, or related services.
+                                
+                            </li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 7.</span>, 
+                            
+                                <span class="section-reference">SEC. 8.</span>, 
+                            
+                                <span class="section-reference">SEC. 9.</span>, 
+                            
+                                <span class="section-reference">SEC. 10.</span>, 
+                            
+                                <span class="section-reference">SEC. 11.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary -->
+                    <p><strong>Summary:</strong><br>
+                       This legislation expands the authority of the High-Speed Rail Authority Inspector General to review or investigate contract compliance of any entity receiving high-speed rail project funds. It extends whistleblower protections to contractor employees and requires future contracts (from July 1, 2024) to include provisions giving the Inspector General access to records. While primarily focused on state-level oversight, this impacts local agencies that may contract with the High-Speed Rail Authority or receive project funds.
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <ul class="agency-list">
+                        
+                            <li>City</li>
+                        
+                            <li>County</li>
+                        
+                            <li>Special District</li>
+                        
+                            <li>Joint Powers Authority</li>
+                        
+                        </ul>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       City: Cities that enter into contracts with the High-Speed Rail Authority or receive high-speed rail project funds will be subject to additional oversight by the Inspector General, including audits and investigations of contract adherence. New contracts executed after July 1, 2024 must include provisions granting the Inspector General access to records and property. (Deadline: July 01, 2024)
+County: Counties that enter into contracts with the High-Speed Rail Authority or receive high-speed rail project funds will be subject to additional oversight by the Inspector General, including audits and investigations of contract adherence. New contracts executed after July 1, 2024 must include provisions granting the Inspector General access to records and property. (Deadline: July 01, 2024)
+Special District: Special districts (particularly transportation or infrastructure-related districts) that enter into contracts with the High-Speed Rail Authority or receive high-speed rail project funds will be subject to additional oversight by the Inspector General, including audits and investigations of contract adherence. New contracts executed after July 1, 2024 must include provisions granting the Inspector General access to records and property. (Deadline: July 01, 2024)
+Joint Powers Authority: Joint Powers Authorities (particularly those involved in transportation or infrastructure) that enter into contracts with the High-Speed Rail Authority or receive high-speed rail project funds will be subject to additional oversight by the Inspector General, including audits and investigations of contract adherence. New contracts executed after July 1, 2024 must include provisions granting the Inspector General access to records and property. (Deadline: July 01, 2024)
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+                    <div class="action-items">
+                        <h4>Key Action Items</h4>
+                        <ul class="action-list">
+                            
+                            <li>Review existing contracts with the High-Speed Rail Authority to assess potential for increased oversight</li>
+                            
+                            <li>Prepare template contract provisions for contracts executed after July 1, 2024 to comply with Inspector General access requirements</li>
+                            
+                            <li>Update whistleblower policies to ensure proper protections for employees working on high-speed rail related projects</li>
+                            
+                            <li>Develop procedures for responding to Inspector General audits or investigations</li>
+                            
+                            <li>Train staff on new requirements and oversight provisions</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+                    <div class="action-items">
+                        <h4>Deadlines</h4>
+                        
+                            <!-- Use list format for just a few deadlines -->
+                            <ul class="deadline-list">
+                                
+                                <li>
+                                    <strong class="deadline">2024-07-01</strong>:
+                                    New contracts and contract amendments with the High-Speed Rail Authority must include provisions granting the Inspector General access to records and property
+                                    
+                                    (Affected agencies: City, County, Special District, Joint Powers Authority)
+                                    
+                                </li>
+                                
+                            </ul>
+                        
+                    </div>
+                    
+
+                    <!-- Additional Requirements -->
+                    
+                    <div class="action-items">
+                        <h4>Additional Requirements</h4>
+                        <ul class="requirements-list">
+                            
+                            <li>Include provisions in new contracts that grant the High-Speed Rail Authority Inspector General access to records and property</li>
+                            
+                            <li>Extend whistleblower protections to employees working on high-speed rail projects</li>
+                            
+                            <li>Prepare for potential Inspector General reviews of contract adherence and project fund expenditures</li>
+                            
+                            <li>Ensure compliance with Inspector General audit and investigation requests</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+                    <div class="practice-areas">
+                        <h4>Relevant Practice Groups</h4>
+                        <ul class="practice-groups-list">
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Municipal (primary)
+                                </span>
+                                
+                                  - This practice group directly serves cities, counties, and special districts that may contract with the High-Speed Rail Authority and will need guidance on new contract provisions and compliance with Inspector General oversight.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Labor and Employment (secondary)
+                                </span>
+                                
+                                  - The expanded whistleblower protections for contractor employees will require guidance for affected local agencies to ensure proper implementation and compliance.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Litigation (secondary)
+                                </span>
+                                
+                                  - Local agencies may need representation related to Inspector General audits, investigations, or disputes arising from expanded oversight authority.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Public Finance (secondary)
+                                </span>
+                                
+                                  - Funding implications for local agencies receiving high-speed rail project funds will require expertise in public agency financing and compliance with the new oversight requirements.
+                                
+                            </li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 12.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary -->
+                    <p><strong>Summary:</strong><br>
+                       This legislative change modifies the funding allocation for the Reconnecting Communities: Highways to Boulevards Pilot Program administered by Caltrans. The change replaces the fixed 25% allocation for planning with &#39;up to 25%&#39; for planning, with the remainder for implementation. This change provides more flexibility in how program funds can be distributed between planning and implementation phases of highway conversion projects.
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <ul class="agency-list">
+                        
+                            <li>City</li>
+                        
+                            <li>County</li>
+                        
+                            <li>Special District</li>
+                        
+                            <li>Joint Powers Authority</li>
+                        
+                        </ul>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       City: Cities are eligible entities for this program and will be affected by the change in funding allocation. The modification provides more flexibility in the distribution of funds, potentially allowing more implementation funding if planning needs are lower than 25%. Cities partnering with Caltrans on highway conversion projects may need to adjust their grant application strategies.
+County: Counties are eligible entities for this program and will be affected by the change in funding allocation. The modification provides more flexibility in the distribution of funds, potentially allowing more implementation funding if planning needs are lower than 25%. Counties partnering with Caltrans on highway conversion projects may need to adjust their grant application strategies.
+Special District: Special districts (particularly transportation-related districts) may be eligible entities for this program and affected by the change in funding allocation. The modification provides more flexibility in how program funds can be distributed between planning and implementation phases.
+Joint Powers Authority: JPAs formed for transportation or infrastructure projects may be eligible entities for this program and will be affected by the funding allocation change. The modification allows more implementation funding if planning needs are lower than 25%, which may affect JPA grant strategies.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+                    <div class="action-items">
+                        <h4>Key Action Items</h4>
+                        <ul class="action-list">
+                            
+                            <li>Review existing or planned applications for the Reconnecting Communities: Highways to Boulevards Pilot Program</li>
+                            
+                            <li>Assess how the funding allocation change might affect competitiveness for implementation versus planning grants</li>
+                            
+                            <li>Consult with Caltrans about how the funding flexibility will be implemented in practice</li>
+                            
+                            <li>Identify underutilized state highways within agency boundaries that might qualify for this program</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+
+                    <!-- Additional Requirements -->
+                    
+                    <div class="action-items">
+                        <h4>Additional Requirements</h4>
+                        <ul class="requirements-list">
+                            
+                            <li>Monitor Caltrans notifications regarding changes to the Reconnecting Communities program guidelines</li>
+                            
+                            <li>Review grant application materials to align with the new funding allocation structure</li>
+                            
+                            <li>Assess whether local projects are better positioned for planning or implementation funding under the revised allocation</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+                    <div class="practice-areas">
+                        <h4>Relevant Practice Groups</h4>
+                        <ul class="practice-groups-list">
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Municipal (primary)
+                                </span>
+                                
+                                  - This practice group serves cities, counties, and special districts that would be directly affected by changes to the Reconnecting Communities grant program funding allocations.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Public Finance (secondary)
+                                </span>
+                                
+                                  - This practice group advises on public agency financing matters, which would include guidance on grant funding opportunities and strategies like the modified Reconnecting Communities program.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Facilities and Business (secondary)
+                                </span>
+                                
+                                  - This practice group focuses on facility-related issues, which would include infrastructure projects like highway conversions funded by this program.
+                                
+                            </li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 13.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary -->
+                    <p><strong>Summary:</strong><br>
+                       This legislation modifies the Port and Freight Infrastructure Program to allow lead applicant agencies to request letters of no prejudice from the Secretary of Transportation. This mechanism enables agencies to use their own funds for approved port infrastructure projects with the possibility of future reimbursement from program funds. The provision expires on June 30, 2033, and is repealed January 1, 2034.
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <ul class="agency-list">
+                        
+                            <li>City</li>
+                        
+                            <li>County</li>
+                        
+                            <li>Special District</li>
+                        
+                            <li>Joint Powers Authority</li>
+                        
+                        </ul>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       City: Cities that operate ports or administer port-related infrastructure projects can now apply for letters of no prejudice to advance project timelines using their own funds with potential for later reimbursement from state program moneys.
+County: Counties that administer port or freight infrastructure projects can utilize the letter of no prejudice mechanism to expedite project implementation using local funds while preserving eligibility for state reimbursement.
+Special District: Port districts, harbor districts, and transportation-related special districts can advance approved port and freight infrastructure projects with local funding while maintaining eligibility for later state reimbursement through the letter of no prejudice process.
+Joint Powers Authority: Transportation or port-related JPAs that administer eligible port and freight infrastructure projects can use the letter of no prejudice mechanism to advance projects using their own funding sources with potential for future state reimbursement.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+                    <div class="action-items">
+                        <h4>Key Action Items</h4>
+                        <ul class="action-list">
+                            
+                            <li>Review existing and planned port/freight infrastructure projects for potential acceleration using the letter of no prejudice mechanism</li>
+                            
+                            <li>Develop internal procedures for evaluating financial capacity to advance project funds</li>
+                            
+                            <li>Create template applications for letters of no prejudice to streamline the process</li>
+                            
+                            <li>Establish accounting practices to track expenditures eligible for future reimbursement</li>
+                            
+                            <li>Consider bond or other financing mechanisms to fund upfront costs of eligible projects</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+                    <div class="action-items">
+                        <h4>Deadlines</h4>
+                        
+                            <!-- Use list format for just a few deadlines -->
+                            <ul class="deadline-list">
+                                
+                                <li>
+                                    <strong class="deadline">2033-06-30</strong>:
+                                    Last date to use the letter of no prejudice mechanism before provisions become inoperative
+                                    
+                                    (Affected agencies: City, County, Special District, Joint Powers Authority)
+                                    
+                                </li>
+                                
+                            </ul>
+                        
+                    </div>
+                    
+
+                    <!-- Additional Requirements -->
+                    
+                    <div class="action-items">
+                        <h4>Additional Requirements</h4>
+                        <ul class="requirements-list">
+                            
+                            <li>Project must be included in the approved program of projects awarded by the Transportation Agency</li>
+                            
+                            <li>Agency must have financial capacity to fund project components upfront</li>
+                            
+                            <li>Expenditures must meet program eligibility criteria to qualify for future reimbursement</li>
+                            
+                            <li>Application for letter of no prejudice must be submitted to and approved by the Secretary of Transportation</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+                    <div class="practice-areas">
+                        <h4>Relevant Practice Groups</h4>
+                        <ul class="practice-groups-list">
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Municipal (primary)
+                                </span>
+                                
+                                  - This practice group directly advises cities, counties, and special districts on matters related to infrastructure funding mechanisms, intergovernmental agreements, and transportation project implementation.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Public Finance (primary)
+                                </span>
+                                
+                                  - The letter of no prejudice mechanism is fundamentally a financing tool that allows agencies to front funds with expectation of reimbursement, requiring expertise in public agency financing, cash flow management, and bond implications.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Facilities and Business (secondary)
+                                </span>
+                                
+                                  - Port and freight infrastructure development involves facility planning, construction, and business operations considerations that this practice group addresses.
+                                
+                            </li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 16.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary -->
+                    <p><strong>Summary:</strong><br>
+                       This legislative change appropriates $100 million from the General Fund to the Department of Transportation to support the Active Transportation Program, which promotes biking, walking and other active transportation. The funds will be allocated by the California Transportation Commission until June 30, 2027, and available for encumbrance and liquidation until June 30, 2030. This impacts local agencies that are eligible to apply for these funds for active transportation infrastructure projects.
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <ul class="agency-list">
+                        
+                            <li>City</li>
+                        
+                            <li>County</li>
+                        
+                            <li>Special District</li>
+                        
+                            <li>Joint Powers Authority</li>
+                        
+                            <li>School District</li>
+                        
+                        </ul>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       City: Cities can apply for a portion of the $100 million allocated to the Active Transportation Program to fund local biking, walking, and other active transportation infrastructure projects. This represents a significant new funding opportunity for city transportation departments. (Deadline: June 30, 2027)
+County: Counties can apply for a portion of the $100 million allocated to the Active Transportation Program to fund county-wide biking, walking, and other active transportation infrastructure projects. This presents a significant new funding source for county transportation departments. (Deadline: June 30, 2027)
+Special District: Transportation-related special districts (such as transit districts or transportation authorities) may be eligible to apply for Active Transportation Program funding to improve active transportation infrastructure within their service areas. (Deadline: June 30, 2027)
+Joint Powers Authority: JPAs involved in transportation planning or implementation may be eligible to apply for Active Transportation Program funding for regional active transportation projects that span multiple jurisdictions. (Deadline: June 30, 2027)
+School District: School districts may be eligible partners for Safe Routes to School components of Active Transportation Program projects, potentially benefiting from infrastructure improvements that make walking and biking to school safer for students. (Deadline: June 30, 2027)
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+                    <div class="action-items">
+                        <h4>Key Action Items</h4>
+                        <ul class="action-list">
+                            
+                            <li>Review existing Active Transportation Program guidelines and eligibility requirements</li>
+                            
+                            <li>Identify potential active transportation projects that could qualify for funding</li>
+                            
+                            <li>Begin developing grant applications for the new funding allocation</li>
+                            
+                            <li>Coordinate with regional transportation planning agencies on potential projects</li>
+                            
+                            <li>Establish timeline for application development to meet allocation deadlines</li>
+                            
+                            <li>Consider forming partnerships between agencies for regional active transportation projects</li>
+                            
+                            <li>For school districts, connect with local municipalities about Safe Routes to School opportunities</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+                    <div class="action-items">
+                        <h4>Deadlines</h4>
+                        
+                            <!-- Use list format for just a few deadlines -->
+                            <ul class="deadline-list">
+                                
+                                <li>
+                                    <strong class="deadline">2027-06-30</strong>:
+                                    Deadline for California Transportation Commission to allocate funds from the $100 million appropriation
+                                    
+                                    (Affected agencies: City, County, Special District, Joint Powers Authority, School District)
+                                    
+                                </li>
+                                
+                                <li>
+                                    <strong class="deadline">2030-06-30</strong>:
+                                    Final deadline for encumbrance and liquidation of allocated funds
+                                    
+                                    (Affected agencies: City, County, Special District, Joint Powers Authority)
+                                    
+                                </li>
+                                
+                            </ul>
+                        
+                    </div>
+                    
+
+                    <!-- Additional Requirements -->
+                    
+                    <div class="action-items">
+                        <h4>Additional Requirements</h4>
+                        <ul class="requirements-list">
+                            
+                            <li>Monitor California Transportation Commission announcements regarding application periods for the new funding</li>
+                            
+                            <li>Ensure projects meet Active Transportation Program eligibility requirements</li>
+                            
+                            <li>Develop competitive grant applications that align with program priorities</li>
+                            
+                            <li>Establish project implementation timelines that ensure completion before the 2030 liquidation deadline</li>
+                            
+                            <li>Comply with all reporting and accountability measures required by the Active Transportation Program</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+                    <div class="practice-areas">
+                        <h4>Relevant Practice Groups</h4>
+                        <ul class="practice-groups-list">
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Municipal (primary)
+                                </span>
+                                
+                                  - This practice group directly supports cities, counties, and special districts in navigating funding opportunities and grant application processes related to state programs like the Active Transportation Program.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Public Finance (primary)
+                                </span>
+                                
+                                  - This practice group provides essential expertise on public funding mechanisms, grant compliance, and financial planning required for agencies seeking to apply for and manage Active Transportation Program funds.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Facilities and Business (secondary)
+                                </span>
+                                
+                                  - This practice group supports public agencies with facility planning and business operations that would be involved in implementing active transportation infrastructure projects.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Governance (secondary)
+                                </span>
+                                
+                                  - This practice group assists governing boards in making decisions about pursuing grant opportunities and approving projects funded through the Active Transportation Program.
+                                
+                            </li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="report-section">
+        <h2 class="report-section-title">Practice Group: Public Finance</h2>
+
+        <div class="change-boxes">
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 14.</span>, 
+                            
+                                <span class="section-reference">SEC. 15.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary -->
+                    <p><strong>Summary:</strong><br>
+                       This legislation increases the percentage of bond proceeds available for administrative purposes under the Safe, Reliable, High-Speed Passenger Train Bond Act from 2.5% to 5%. This change primarily affects state-level operations of the high-speed rail project, with minimal direct impact on local agencies.
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <ul class="agency-list">
+                        
+                            <li>Special District</li>
+                        
+                            <li>Joint Powers Authority</li>
+                        
+                        </ul>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       Special District: Some special districts, particularly transportation-related special districts that interface with the California High-Speed Rail Authority, may experience indirect impacts if the increased administrative funding affects coordinated planning efforts or shared infrastructure projects.
+Joint Powers Authority: Transportation-focused JPAs that coordinate with the High-Speed Rail Authority may experience indirect impacts if the increased administrative capacity changes the nature or pace of state-local coordination on rail projects or related infrastructure.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+                    <div class="action-items">
+                        <h4>Key Action Items</h4>
+                        <ul class="action-list">
+                            
+                            <li>Transportation-focused special districts and JPAs should monitor High-Speed Rail Authority administrative changes that might affect local planning efforts</li>
+                            
+                            <li>Local agencies involved in coordinated transportation projects with the state should review any existing agreements for potential impacts from administrative changes</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+
+                    <!-- Additional Requirements -->
+                    
+                    <div class="action-items">
+                        <h4>Additional Requirements</h4>
+                        <ul class="requirements-list">
+                            
+                            <li>Transportation-related special districts and JPAs should stay informed about potential changes in High-Speed Rail Authority administrative capacity that might affect collaborative projects</li>
+                            
+                            <li>No immediate compliance requirements for local agencies, but ongoing monitoring of state-local high-speed rail coordination is advisable for affected agencies</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+                    <div class="practice-areas">
+                        <h4>Relevant Practice Groups</h4>
+                        <ul class="practice-groups-list">
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Public Finance (primary)
+                                </span>
+                                
+                                  - This change directly relates to bond fund allocation and administrative expenditures for a major state infrastructure project, potentially affecting how state bond funds interface with local transportation funding.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Municipal (secondary)
+                                </span>
+                                
+                                  - The change in administrative funding for high-speed rail could indirectly affect municipal agencies that coordinate with the High-Speed Rail Authority on planning, right-of-way, or other project aspects.
+                                
+                            </li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="report-section">
+        <h2 class="report-section-title">No Local Government Impacts</h2>
+
+        <div class="change-boxes">
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SECTION 1.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary -->
+                    <p><strong>Summary:</strong><br>
+                       This change does not appear to have a direct impact on local public agencies.
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <p>No local agencies identified.</p>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       No direct impact on local agencies identified.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+
+                    <!-- Additional Requirements -->
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 17.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary -->
+                    <p><strong>Summary:</strong><br>
+                       This change does not appear to have a direct impact on local public agencies.
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <p>No local agencies identified.</p>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       No direct impact on local agencies identified.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+
+                    <!-- Additional Requirements -->
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+        </div>
+    </div>
+    
+    
+    <div class="footer">
+        <p>Report generated on April 04, 2025</p>
+    </div>
+</body>
+</html>

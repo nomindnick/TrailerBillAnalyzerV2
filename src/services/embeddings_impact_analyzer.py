@@ -1,4 +1,5 @@
 import logging
+import anthropic
 import json
 import re
 import asyncio
@@ -721,88 +722,77 @@ class EmbeddingsImpactAnalyzer:
                 "Provide concise, action-oriented analysis in JSON format."
             )
 
-            # Claude-specific parameters
-            params = {
-                "model": self.llm_model,
-                "max_tokens": 64000,
-                "system": system_prompt,
-                "messages": [{"role": "user", "content": prompt}]
-            }
-
-            # Add thinking parameter for Claude 3.7 models
+            # Check if we're using Claude 3.7
             is_claude_3_7 = "claude-3-7" in self.llm_model.lower()
 
-            if is_claude_3_7:
-                self.logger.info(f"Using Claude 3.7 model with thinking parameter: {self.llm_model}")
-                params["temperature"] = 0.7
-                params["thinking"] = {
-                    "type": "enabled", 
-                    "budget_tokens": 16000
+            self.logger.info(f"Anthropic SDK version: {anthropic.__version__}")
+            self.logger.info(f"Using model: {self.llm_model}")
+
+            try:
+                # All Claude models, including 3.7, should use messages API
+                self.logger.info(f"Using messages API with model: {self.llm_model}")
+
+                # Create base parameters
+                params = {
+                    "model": self.llm_model,
+                    "max_tokens": 64000,
+                    "system": system_prompt,
+                    "messages": [{"role": "user", "content": prompt}]
                 }
-                # For Claude 3.7, we'll use non-streaming mode to properly handle thinking tokens
-                use_streaming = False
-            else:
-                # For other Claude models, use streaming
-                use_streaming = True
-                self.logger.info(f"Using standard Claude model with streaming: {self.llm_model}")
 
-            self.logger.info(f"Calling Anthropic API with params: model={self.llm_model}, thinking={'enabled' if is_claude_3_7 else 'disabled'}, streaming={use_streaming}")
+                # Add temperature for Claude 3.7
+                if is_claude_3_7:
+                    params["temperature"] = 0.7
 
-            # Process response based on whether streaming is enabled
-            try:
-                if use_streaming:
-                    # Streaming approach
-                    response_content = ""
-                    stream = await self.anthropic_client.messages.create(**params, stream=True)
-                    async for chunk in stream:
-                        if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'text'):
-                            response_content += chunk.delta.text
-                else:
-                    # Non-streaming approach for Claude 3.7
-                    response = await self.anthropic_client.messages.create(**params)
-                    if hasattr(response, 'content') and len(response.content) > 0:
-                        response_content = response.content[0].text
-                    else:
-                        raise ValueError("No content received from Claude API")
-            except Exception as e:
-                self.logger.error(f"Error during Anthropic API call: {str(e)}")
-                raise
-
-            if not response_content:
-                self.logger.error("No text content received in Anthropic response")
-                raise ValueError("No text received from Claude API")
-
-            # Parse the JSON response from the text
-            try:
-                # Check if response starts with a JSON object
-                if response_content and not response_content.strip().startswith('{'):
-                    # Try to extract JSON content
-                    json_start = response_content.find('{')
-                    json_end = response_content.rfind('}') + 1
-                    if json_start >= 0 and json_end > json_start:
-                        clean_json = response_content[json_start:json_end]
-                        analysis_data = json.loads(clean_json)
-                    else:
-                        raise ValueError("Could not extract JSON from response")
-                else:
-                    analysis_data = json.loads(response_content)
-            except json.JSONDecodeError:
-                # Handle case where response isn't valid JSON
-                self.logger.error(f"Invalid JSON response from Claude: {response_content[:200]}...")
-                # Try to extract JSON from text response
-                json_start = response_content.find('{')
-                json_end = response_content.rfind('}') + 1
-                if json_start >= 0 and json_end > json_start:
+                    # Try with thinking parameter for Claude 3.7
                     try:
-                        clean_json = response_content[json_start:json_end]
-                        analysis_data = json.loads(clean_json)
-                    except:
-                        self.logger.error("Failed to extract JSON from Claude response")
-                        raise
+                        self.logger.info("Attempting to use thinking parameter...")
+
+                        # Add thinking parameter for Claude 3.7 - TRY this approach
+                        thinking_params = params.copy()
+                        thinking_params["thinking"] = {
+                            "type": "enabled",
+                            "budget_tokens": 16000
+                        }
+
+                        response = await self.anthropic_client.messages.create(**thinking_params)
+                        self.logger.info("Successfully used thinking parameter!")
+
+                    except Exception as thinking_error:
+                        # If thinking parameter fails, try without it
+                        self.logger.warning(f"Thinking parameter failed: {str(thinking_error)}. Trying without thinking...")
+                        response = await self.anthropic_client.messages.create(**params)
                 else:
-                    raise ValueError("Failed to parse JSON response from Claude")
+                    # For non-Claude 3.7 models, just use standard messages API
+                    response = await self.anthropic_client.messages.create(**params)
+
+                # Extract text from response based on its structure
+                response_content = ""
+
+                # Handle different response structures
+                if hasattr(response, 'content'):
+                    if isinstance(response.content, list):
+                        # It's a list of content blocks (most likely)
+                        for block in response.content:
+                            if hasattr(block, 'type') and block.type == "text":
+                                response_content += block.text
+                    else:
+                        # It might be a string
+                        response_content = response.content
+
+                # If we still don't have content, try other attributes
+                if not response_content and hasattr(response, 'message'):
+                    if hasattr(response.message, 'content'):
+                        response_content = response.message.content
+
+                # Log successful response
+                self.logger.info(f"Successfully received response from Claude. Content length: {len(response_content)}")
+
+            except Exception as e:
+                self.logger.error(f"Error using Anthropic API: {str(e)}")
+                raise
         else:
-            # Using OpenAI API - keep your existing code
+            # Using OpenAI API - unchanged
             params = {
                 "model": self.llm_model,
                 "messages": [
@@ -826,18 +816,55 @@ class EmbeddingsImpactAnalyzer:
 
             # Add model-specific parameters for OpenAI models
             if "o3-mini" in self.llm_model or "o1" in self.llm_model:  # Reasoning models
-                # Use temperature instead of reasoning_effort to avoid compatibility issues
                 self.logger.info(f"Using OpenAI API with reasoning model {self.llm_model}")
                 params["reasoning_effort"] = "high"
             else:  # gpt-4o and other models
                 self.logger.info(f"Using OpenAI API with model {self.llm_model}")
                 params["temperature"] = 0
 
-            self.logger.info(f"Using OpenAI API with model {self.llm_model}")
             response = await self.openai_client.chat.completions.create(**params)
             analysis_data = json.loads(response.choices[0].message.content)
 
-        # Process impact details from JSON
+        # If using Anthropic, we need to parse the JSON response here
+        if self.use_anthropic:
+            # Parse the JSON response from the text
+            try:
+                # Log the first 100 chars of the response for debugging
+                self.logger.info(f"Response content begins with: {response_content[:100]}...")
+
+                # Check if response starts with a JSON object
+                if not response_content:
+                    raise ValueError("Empty response from Anthropic API")
+
+                if not response_content.strip().startswith('{'):
+                    # Try to extract JSON content
+                    json_start = response_content.find('{')
+                    json_end = response_content.rfind('}') + 1
+                    if json_start >= 0 and json_end > json_start:
+                        clean_json = response_content[json_start:json_end]
+                        self.logger.info(f"Extracted JSON from position {json_start} to {json_end}")
+                        analysis_data = json.loads(clean_json)
+                    else:
+                        raise ValueError("Could not extract JSON from response")
+                else:
+                    analysis_data = json.loads(response_content)
+            except json.JSONDecodeError:
+                # Handle case where response isn't valid JSON
+                self.logger.error(f"Invalid JSON response from Claude: {response_content[:200]}...")
+                # Try to extract JSON from text response
+                json_start = response_content.find('{')
+                json_end = response_content.rfind('}') + 1
+                if json_start >= 0 and json_end > json_start:
+                    try:
+                        clean_json = response_content[json_start:json_end]
+                        analysis_data = json.loads(clean_json)
+                    except:
+                        self.logger.error("Failed to extract JSON from Claude response")
+                        raise
+                else:
+                    raise ValueError("Failed to parse JSON response from Claude")
+
+        # Process impact details from JSON (unchanged)
         impacts_list = []
         for impact_dict in analysis_data["agency_impacts"]:
             raw_deadline = impact_dict.get("deadline")
