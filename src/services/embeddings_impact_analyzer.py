@@ -82,7 +82,9 @@ class EmbeddingsImpactAnalyzer:
         practice_groups_data: PracticeGroups,
         embedding_model="text-embedding-3-large", 
         llm_model="gpt-4o-2024-08-06", 
-        anthropic_client=None
+        anthropic_client=None,
+        max_concurrency=3,  # New parameter for controlling parallel requests
+        max_retries=3       # New parameter for retry attempts
     ):
         self.logger = logging.getLogger(__name__)
         self.openai_client = openai_client
@@ -123,7 +125,11 @@ class EmbeddingsImpactAnalyzer:
             "Governance"
         ]
 
-        self.logger.info(f"Initialized Enhanced EmbeddingsImpactAnalyzer with embedding model: {embedding_model} and LLM model: {llm_model}")
+        # New parameters for parallelization
+        self.max_concurrency = max_concurrency
+        self.max_retries = max_retries
+
+        self.logger.info(f"Initialized Enhanced EmbeddingsImpactAnalyzer with embedding model: {embedding_model}, LLM model: {llm_model}, max_concurrency: {max_concurrency}")
 
     async def analyze_changes(
         self,
@@ -131,9 +137,10 @@ class EmbeddingsImpactAnalyzer:
         progress_handler=None
     ) -> Dict[str, Any]:
         """
-        Enhanced analysis of changes:
+        Enhanced analysis of changes with parallelization:
         1. Multi-class classification to determine impact type (direct/indirect/none)
         2. Detailed LLM analysis only for changes with potential impacts
+        3. Process multiple changes in parallel with controlled concurrency
         """
         try:
             total_changes = len(skeleton["changes"])
@@ -141,7 +148,7 @@ class EmbeddingsImpactAnalyzer:
             if progress_handler:
                 progress_handler.update_progress(
                     5,  # Step 5 for impact analysis
-                    "Starting enhanced impact analysis for local agencies",
+                    f"Starting enhanced impact analysis with {self.max_concurrency} parallel tasks",
                     0,  # Start at 0
                     total_changes
                 )
@@ -149,107 +156,191 @@ class EmbeddingsImpactAnalyzer:
             # Initialize the embeddings for multi-class classification (one-time)
             await self._initialize_impact_embeddings()
 
+            # Create a semaphore to limit concurrent API calls
+            semaphore = asyncio.Semaphore(self.max_concurrency)
+
+            # Track completed changes for progress reporting
+            completed_count = 0
+
+            # Create a lock for thread-safe progress updates
+            progress_lock = asyncio.Lock()
+
             # Store classification results for logging and analysis
             classification_results = []
 
-            # Process each change
-            for i, change in enumerate(skeleton["changes"]):
-                current_change = i + 1  # Human-readable count (1-based)
+            # Define the worker function that processes a single change
+            async def process_change(i, change):
+                nonlocal completed_count
 
-                if progress_handler:
-                    progress_handler.update_substep(
-                        current_change,
-                        f"Analyzing substantive change {current_change} of {total_changes}"
-                    )
+                # Acquire semaphore to limit concurrency
+                async with semaphore:
+                    try:
+                        current_change = i + 1  # Human-readable count (1-based)
+                        change_id = change['id']
 
-                # Get bill sections for this change
-                sections = self._get_linked_sections(change, skeleton)
-                code_mods = self._get_code_modifications(change, skeleton)
-                change["bill_section_details"] = sections
+                        # Get bill sections for this change
+                        sections = self._get_linked_sections(change, skeleton)
+                        code_mods = self._get_code_modifications(change, skeleton)
+                        change["bill_section_details"] = sections
 
-                # Before starting analysis, update with more specific info
-                if progress_handler:
-                    # Include the digest text preview for better context
-                    digest_preview = change['digest_text'][:60] + "..." if len(change['digest_text']) > 60 else change['digest_text']
-                    progress_handler.update_substep(
-                        current_change,
-                        f"Processing change {current_change}/{total_changes}: {digest_preview}"
-                    )
+                        # Update progress with task starting
+                        async with progress_lock:
+                            if progress_handler:
+                                # Include the digest text preview for better context
+                                digest_preview = change['digest_text'][:60] + "..." if len(change['digest_text']) > 60 else change['digest_text']
+                                progress_handler.update_substep(
+                                    completed_count,
+                                    f"Processing change {current_change}/{total_changes}: {digest_preview}"
+                                )
 
-                # Enhanced classification with impact type determination
-                classification = await self._classify_impact_type(change, sections)
+                        # Enhanced classification with impact type determination
+                        classification = await self._classify_impact_type(change, sections)
 
-                # Create ClassificationResult for logging and tracking
-                result = ClassificationResult(
-                    change_id=change['id'],
-                    has_impact=classification["has_impact"],
-                    impact_type=classification["impact_type"],
-                    method=classification["method"],
-                    confidence=classification["confidence"],
-                    detected_agencies=classification["agencies"],
-                    similarity_scores=classification.get("similarities", {})
-                )
-
-                # Log the detailed classification result
-                self.logger.info(result.log_message())
-
-                # Store the classification result
-                classification_results.append(result)
-
-                # Update the change object with classification data
-                change["impacts_local_agencies"] = classification["has_impact"]
-                change["impact_type"] = classification["impact_type"]
-                change["classification_method"] = classification["method"]
-                change["classification_confidence"] = classification["confidence"]
-
-                # If agencies were detected directly, store them
-                if classification["agencies"]:
-                    change["local_agencies_impacted"] = classification["agencies"]
-
-                # Detailed LLM analysis only if potentially impacts local agencies
-                if classification["has_impact"]:
-                    self.logger.info(f"Change {change['id']} classified as {classification['impact_type']} impact - proceeding with LLM analysis")
-
-                    # Update progress with classification method
-                    if progress_handler:
-                        method_display = {
-                            "direct_mention": "direct agency mentions",
-                            "embedding_similarity": "semantic similarity",
-                            "domain_heuristic": "domain-specific patterns"
-                        }.get(classification["method"], classification["method"])
-
-                        progress_handler.update_substep(
-                            current_change,
-                            f"Analyzing change {current_change}/{total_changes} - {classification['impact_type'].upper()} impact detected via {method_display}"
+                        # Create ClassificationResult for logging and tracking
+                        result = ClassificationResult(
+                            change_id=change_id,
+                            has_impact=classification["has_impact"],
+                            impact_type=classification["impact_type"],
+                            method=classification["method"],
+                            confidence=classification["confidence"],
+                            detected_agencies=classification["agencies"],
+                            similarity_scores=classification.get("similarities", {})
                         )
 
-                    # LLM identifies both practice groups and impacted agencies
-                    analysis = await self._analyze_change_with_llm(change, sections, code_mods, skeleton)
-                    self._update_change_with_analysis(change, analysis)
+                        # Log the detailed classification result
+                        self.logger.info(result.log_message())
 
-                    # Apply post-processing to handle inconsistencies
-                    self._apply_heuristic_corrections(change)
+                        # Update the change object with classification data
+                        change["impacts_local_agencies"] = classification["has_impact"]
+                        change["impact_type"] = classification["impact_type"]
+                        change["classification_method"] = classification["method"]
+                        change["classification_confidence"] = classification["confidence"]
 
-                    # After LLM analysis, update progress with completion info
-                    if progress_handler:
-                        # Get the count of affected agencies for the status message
-                        agency_count = len(change.get("local_agencies_impacted", []))
-                        agency_msg = f"{agency_count} agencies affected" if agency_count > 0 else "No agencies affected"
+                        # If agencies were detected directly, store them
+                        if classification["agencies"]:
+                            change["local_agencies_impacted"] = classification["agencies"]
 
-                        progress_handler.update_substep(
-                            current_change,
-                            f"Completed detailed analysis for change {current_change}/{total_changes} ({agency_msg})"
+                        # Detailed LLM analysis only if potentially impacts local agencies
+                        if classification["has_impact"]:
+                            self.logger.info(f"Change {change_id} classified as {classification['impact_type']} impact - proceeding with LLM analysis")
+
+                            # With exponential backoff retry for LLM analysis
+                            retry_count = 0
+                            max_retries = self.max_retries
+                            retry_delay = 1  # Initial delay in seconds
+
+                            while True:
+                                try:
+                                    # LLM identifies both practice groups and impacted agencies
+                                    analysis = await self._analyze_change_with_llm(change, sections, code_mods, skeleton)
+                                    self._update_change_with_analysis(change, analysis)
+
+                                    # Apply post-processing to handle inconsistencies
+                                    self._apply_heuristic_corrections(change)
+                                    break  # Success, exit retry loop
+
+                                except Exception as e:
+                                    retry_count += 1
+
+                                    # Check if we should retry
+                                    if retry_count <= max_retries:
+                                        # If it's a rate limit or similar transient error
+                                        is_rate_limit = any(
+                                            err in str(e).lower() 
+                                            for err in ["rate limit", "too many requests", "capacity", "overloaded", "timeout"]
+                                        )
+
+                                        if is_rate_limit:
+                                            self.logger.warning(
+                                                f"Rate limit hit for change {change_id}, retry {retry_count}/{max_retries} "
+                                                f"after {retry_delay}s delay"
+                                            )
+                                            await asyncio.sleep(retry_delay)
+                                            # Exponential backoff with jitter
+                                            retry_delay = min(retry_delay * 2 * (0.5 + 0.5 * (await asyncio.to_thread(float, str(hash(change_id))))), 60)
+                                        else:
+                                            # For other errors, retry with shorter delay
+                                            self.logger.warning(
+                                                f"Error analyzing change {change_id}, retry {retry_count}/{max_retries} "
+                                                f"after {retry_delay}s delay: {str(e)}"
+                                            )
+                                            await asyncio.sleep(1)  # Short delay for non-rate-limit errors
+                                    else:
+                                        self.logger.error(f"Failed to analyze change {change_id} after {max_retries} retries: {str(e)}")
+                                        # Create a minimal analysis as fallback
+                                        self._create_minimal_analysis(change)
+                                        # Add error information
+                                        change["analysis_error"] = str(e)
+                                        break  # Exit retry loop after max retries
+                        else:
+                            self.logger.info(f"Change {change_id} has no impact on local agencies - skipping LLM analysis")
+                            # For non-impacted changes, create minimal analysis without LLM
+                            self._create_minimal_analysis(change)
+
+                        # Add result to classification results list
+                        async with progress_lock:
+                            classification_results.append(result)
+
+                            # Update progress counter and UI
+                            completed_count += 1
+                            if progress_handler:
+                                # Get the count of affected agencies for the status message
+                                agency_count = len(change.get("local_agencies_impacted", []))
+                                impact_type = classification["impact_type"].upper()
+
+                                if classification["has_impact"]:
+                                    agency_msg = f"{agency_count} agencies affected ({impact_type} impact)"
+                                else:
+                                    agency_msg = "No local agency impact"
+
+                                progress_handler.update_substep(
+                                    completed_count,
+                                    f"Completed change {completed_count}/{total_changes} ({agency_msg})"
+                                )
+
+                                # Also update the main progress
+                                progress_handler.update_progress(
+                                    5,  # Step 5 for impact analysis
+                                    f"Analyzing impacts with embeddings and AI ({completed_count}/{total_changes})",
+                                    completed_count,
+                                    total_changes
+                                )
+
+                        return result
+                    except Exception as e:
+                        self.logger.error(f"Error processing change {change.get('id', f'index_{i}')}: {str(e)}")
+                        # Create minimal analysis as fallback in case of error
+                        self._create_minimal_analysis(change)
+                        change["analysis_error"] = str(e)
+
+                        # Update progress even on error
+                        async with progress_lock:
+                            completed_count += 1
+                            if progress_handler:
+                                progress_handler.update_substep(
+                                    completed_count,
+                                    f"Error processing change {i+1}/{total_changes}: {str(e)[:50]}..."
+                                )
+
+                        # Still return a result object for tracking
+                        return ClassificationResult(
+                            change_id=change.get('id', f'index_{i}'),
+                            has_impact=False,
+                            impact_type="none",
+                            method="error",
+                            confidence=0.0,
+                            detected_agencies=[],
+                            similarity_scores={}
                         )
-                else:
-                    self.logger.info(f"Change {change['id']} has no impact on local agencies - skipping LLM analysis")
-                    # For non-impacted changes, create minimal analysis without LLM
-                    self._create_minimal_analysis(change)
 
-                    if progress_handler:
-                        progress_handler.update_substep(
-                            current_change,
-                            f"Completed change {current_change}/{total_changes} (No local agency impact)"
-                        )
+            # Create tasks for each change
+            tasks = [
+                process_change(i, change) 
+                for i, change in enumerate(skeleton["changes"])
+            ]
+
+            # Execute all tasks in parallel with proper concurrency control
+            await asyncio.gather(*tasks)
 
             # Log all classification results for later analysis
             self._log_classification_summary(classification_results)
@@ -258,9 +349,11 @@ class EmbeddingsImpactAnalyzer:
             self._update_skeleton_metadata(skeleton)
 
             if progress_handler:
-                progress_handler.update_substep(
-                    total_changes,
-                    f"Impact analysis complete ({total_changes}/{total_changes})"
+                progress_handler.update_progress(
+                    5,  # Step 5 for impact analysis
+                    f"Impact analysis complete ({total_changes}/{total_changes})",
+                    total_changes,  # All changes processed
+                    total_changes
                 )
 
             return skeleton

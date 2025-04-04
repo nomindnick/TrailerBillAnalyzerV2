@@ -169,6 +169,9 @@ class ProgressHandler:
         self.socketio = socketio
         self.logger = logging.getLogger(__name__)
         self.analysis_id = analysis_id
+        # For tracking parallel tasks
+        self._last_step = None
+        self._last_message = None
 
     def update_progress(self, step, message, current_substep=None, total_substeps=None):
         """Send progress update to client"""
@@ -176,6 +179,10 @@ class ProgressHandler:
             'step': step,
             'message': message
         }
+
+        # Track the last step and message
+        self._last_step = step
+        self._last_message = message
 
         if current_substep is not None and total_substeps is not None:
             data['current_substep'] = current_substep
@@ -193,6 +200,14 @@ class ProgressHandler:
         data = {'current_substep': current}
         if message:
             data['message'] = message
+
+        # If we have the last step, include it
+        if self._last_step is not None:
+            data['step'] = self._last_step
+
+        # If message is None, keep the last message
+        if message is None and self._last_message is not None:
+            data['message'] = self._last_message
 
         # Include analysis ID if available
         if self.analysis_id:
@@ -214,6 +229,12 @@ def analyze_bill():
     model = data.get('model', 'gpt-4o-2024-08-06')
     analysis_id = data.get('analysisId')  # Get the analysis ID
 
+    # Get concurrency settings - default to 3 for balanced performance
+    max_concurrency = int(data.get('concurrency', 3))
+
+    # Cap concurrency at reasonable limits
+    max_concurrency = min(max(1, max_concurrency), 10)
+
     # Default embedding model
     embedding_model = "text-embedding-3-large" 
 
@@ -232,14 +253,19 @@ def analyze_bill():
                 use_anthropic=use_anthropic, 
                 model=model,
                 embedding_model=embedding_model,
-                analysis_id=analysis_id  # Make sure parameter names match function definition
+                analysis_id=analysis_id,
+                max_concurrency=max_concurrency  # Add concurrency parameter
             )
         )
         loop.close()
 
     socketio.start_background_task(run_async_analysis)
 
-    return jsonify({'status': 'Analysis started', 'analysisId': analysis_id})
+    return jsonify({
+        'status': 'Analysis started', 
+        'analysisId': analysis_id,
+        'concurrency': max_concurrency
+    })
 
 @app.route('/reports/<path:filename>')
 def serve_report(filename):
@@ -310,16 +336,19 @@ async def analyze_bill_async(
     model=None,
     embedding_model="text-embedding-3-large",
     analysis_id=None, 
-    progress_handler=None
+    progress_handler=None,
+    max_concurrency=3  # New parameter for controlling parallelization
 ):
-    """Asynchronous bill analysis"""
+    """
+    Asynchronous bill analysis with parallel processing for impact analysis.
+    """
     try:
         # Create progress handler if not provided
         if progress_handler is None:
             progress_handler = ProgressHandler(socketio, analysis_id)  # Pass analysis_id to handler
 
         # Update initial progress
-        progress_handler.update_progress(1, "Starting bill analysis")
+        progress_handler.update_progress(1, f"Starting bill analysis with {max_concurrency}x parallelization")
 
         # Set default model if not specified, but don't override a provided model
         if model is None:
@@ -337,6 +366,7 @@ async def analyze_bill_async(
 
         logger.info(f"Using LLM model: {model} for analysis (use_anthropic={use_anthropic})")
         logger.info(f"Using embedding model: {embedding_model} for matching and classification")
+        logger.info(f"Parallelization: {max_concurrency} concurrent tasks")
 
         # Initialize the embeddings service (will be shared among components)
         embeddings_service = EmbeddingsService(
@@ -384,17 +414,19 @@ async def analyze_bill_async(
         progress_handler.update_progress(4, "Matching sections using embeddings")
         matched_skeleton = await embeddings_matcher.match_sections(skeleton, bill_text, progress_handler)
 
-        # Create embeddings-based impact analyzer
+        # Create embeddings-based impact analyzer with parallelization
         impact_analyzer = EmbeddingsImpactAnalyzer(
             openai_client,
             practice_groups,
             embedding_model=embedding_model,
             llm_model=model,
-            anthropic_client=anthropic_client
+            anthropic_client=anthropic_client,
+            max_concurrency=max_concurrency,  # Pass concurrency setting
+            max_retries=3  # Configure retries
         )
 
-        # Analyze impacts with embeddings
-        progress_handler.update_progress(5, "Analyzing impacts with embeddings and AI")
+        # Analyze impacts with embeddings - now with parallel processing
+        progress_handler.update_progress(5, f"Analyzing impacts with {max_concurrency}x parallel processing")
         analyzed_skeleton = await impact_analyzer.analyze_changes(matched_skeleton, progress_handler)
 
         # Update metadata
@@ -410,7 +442,7 @@ async def analyze_bill_async(
         }
 
         # Generate report
-        progress_handler.update_progress(6, "Generating final report")  # Changed from 5 to 6
+        progress_handler.update_progress(6, "Generating final report")
         report_generator = ReportGenerator()
         report_html = report_generator.generate_report(final_skeleton, bill_info, bill_text)
 
@@ -548,6 +580,7 @@ if __name__ == "__main__":
     parser.add_argument('--year', type=int, default=2023, help='Year of the legislative session')
     parser.add_argument('--output', type=str, default='output', help='Output directory')
     parser.add_argument('--server', action='store_true', help='Run as web server')
+    parser.add_argument('--concurrency', type=int, default=3, help='Number of concurrent API requests (1-10)')
 
     # If no args provided, default to server mode
     if len(sys.argv) == 1:
@@ -555,11 +588,14 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    # Cap concurrency at reasonable limits
+    max_concurrency = min(max(1, args.concurrency), 10)
+
     # If --server flag is set or no bill_number is provided, run as web server
     if args.server or not args.bill_number:
         # Default to port 8080, but use environment variable if set
         port = int(os.environ.get('PORT', 8080))
-        logger.info(f"Starting web server on port {port}")
+        logger.info(f"Starting web server on port {port} with default concurrency {max_concurrency}")
         socketio.run(app, host='0.0.0.0', port=port, debug=True)
     else:
         # Run as CLI tool
