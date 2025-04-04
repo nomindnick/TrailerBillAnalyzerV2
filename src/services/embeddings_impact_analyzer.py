@@ -726,34 +726,51 @@ class EmbeddingsImpactAnalyzer:
                 "model": self.llm_model,
                 "max_tokens": 64000,
                 "system": system_prompt,
-                "messages": [{"role": "user", "content": prompt}],
-                "stream": True  # Use streaming for long-running operations
+                "messages": [{"role": "user", "content": prompt}]
             }
 
             # Add thinking parameter for Claude 3.7 models
-            if "claude-3-7" in self.llm_model:
-                params["temperature"] = 1
+            is_claude_3_7 = "claude-3-7" in self.llm_model.lower()
+
+            if is_claude_3_7:
+                self.logger.info(f"Using Claude 3.7 model with thinking parameter: {self.llm_model}")
+                params["temperature"] = 0.7
                 params["thinking"] = {
                     "type": "enabled", 
                     "budget_tokens": 16000
                 }
+                # For Claude 3.7, we'll use non-streaming mode to properly handle thinking tokens
+                use_streaming = False
+            else:
+                # For other Claude models, use streaming
+                use_streaming = True
+                self.logger.info(f"Using standard Claude model with streaming: {self.llm_model}")
 
-            self.logger.info(f"Using Anthropic API with model {self.llm_model} (streaming enabled)")
+            self.logger.info(f"Calling Anthropic API with params: model={self.llm_model}, thinking={'enabled' if is_claude_3_7 else 'disabled'}, streaming={use_streaming}")
 
-            # Process the streaming response
-            response_content = ""
+            # Process response based on whether streaming is enabled
             try:
-                stream = await self.anthropic_client.messages.create(**params)
-                async for chunk in stream:
-                    if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'text'):
-                        response_content += chunk.delta.text
+                if use_streaming:
+                    # Streaming approach
+                    response_content = ""
+                    stream = await self.anthropic_client.messages.create(**params, stream=True)
+                    async for chunk in stream:
+                        if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'text'):
+                            response_content += chunk.delta.text
+                else:
+                    # Non-streaming approach for Claude 3.7
+                    response = await self.anthropic_client.messages.create(**params)
+                    if hasattr(response, 'content') and len(response.content) > 0:
+                        response_content = response.content[0].text
+                    else:
+                        raise ValueError("No content received from Claude API")
             except Exception as e:
-                self.logger.error(f"Error during Anthropic API streaming: {str(e)}")
+                self.logger.error(f"Error during Anthropic API call: {str(e)}")
                 raise
 
             if not response_content:
-                self.logger.error("No text content received in Anthropic streaming response")
-                raise ValueError("No text received from Claude API in streaming response")
+                self.logger.error("No text content received in Anthropic response")
+                raise ValueError("No text received from Claude API")
 
             # Parse the JSON response from the text
             try:
@@ -785,7 +802,7 @@ class EmbeddingsImpactAnalyzer:
                 else:
                     raise ValueError("Failed to parse JSON response from Claude")
         else:
-            # Using OpenAI API
+            # Using OpenAI API - keep your existing code
             params = {
                 "model": self.llm_model,
                 "messages": [

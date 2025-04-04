@@ -419,6 +419,7 @@ class ReportGenerator:
             "gpt-4o-2024-05-13": "GPT-4o (May 2024)",
             "gpt-4-turbo": "GPT-4 Turbo",
             "gpt-3.5-turbo": "GPT-3.5 Turbo",
+            "o3-mini-2025-01-31": "GPT-o3-mini (January 2025)",
             "claude-3-opus-20240229": "Claude 3 Opus",
             "claude-3-sonnet-20240229": "Claude 3 Sonnet",
             "claude-3-7-sonnet-20250219": "Claude 3.7 Sonnet (Deep Thinking)"

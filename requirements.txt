@@ -16,3 +16,4 @@ eventlet
 eventlet
 eventlet
 eventlet
+anthropic

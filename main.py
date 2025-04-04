@@ -352,7 +352,7 @@ async def analyze_bill_async(
 
         # Set default model if not specified, but don't override a provided model
         if model is None:
-            model = "claude-3-sonnet-20240229" if use_anthropic else "gpt-4o-2024-08-06"
+            model = "claude-3-7-sonnet-20250219" if use_anthropic else "gpt-4o-2024-08-06"
 
         # Always calculate use_anthropic based on the final model name to ensure consistency
         use_anthropic = model.startswith("claude")
