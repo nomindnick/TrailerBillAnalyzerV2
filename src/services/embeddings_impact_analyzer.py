@@ -732,17 +732,21 @@ class EmbeddingsImpactAnalyzer:
                 # All Claude models, including 3.7, should use messages API
                 self.logger.info(f"Using messages API with model: {self.llm_model}")
 
-                # Create base parameters
+                # Create base parameters with extended thinking for Claude 3.7
                 params = {
                     "model": self.llm_model,
                     "max_tokens": 64000,
                     "system": system_prompt,
-                    "messages": [{"role": "user", "content": prompt}]
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 1  # Required for extended thinking
                 }
 
-                # Add temperature for Claude 3.7
+                # Add extended thinking for Claude 3.7
                 if is_claude_3_7:
-                    params["temperature"] = 0.7
+                    params["thinking"] = {
+                        "type": "enabled",
+                        "budget_tokens": 16000
+                    }
 
                     # Try with thinking parameter for Claude 3.7
                     try:
