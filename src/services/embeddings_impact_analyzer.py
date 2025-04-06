@@ -197,6 +197,9 @@ class EmbeddingsImpactAnalyzer:
                         # Enhanced classification with impact type determination
                         classification = await self._classify_impact_type(change, sections)
 
+                        # Log additional details for debugging model differences
+                        self.logger.info(f"MODEL: {self.llm_model}, Change {change_id}: has_impact={classification['has_impact']}, type={classification['impact_type']}, method={classification['method']}, confidence={classification['confidence']:.4f}")
+
                         # Create ClassificationResult for logging and tracking
                         result = ClassificationResult(
                             change_id=change_id,
@@ -221,9 +224,12 @@ class EmbeddingsImpactAnalyzer:
                         if classification["agencies"]:
                             change["local_agencies_impacted"] = classification["agencies"]
 
-                        # Detailed LLM analysis only if potentially impacts local agencies
-                        if classification["has_impact"]:
+                        # EXPLICIT CHECK: Detailed LLM analysis only if potentially impacts local agencies
+                        if classification["has_impact"] == True:  # Explicitly check for True
                             self.logger.info(f"Change {change_id} classified as {classification['impact_type']} impact - proceeding with LLM analysis")
+
+                            # Make sure is_digest_only flag is not set
+                            change["is_digest_only"] = False
 
                             # With exponential backoff retry for LLM analysis
                             retry_count = 0
@@ -274,9 +280,17 @@ class EmbeddingsImpactAnalyzer:
                                         change["analysis_error"] = str(e)
                                         break  # Exit retry loop after max retries
                         else:
-                            self.logger.info(f"Change {change_id} has no impact on local agencies - skipping LLM analysis")
+                            self.logger.info(f"Change {change_id} has no impact on local agencies - SKIPPING LLM analysis")
                             # For non-impacted changes, create minimal analysis without LLM
                             self._create_minimal_analysis(change)
+
+                            # ENSURE digest text is used and flag is set
+                            change["substantive_change"] = "(Legislative Counsel's Digest) " + change["digest_text"]
+                            change["is_digest_only"] = True  # Ensure flag is set
+                            self.logger.info(f"Setting is_digest_only=True for change {change_id}")
+
+                            # Double check no accidental impact flag
+                            change["impacts_local_agencies"] = False
 
                         # Add result to classification results list
                         async with progress_lock:
@@ -292,7 +306,7 @@ class EmbeddingsImpactAnalyzer:
                                 if classification["has_impact"]:
                                     agency_msg = f"{agency_count} agencies affected ({impact_type} impact)"
                                 else:
-                                    agency_msg = "No local agency impact"
+                                    agency_msg = "No local agency impact (using digest only)"
 
                                 progress_handler.update_substep(
                                     completed_count,
@@ -306,6 +320,19 @@ class EmbeddingsImpactAnalyzer:
                                     completed_count,
                                     total_changes
                                 )
+
+                        # Before returning, double check the is_digest_only flag is consistent
+                        if not change.get("impacts_local_agencies", False):
+                            if not change.get("is_digest_only", False):
+                                self.logger.warning(f"Inconsistency detected: Change {change_id} has no impact but is_digest_only=False - fixing")
+                                change["is_digest_only"] = True
+                        else:
+                            if change.get("is_digest_only", False):
+                                self.logger.warning(f"Inconsistency detected: Change {change_id} has impact but is_digest_only=True - fixing")
+                                change["is_digest_only"] = False
+
+                        # Log final state
+                        self.logger.info(f"Final state for change {change_id}: impacts_local_agencies={change.get('impacts_local_agencies', False)}, is_digest_only={change.get('is_digest_only', False)}")
 
                         return result
                     except Exception as e:
@@ -378,34 +405,66 @@ class EmbeddingsImpactAnalyzer:
         # Normalize text for case-insensitive matching
         text_lower = text.lower()
 
+        # Define additional agency-related terms to look for
+        agency_related_terms = [
+            "local agency", "local government", "local jurisdiction", 
+            "public agency", "public entity", "public authority",
+            "municipal", "municipality", "cities", "towns",
+            "counties", "board of supervisors", "special district",
+            "school board", "education", "unified district",
+            "community college", "charter school", "local educational agency"
+        ]
+
+        # Check if any of these terms are present
+        found_generic_agency = False
+        for term in agency_related_terms:
+            if term in text_lower:
+                found_generic_agency = True
+                break
+
         # Check for each agency type
         for name, agency in self.agency_types.agency_types.items():
             # Skip the "No Local Agency Impact" type for detection purposes
             if name == "No Local Agency Impact":
                 continue
 
-            # Check for the agency name (with word boundary)
-            if re.search(r'\b' + re.escape(name.lower()) + r'\b', text_lower):
+            # Check for the agency name (with more flexible matching)
+            agency_name_lower = name.lower()
+            if agency_name_lower in text_lower or any(word in text_lower for word in agency_name_lower.split()):
                 detected_agencies.add(name)
                 continue
 
             # Check for plural forms (for applicable types)
             plural_name = self._get_plural_form(name.lower())
-            if plural_name and re.search(r'\b' + re.escape(plural_name) + r'\b', text_lower):
+            if plural_name and plural_name in text_lower:
                 detected_agencies.add(name)
                 continue
 
-            # Check for keywords associated with this agency type
+            # Check for keywords associated with this agency type (with more relaxed matching)
             for keyword in agency.keywords:
-                if re.search(r'\b' + re.escape(keyword.lower()) + r'\b', text_lower):
+                keyword_lower = keyword.lower()
+                # Look for exact matches or keyword segments within words
+                if keyword_lower in text_lower or any(keyword_lower in word for word in text_lower.split()):
                     detected_agencies.add(name)
                     break
 
             # Check for examples of this agency type
             for example in agency.examples:
-                if re.search(r'\b' + re.escape(example.lower()) + r'\b', text_lower):
+                example_lower = example.lower()
+                if example_lower in text_lower:
                     detected_agencies.add(name)
                     break
+
+        # If we found generic agency terms but no specific agencies, add common default agencies
+        if found_generic_agency and not detected_agencies:
+            detected_agencies.add("City")
+            detected_agencies.add("County")
+
+        # Log the detection results
+        if detected_agencies:
+            self.logger.info(f"Detected agencies in text: {detected_agencies}")
+        else:
+            self.logger.info("No specific agencies detected in text")
 
         return list(detected_agencies)
 
@@ -476,19 +535,7 @@ class EmbeddingsImpactAnalyzer:
     async def _classify_impact_type(self, change: Dict[str, Any], sections: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Classify the impact type of a change on local agencies.
-
-        Args:
-            change: The change object to analyze
-            sections: Bill sections implementing this change
-
-        Returns:
-            Dict with classification results:
-                - has_impact: bool - True if any impact detected
-                - impact_type: str - "direct", "indirect", or "none"
-                - agencies: List[str] - Detected agency types
-                - method: str - Classification method used
-                - confidence: float - Confidence score (0-1)
-                - similarities: Dict - Similarity scores for each category
+        Uses fixed thresholds for consistent behavior across models.
         """
         # Combine text from change and sections for analysis
         combined_text = f"{change['digest_text']} {change.get('existing_law', '')} {change.get('proposed_change', '')}"
@@ -499,8 +546,18 @@ class EmbeddingsImpactAnalyzer:
             if section_text:
                 combined_text += f" {section_text[:1000]}"
 
+        # Log combined text length
+        self.logger.info(f"Combined text length for classification: {len(combined_text)} chars")
+
         # 1. First, check for direct agency mentions
         detected_agencies = self._detect_agency_mentions(combined_text)
+
+        # Log detected agencies
+        self.logger.info(f"Change {change.get('id', 'unknown')}: detected agencies = {detected_agencies}")
+
+        # Fixed bias to ensure consistency across models
+        model_independent_bias = True
+        self.logger.info(f"Using model-independent bias: {model_independent_bias}")
 
         if detected_agencies:
             self.logger.info(f"Change {change['id']} contains direct agency mentions: {detected_agencies} - classifying as direct impact")
@@ -513,34 +570,51 @@ class EmbeddingsImpactAnalyzer:
                 "similarities": {}  # No embedding similarity used
             }
 
-        # 2. No direct mentions, use embedding classification
+        # 2. Keyword-based approach as reliable fallback
+        if self._has_practice_area_keywords(change, combined_text):
+            self.logger.info(f"Change {change['id']} has practice area keywords suggesting local impact")
+            return {
+                "has_impact": True,
+                "impact_type": "indirect",
+                "agencies": ["City", "County"],  # Default agencies
+                "method": "practice_area_heuristic",
+                "confidence": 0.75,
+                "similarities": {}
+            }
+
+        # 3. Embedding classification with fixed thresholds
         text_embedding = await self.embeddings_service.get_embedding(combined_text)
 
-        # Calculate similarity with all three reference embeddings
+        # Calculate similarity with reference embeddings
         direct_similarity = self.embeddings_service.cosine_similarity(text_embedding, self.direct_impact_embedding)
         indirect_similarity = self.embeddings_service.cosine_similarity(text_embedding, self.indirect_impact_embedding)
         no_impact_similarity = self.embeddings_service.cosine_similarity(text_embedding, self.no_impact_embedding)
 
         similarities = {
             "direct": direct_similarity,
-            "indirect": indirect_similarity,
+            "indirect": indirect_similarity, 
             "none": no_impact_similarity
         }
 
         self.logger.info(f"Change {change['id']} - Similarity scores: Direct: {direct_similarity:.4f}, "
                         f"Indirect: {indirect_similarity:.4f}, None: {no_impact_similarity:.4f}")
 
-        # Determine impact type based on highest similarity score
-        # Add thresholds for more nuanced decision making
-        direct_threshold = self.direct_impact_threshold
-        indirect_threshold = self.indirect_impact_threshold
+        # FIXED THRESHOLDS for consistent behavior
+        direct_threshold = 0.55
+        indirect_threshold = 0.53
 
-        # Look for the highest similarity score that exceeds its threshold
+        # Apply fixed bias adjustments 
+        if model_independent_bias:
+            direct_similarity += 0.05
+            indirect_similarity += 0.03
+            self.logger.info(f"After bias: Direct: {direct_similarity:.4f}, Indirect: {indirect_similarity:.4f}")
+
+        # Make decision based on highest similarity that exceeds threshold
         if direct_similarity >= direct_threshold and direct_similarity >= indirect_similarity and direct_similarity >= no_impact_similarity:
             impact_type = "direct"
             has_impact = True
             confidence = direct_similarity
-        elif indirect_similarity >= indirect_threshold and indirect_similarity >= direct_similarity * 0.9 and indirect_similarity >= no_impact_similarity:
+        elif indirect_similarity >= indirect_threshold and indirect_similarity >= no_impact_similarity:
             impact_type = "indirect"
             has_impact = True
             confidence = indirect_similarity
@@ -549,7 +623,7 @@ class EmbeddingsImpactAnalyzer:
             has_impact = False
             confidence = no_impact_similarity
 
-        # 3. Special check for transportation-related content (kept for backward compatibility)
+        # Special case for transportation (fallback)
         if impact_type == "none" and self._is_transportation_related(change):
             self.logger.info(f"Change {change['id']} appears transportation-related - classifying as indirect impact")
             return {
@@ -557,7 +631,7 @@ class EmbeddingsImpactAnalyzer:
                 "impact_type": "indirect",
                 "agencies": ["City", "County", "Special District"],
                 "method": "domain_heuristic",
-                "confidence": 0.75,  # Moderate confidence for domain heuristic
+                "confidence": 0.75,
                 "similarities": similarities
             }
 
@@ -566,11 +640,75 @@ class EmbeddingsImpactAnalyzer:
         return {
             "has_impact": has_impact,
             "impact_type": impact_type,
-            "agencies": [],  # Empty list for embedding classification (will be determined by LLM if needed)
+            "agencies": [],
             "method": "embedding_similarity",
             "confidence": confidence,
             "similarities": similarities
         }
+
+    def _has_practice_area_keywords(self, change: Dict[str, Any], text: str) -> bool:
+        """Check if text contains keywords associated with practice areas that typically impact local agencies"""
+        text_lower = text.lower()
+
+        # Keywords associated with local agency impacts
+        local_impact_keywords = [
+            "local agency", "local government", "local jurisdiction", "local authority",
+            "city", "county", "municipality", "municipal", "special district",
+            "school district", "community college", "charter school",
+            "public agency", "public entity", "jpa", "joint powers",
+            "local control", "local funding", "local program", 
+            "local requirement", "local mandate", "local board",
+            "governing board", "ordinance", "resolution", "permits", "license",
+            "public works", "public facility", "public building",
+            "zoning", "land use", "planning", "ceqa", "environmental review"
+        ]
+
+        # Check for keyword matches
+        matches = [keyword for keyword in local_impact_keywords if keyword in text_lower]
+        if matches:
+            self.logger.info(f"Found practice area keywords: {matches}")
+            return True
+        return False
+        
+    # Add this helper method to detect practice area keywords
+    def _has_practice_area_keywords(self, change: Dict[str, Any], text: str) -> bool:
+        """Check if text contains keywords associated with practice areas that typically impact local agencies"""
+        text_lower = text.lower()
+
+        # Keywords associated with local agency impacts
+        local_impact_keywords = [
+            "local agency", "local government", "local jurisdiction", "local authority",
+            "city", "county", "municipality", "municipal", "special district",
+            "school district", "community college", "charter school",
+            "public agency", "public entity", "jpa", "joint powers",
+            "local control", "local funding", "local program", 
+            "local requirement", "local mandate", "local board",
+            "governing board", "ordinance", "resolution", "permits", "license",
+            "public works", "public facility", "public building",
+            "zoning", "land use", "planning", "ceqa", "environmental review"
+        ]
+
+        return any(keyword in text_lower for keyword in local_impact_keywords)
+
+    # Add this helper method to detect practice area keywords
+    def _has_practice_area_keywords(self, change: Dict[str, Any], text: str) -> bool:
+        """Check if text contains keywords associated with practice areas that typically impact local agencies"""
+        text_lower = text.lower()
+
+        # Keywords associated with local agency impacts
+        local_impact_keywords = [
+            "local agency", "local government", "local jurisdiction", "local authority",
+            "city", "county", "municipality", "municipal", "special district",
+            "school district", "community college", "charter school",
+            "public agency", "public entity", "jpa", "joint powers",
+            "local control", "local funding", "local program", 
+            "local requirement", "local mandate", "local board",
+            "governing board", "ordinance", "resolution", "permits", "license",
+            "public works", "public facility", "public building",
+            "zoning", "land use", "planning", "ceqa", "environmental review"
+        ]
+
+        return any(keyword in text_lower for keyword in local_impact_keywords)
 
     def _log_classification_summary(self, results: List[ClassificationResult]):
         """Log summary statistics about classification results."""
@@ -703,10 +841,7 @@ class EmbeddingsImpactAnalyzer:
         skeleton: Dict[str, Any]
     ) -> ChangeAnalysis:
         """
-        Generate comprehensive analysis of a change using LLM, which now includes:
-        1. Identifying specific impacted agency types
-        2. Identifying relevant practice groups
-        3. Detailed impact analysis
+        Generate comprehensive analysis of a change using LLM, with streaming for Claude 3.7
         """
         # Updated prompt to include practice group and agency identification
         prompt = self._build_comprehensive_prompt(change, sections, code_mods)
@@ -729,10 +864,7 @@ class EmbeddingsImpactAnalyzer:
             self.logger.info(f"Using model: {self.llm_model}")
 
             try:
-                # All Claude models, including 3.7, should use messages API
-                self.logger.info(f"Using messages API with model: {self.llm_model}")
-
-                # Create base parameters with extended thinking for Claude 3.7
+                # Base parameters that work for all Claude models
                 params = {
                     "model": self.llm_model,
                     "max_tokens": 64000,
@@ -747,50 +879,41 @@ class EmbeddingsImpactAnalyzer:
                         "type": "enabled",
                         "budget_tokens": 16000
                     }
+                    self.logger.info("Using streaming with extended thinking for Claude 3.7")
 
-                    # Try with thinking parameter for Claude 3.7
-                    try:
-                        self.logger.info("Attempting to use thinking parameter...")
+                    # Use streaming for Claude 3.7 with extended thinking
+                    response_content = ""
+                    async with self.anthropic_client.messages.stream(**params) as stream:
+                        async for chunk in stream:
+                            if hasattr(chunk, 'type') and chunk.type == "content_block_delta":
+                                if chunk.delta.type == "text_delta" and hasattr(chunk.delta, 'text'):
+                                    response_content += chunk.delta.text
 
-                        # Add thinking parameter for Claude 3.7 - TRY this approach
-                        thinking_params = params.copy()
-                        thinking_params["thinking"] = {
-                            "type": "enabled",
-                            "budget_tokens": 16000
-                        }
-
-                        response = await self.anthropic_client.messages.create(**thinking_params)
-                        self.logger.info("Successfully used thinking parameter!")
-
-                    except Exception as thinking_error:
-                        # If thinking parameter fails, try without it
-                        self.logger.warning(f"Thinking parameter failed: {str(thinking_error)}. Trying without thinking...")
-                        response = await self.anthropic_client.messages.create(**params)
+                    # Log successful response
+                    self.logger.info(f"Successfully received streamed response from Claude. Content length: {len(response_content)}")
                 else:
                     # For non-Claude 3.7 models, just use standard messages API
                     response = await self.anthropic_client.messages.create(**params)
 
-                # Extract text from response based on its structure
-                response_content = ""
+                    # Extract text from response based on its structure
+                    response_content = ""
+                    if hasattr(response, 'content'):
+                        if isinstance(response.content, list):
+                            # It's a list of content blocks (most likely)
+                            for block in response.content:
+                                if hasattr(block, 'type') and block.type == "text":
+                                    response_content += block.text
+                        else:
+                            # It might be a string
+                            response_content = response.content
 
-                # Handle different response structures
-                if hasattr(response, 'content'):
-                    if isinstance(response.content, list):
-                        # It's a list of content blocks (most likely)
-                        for block in response.content:
-                            if hasattr(block, 'type') and block.type == "text":
-                                response_content += block.text
-                    else:
-                        # It might be a string
-                        response_content = response.content
+                    # If we still don't have content, try other attributes
+                    if not response_content and hasattr(response, 'message'):
+                        if hasattr(response.message, 'content'):
+                            response_content = response.message.content
 
-                # If we still don't have content, try other attributes
-                if not response_content and hasattr(response, 'message'):
-                    if hasattr(response.message, 'content'):
-                        response_content = response.message.content
-
-                # Log successful response
-                self.logger.info(f"Successfully received response from Claude. Content length: {len(response_content)}")
+                    # Log successful response
+                    self.logger.info(f"Successfully received response from Claude. Content length: {len(response_content)}")
 
             except Exception as e:
                 self.logger.error(f"Error using Anthropic API: {str(e)}")
@@ -870,7 +993,7 @@ class EmbeddingsImpactAnalyzer:
 
         # Process impact details from JSON (unchanged)
         impacts_list = []
-        for impact_dict in analysis_data["agency_impacts"]:
+        for impact_dict in analysis_data.get("agency_impacts", []):
             raw_deadline = impact_dict.get("deadline")
             parsed_deadline = None
             if raw_deadline and isinstance(raw_deadline, str):
@@ -905,12 +1028,12 @@ class EmbeddingsImpactAnalyzer:
         change["practice_groups"] = practice_groups
 
         return ChangeAnalysis(
-            summary=analysis_data["summary"],
+            summary=analysis_data.get("summary", "No summary provided"),
             impacts=impacts_list,
             practice_groups=practice_groups,
-            action_items=analysis_data["action_items"],
-            deadlines=analysis_data["deadlines"],
-            requirements=analysis_data["requirements"]
+            action_items=analysis_data.get("action_items", []),
+            deadlines=analysis_data.get("deadlines", []),
+            requirements=analysis_data.get("requirements", [])
         )
 
     def _build_comprehensive_prompt(self, change, sections, code_mods) -> str:
@@ -1007,16 +1130,25 @@ Proposed Changes:
         """
         Create minimal analysis for changes with no local agency impact
         """
+        # Ensure the substantive_change field has the digest text
+        digest_text = change.get("digest_text", "No digest text available.")
+
         change.update({
-            "substantive_change": "This change does not appear to have a direct impact on local public agencies.",
+            "substantive_change": "(Legislative Counsel's Digest) " + digest_text,
             "local_agency_impact": "No direct impact on local agencies identified.",
             "key_action_items": [],
             "deadlines": [],
             "requirements": [],
             "impacts_local_agencies": False,
             "local_agencies_impacted": [],
-            "practice_groups": []  # Empty practice groups
+            "practice_groups": [],  # Empty practice groups
+            "is_digest_only": True  # Explicit flag for digest-only entries
         })
+
+        # Double check the flag is set correctly
+        if not change.get("is_digest_only", False):
+            self.logger.warning(f"Warning: is_digest_only flag was not set properly for change {change.get('id', 'unknown')} - fixing")
+            change["is_digest_only"] = True
 
     def _format_code_mods(self, mods: List[Dict[str, Any]]) -> str:
         formatted = []

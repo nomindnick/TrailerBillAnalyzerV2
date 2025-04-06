@@ -258,6 +258,7 @@ def analyze_bill():
             )
         )
         loop.close()
+        
 
     socketio.start_background_task(run_async_analysis)
 
@@ -428,7 +429,17 @@ async def analyze_bill_async(
         # Analyze impacts with embeddings - now with parallel processing
         progress_handler.update_progress(5, f"Analyzing impacts with {max_concurrency}x parallel processing")
         analyzed_skeleton = await impact_analyzer.analyze_changes(matched_skeleton, progress_handler)
+        
+        # After analyzing impacts, log the impact statistics
+        impact_count = sum(1 for c in analyzed_skeleton["changes"] if c.get("impacts_local_agencies", False))
+        logger.info(f"Analysis found {impact_count} out of {len(analyzed_skeleton['changes'])} changes that impact local agencies")
 
+        # Log details of each change
+        for i, change in enumerate(analyzed_skeleton["changes"]):
+            has_impact = change.get("impacts_local_agencies", False)
+            impact_type = change.get("impact_type", "none")
+            agencies = change.get("local_agencies_impacted", [])
+            logger.info(f"Change {i+1}: impacts_local_agencies={has_impact}, type={impact_type}, agencies={agencies}")
         # Update metadata
         final_skeleton = json_builder.update_metadata(analyzed_skeleton)
 

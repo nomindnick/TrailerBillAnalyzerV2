@@ -6,6 +6,17 @@
     <title>Bill Analysis Report - {{ bill_info.bill_number }}</title>
     <style>
         {{ css_styles }}
+
+        /* Added style for digest-only entries */
+        .digest-only {
+            font-style: italic;
+            color: #666;
+            background-color: #f9f9f9;
+            padding: 0.75rem;
+            border-left: 3px solid #ccc;
+            display: block;
+            margin: 0.5rem 0;
+        }
     </style>
 </head>
 <body data-date="{{ now }}">
@@ -98,9 +109,13 @@
                         {% endif %}
                     </div>
 
-                    <!-- AI-generated summary -->
+                    <!-- AI-generated summary or digest-only summary -->
                     <p><strong>Summary:</strong><br>
-                       {{ change.substantive_change }}
+                       {% if change.is_digest_only == true %}
+                           <em class="digest-only">{{ change.substantive_change }}</em>
+                       {% else %}
+                           {{ change.substantive_change }}
+                       {% endif %}
                     </p>
 
                     <!-- Local agencies impacted -->
@@ -211,7 +226,7 @@
         </div>
     </div>
     {% endfor %}
-    
+
     <div class="footer">
         <p>Report generated on {{ now }}</p>
     </div>
