@@ -354,9 +354,15 @@ class ReportGenerator:
             # Group changes by practice group
             practice_group_changes = {}
             no_local_impact_changes = []
-            
+
             for change in analyzed_data["changes"]:
-                # Check if change has practice groups
+                # CRITICAL FIX: First check for no impact flag before practice group sorting
+                if not change.get("impacts_local_agencies", False):
+                    # If explicitly marked as no impact, add to no_local_impact section
+                    no_local_impact_changes.append(change)
+                    continue
+
+                # For changes with impact, sort by practice group
                 if "practice_groups" in change and change["practice_groups"]:
                     # Find primary practice group
                     primary_group = None
@@ -364,7 +370,7 @@ class ReportGenerator:
                         if pg["relevance"].lower() == "primary":
                             primary_group = pg["name"]
                             break
-                    
+
                     # If found a primary group, add to that group's changes
                     if primary_group:
                         if primary_group not in practice_group_changes:
@@ -372,28 +378,29 @@ class ReportGenerator:
                         practice_group_changes[primary_group].append(change)
                     else:
                         # If no primary practice group found, add to no impact
+                        # (this should be rare but provides a fallback)
                         no_local_impact_changes.append(change)
                 else:
                     # If no practice groups at all, add to no impact
                     no_local_impact_changes.append(change)
-            
+
             # Create report sections organized by practice group
             formatted_sections = []
-            
+
             # Add practice group sections first
             for group_name, changes in practice_group_changes.items():
                 formatted_sections.append({
                     "title": f"Practice Group: {group_name}",
                     "content": {"changes": changes}
                 })
-            
+
             # Add "No Local Government Impacts" section at the end
             if no_local_impact_changes:
                 formatted_sections.append({
                     "title": "No Local Government Impacts",
                     "content": {"changes": no_local_impact_changes}
                 })
-                
+
             rendered = template.render(
                 bill_info=bill_info,
                 metadata=analyzed_data["metadata"],

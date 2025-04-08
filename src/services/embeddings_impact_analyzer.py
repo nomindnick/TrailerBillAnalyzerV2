@@ -334,6 +334,9 @@ class EmbeddingsImpactAnalyzer:
                         # Log final state
                         self.logger.info(f"Final state for change {change_id}: impacts_local_agencies={change.get('impacts_local_agencies', False)}, is_digest_only={change.get('is_digest_only', False)}")
 
+                        # ADD THIS LINE: Ensure consistency between impact classification and practice group assignment
+                        self._ensure_impact_practice_group_consistency(change)
+
                         return result
                     except Exception as e:
                         self.logger.error(f"Error processing change {change.get('id', f'index_{i}')}: {str(e)}")
@@ -390,9 +393,53 @@ class EmbeddingsImpactAnalyzer:
             self.logger.error(f"Error analyzing changes: {str(e)}")
             raise
 
+    def _ensure_impact_practice_group_consistency(self, change: Dict[str, Any]) -> None:
+        """
+        Ensure consistency between impact classification and practice group assignment.
+        If a change impacts local agencies but has no practice groups, add a default.
+        If a change has no impact but has practice groups, make adjustments.
+        """
+        # Case 1: Change has local impact but no practice groups
+        if change.get("impacts_local_agencies", False) and (not change.get("practice_groups") or len(change.get("practice_groups", [])) == 0):
+            # Based on affected agencies, add default practice group
+            agencies = change.get("local_agencies_impacted", [])
+
+            # Law enforcement agencies typically fall under Municipal
+            if "City" in agencies or "County" in agencies:
+                if any(term in change.get("digest_text", "").lower() for term in ["law enforcement", "police", "sheriff", "alert"]):
+                    self.logger.info(f"Adding Municipal practice group for law enforcement-related change {change.get('id')}")
+                    change["practice_groups"] = [{
+                        "name": "Municipal",
+                        "relevance": "primary",
+                        "justification": "This change affects local law enforcement agencies operated by cities and counties."
+                    }]
+
+        # Case 2: Change has no impact but has practice groups that would normally suggest impact
+        if not change.get("impacts_local_agencies", True) and change.get("practice_groups"):
+            # Check if any practice group would normally indicate local impact
+            has_local_impact_groups = False
+            for pg in change.get("practice_groups", []):
+                if pg.get("name") in self.local_agency_practice_groups:
+                    has_local_impact_groups = True
+                    break
+
+            # If it has practice groups that normally indicate impact but is marked as no impact,
+            # ensure we log this inconsistency and modify the practice groups
+            if has_local_impact_groups:
+                self.logger.warning(f"Inconsistency: Change {change.get('id')} has practice groups suggesting impact but is marked as no impact")
+
+                # Keep only practice groups that don't suggest local impact
+                updated_groups = []
+                for pg in change.get("practice_groups", []):
+                    if pg.get("name") not in self.local_agency_practice_groups:
+                        updated_groups.append(pg)
+
+                # Update the practice groups list
+                change["practice_groups"] = updated_groups
+                
     def _detect_agency_mentions(self, text: str) -> List[str]:
         """
-        Detect mentions of local agencies in text.
+        Detect mentions of local agencies in text with improved accuracy to avoid false positives.
 
         Args:
             text: The text to analyze for agency mentions
@@ -402,8 +449,33 @@ class EmbeddingsImpactAnalyzer:
         """
         detected_agencies = set()
 
+        # Skip detection for standard bill effective date clauses
+        if any(pattern in text.lower() for pattern in [
+            "this act is a bill providing for appropriations related to the budget bill",
+            "to take effect immediately as a bill providing for appropriations",
+            "this bill would declare that it is to take effect immediately",
+            "to take effect immediately"
+        ]):
+            self.logger.info("Detected standard bill effective date clause - skipping agency detection")
+            return []
+
         # Normalize text for case-insensitive matching
         text_lower = text.lower()
+
+        # Specific check for law enforcement terms
+        law_enforcement_terms = [
+            "law enforcement agency", "police department", "sheriff", "local police", 
+            "county sheriff", "city police", "local law enforcement", "peace officer",
+            "ebony alert", "silver alert", "amber alert", "missing person"
+        ]
+
+        # If law enforcement terms are found, add City and County as affected agencies
+        for term in law_enforcement_terms:
+            if term in text_lower:
+                self.logger.info(f"Detected law enforcement term '{term}' - adding City and County agencies")
+                detected_agencies.add("City")
+                detected_agencies.add("County")
+                break
 
         # Define additional agency-related terms to look for
         agency_related_terms = [
@@ -422,38 +494,47 @@ class EmbeddingsImpactAnalyzer:
                 found_generic_agency = True
                 break
 
+        # Get a list of words for more precise matching
+        words = re.findall(r'\b\w+\b', text_lower)
+
         # Check for each agency type
         for name, agency in self.agency_types.agency_types.items():
             # Skip the "No Local Agency Impact" type for detection purposes
             if name == "No Local Agency Impact":
                 continue
 
-            # Check for the agency name (with more flexible matching)
+            # Only match complete agency names, not parts
             agency_name_lower = name.lower()
-            if agency_name_lower in text_lower or any(word in text_lower for word in agency_name_lower.split()):
-                detected_agencies.add(name)
-                continue
+            if agency_name_lower in text_lower:
+                # Verify it's not just part of another word
+                name_parts = agency_name_lower.split()
+                consecutive_parts = True
 
-            # Check for plural forms (for applicable types)
-            plural_name = self._get_plural_form(name.lower())
-            if plural_name and plural_name in text_lower:
-                detected_agencies.add(name)
-                continue
+                for i in range(len(words) - len(name_parts) + 1):
+                    if words[i:i+len(name_parts)] == name_parts:
+                        detected_agencies.add(name)
+                        consecutive_parts = True
+                        break
 
-            # Check for keywords associated with this agency type (with more relaxed matching)
+                if consecutive_parts:
+                    continue
+
+            # Check for keywords associated with this agency type (with more precise matching)
             for keyword in agency.keywords:
                 keyword_lower = keyword.lower()
-                # Look for exact matches or keyword segments within words
-                if keyword_lower in text_lower or any(keyword_lower in word for word in text_lower.split()):
-                    detected_agencies.add(name)
-                    break
 
-            # Check for examples of this agency type
-            for example in agency.examples:
-                example_lower = example.lower()
-                if example_lower in text_lower:
-                    detected_agencies.add(name)
-                    break
+                # Skip short keywords (less than 5 chars) to avoid false positives
+                if len(keyword_lower) < 5:
+                    continue
+
+                # Check for the keyword as a complete word or phrase
+                if keyword_lower in text_lower:
+                    # Verify it's a complete word/phrase
+                    keyword_parts = keyword_lower.split()
+                    for i in range(len(words) - len(keyword_parts) + 1):
+                        if words[i:i+len(keyword_parts)] == keyword_parts:
+                            detected_agencies.add(name)
+                            break
 
         # If we found generic agency terms but no specific agencies, add common default agencies
         if found_generic_agency and not detected_agencies:
@@ -748,10 +829,37 @@ class EmbeddingsImpactAnalyzer:
 
     def _apply_heuristic_corrections(self, change: Dict[str, Any]) -> None:
         """
-        Apply heuristic corrections to address inconsistencies between practice groups 
-        and identified agency impacts.
+        Apply heuristic corrections to address inconsistencies while respecting LLM decisions.
         """
-        # If no agencies are identified but we have municipal or similar practice groups
+        # Check if LLM explicitly determined no impact
+        llm_says_no_impact = False
+        impact_desc = change.get("local_agency_impact", "")
+
+        if impact_desc and any(no_impact_phrase in impact_desc.lower() for no_impact_phrase in [
+            "no direct impact", 
+            "no impact on local agencies",
+            "does not impact local agencies",
+            "no local agencies identified",
+            "are no direct or indirect impacts"
+        ]):
+            llm_says_no_impact = True
+            self.logger.info(f"LLM explicitly determined no local agency impact for change {change.get('id')}")
+
+        # If LLM says no impact, don't override with heuristics
+        if llm_says_no_impact:
+            # Ensure the flags and lists are consistent with "no impact"
+            change["impacts_local_agencies"] = False
+            change["local_agencies_impacted"] = []
+            change["is_digest_only"] = True
+
+            # Remove any agency notice that got added incorrectly
+            if "While specific impacts are not detailed" in change.get("local_agency_impact", ""):
+                change["local_agency_impact"] = "No direct impact on local agencies."
+
+            self.logger.info(f"Respecting LLM's determination of no impact for change {change.get('id')}")
+            return
+
+        # Original heuristic code remains unchanged for cases where LLM didn't explicitly deny impact
         if not change.get("local_agencies_impacted") and change.get("practice_groups"):
             local_group_identified = False
             primary_local_groups = []
@@ -1187,16 +1295,36 @@ Proposed Changes:
         return "\n".join(formatted)
 
     def _update_change_with_analysis(self, change: Dict[str, Any], analysis: ChangeAnalysis) -> None:
-        """Update change object with analysis results"""
+        """Update change object with analysis results and ensure consistency"""
+        # Original update code
         change.update({
             "substantive_change": analysis.summary,
             "local_agency_impact": self._format_agency_impacts(analysis.impacts),
-            "practice_groups": analysis.practice_groups,  # Now from LLM
+            "practice_groups": analysis.practice_groups,
             "key_action_items": analysis.action_items,
             "deadlines": analysis.deadlines,
             "requirements": analysis.requirements,
             "impacts_local_agencies": bool(analysis.impacts)
         })
+
+        # Add consistency check based on LLM's impact assessment
+        impact_desc = change.get("local_agency_impact", "")
+
+        if any(phrase in impact_desc.lower() for phrase in [
+            "no direct impact", 
+            "no impact on local agencies",
+            "does not impact local agencies",
+            "no local agencies identified",
+            "are no direct or indirect impacts"
+        ]):
+            # LLM determined no impact - ensure consistency
+            self.logger.info(f"Consistency check: LLM indicates no impact for change {change.get('id')}")
+            change["impacts_local_agencies"] = False
+            change["local_agencies_impacted"] = []
+            change["is_digest_only"] = True
+        elif bool(analysis.impacts):
+            # LLM found impacts - ensure correct flags
+            change["is_digest_only"] = False
 
     def _format_agency_impacts(self, impacts: List[AgencyImpact]) -> str:
         if not impacts:
