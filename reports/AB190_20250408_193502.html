@@ -1,0 +1,1746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bill Analysis Report - AB190</title>
+    <style>
+        
+            /* Base styles */
+            @page {
+                margin: 2cm;
+                @bottom-center {
+                    content: &#34;Page &#34; counter(page) &#34; of &#34; counter(pages);
+                    font-size: 10pt;
+                    color: #666;
+                }
+            }
+            
+            body {
+                font-family: &#39;Segoe UI&#39;, Tahoma, Geneva, Verdana, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 20px;
+                background-color: #f9f9f9;
+            }
+            
+            /* Header styles */
+            .header {
+                text-align: center;
+                margin-bottom: 2rem;
+                padding-bottom: 1rem;
+                border-bottom: 2px solid #ddd;
+                page-break-after: avoid;
+            }
+            
+            .bill-title {
+                font-size: 2rem;
+                color: #2c3e50;
+                margin-bottom: 0.75rem;
+                line-height: 1.2;
+            }
+            
+            .subtitle {
+                font-size: 1.2rem;
+                color: #7f8c8d;
+                margin-bottom: 0.5rem;
+            }
+            
+            /* Summary section */
+            .metadata {
+                background-color: #f5f5f5;
+                padding: 1.25rem;
+                border-radius: 5px;
+                margin-bottom: 2rem;
+                border-left: 4px solid #3498db;
+                page-break-inside: avoid;
+            }
+            
+            .summary-section {
+                margin-bottom: 2rem;
+                background-color: #fff;
+                padding: 1.5rem;
+                border-radius: 5px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                page-break-inside: avoid;
+            }
+            
+            .summary-header {
+                margin-top: 0;
+                color: #2c3e50;
+                border-bottom: 2px solid #ecf0f1;
+                padding-bottom: 0.75rem;
+                font-size: 1.5rem;
+            }
+            
+            /* Change boxes */
+            .change-boxes {
+                display: flex;
+                flex-direction: column;
+                gap: 2.5rem;
+            }
+            
+            .change-box {
+                border: 1px solid #ddd;
+                border-radius: 5px;
+                overflow: hidden;
+                background-color: #fff;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                margin-bottom: 2rem;
+                page-break-inside: avoid;
+            }
+            
+            .change-header {
+                background-color: #3498db;
+                color: white;
+                padding: 0.75rem 1.25rem;
+                font-weight: bold;
+                font-size: 1.2rem;
+            }
+            
+            .change-content {
+                padding: 1rem;
+            }
+            
+            .change-box p {
+                margin: 0.75rem 0;
+            }
+            
+            .change-box h4 {
+                color: #2c3e50;
+                margin: 1.5rem 0 0.75rem 0;
+                font-size: 1.15rem;
+                border-bottom: 1px solid #eee;
+                padding-bottom: 0.4rem;
+            }
+            
+            /* Lists */
+            .change-box ul {
+                margin: 0.75rem 0;
+                padding-left: 2rem;
+            }
+            
+            .change-box ul li {
+                margin-bottom: 0.5rem;
+                position: relative;
+                list-style-type: disc;
+            }
+            
+            .change-box ul li::marker {
+                content: &#34;• &#34;;
+                color: #3498db;
+                font-weight: bold;
+            }
+            
+            /* Practice areas */
+            .practice-areas {
+                margin: 1.5rem 0;
+                background-color: #f8f9fa;
+                padding: 1.25rem;
+                border-radius: 5px;
+                border-left: 4px solid #2ecc71;
+            }
+            
+            .practice-area {
+                display: inline-block;
+                background-color: #e1f5fe;
+                padding: 0.4rem 0.7rem;
+                margin: 0.3rem;
+                border-radius: 3px;
+                font-size: 0.9rem;
+                color: #0288d1;
+            }
+            
+            .primary-area {
+                background-color: #b3e5fc;
+                color: #01579b;
+                font-weight: bold;
+            }
+            
+            /* Section information */
+            .section-list {
+                background-color: #f5f5f5;
+                padding: 1rem 1.25rem;
+                margin: 1rem 0;
+                border-radius: 5px;
+                font-size: 0.95rem;
+            }
+            
+            .section-reference {
+                font-weight: bold;
+                color: #e74c3c;
+            }
+            
+            .bill-text-section {
+                background-color: #f9f9f9;
+                border-left: 3px solid #ccc;
+                padding: 1.25rem;
+                margin: 1rem 0;
+                font-family: monospace;
+                font-size: 0.9rem;
+                overflow-x: auto;
+                white-space: pre-wrap;
+            }
+            
+            /* Action items */
+            .action-items {
+                background-color: #fff3e0;
+                padding: 1.25rem;
+                margin: 1.25rem 0;
+                border-radius: 5px;
+                border-left: 4px solid #ff9800;
+            }
+            
+            .deadline {
+                color: #d32f2f;
+                font-weight: bold;
+            }
+            
+            /* Section headers */
+            .report-section {
+                margin-bottom: 3.5rem;
+                page-break-before: auto;
+            }
+            
+            .report-section-title {
+                background-color: #2c3e50;
+                color: white;
+                padding: 1.25rem;
+                margin: 2.5rem 0 1.75rem 0;
+                border-radius: 5px;
+                font-size: 1.5rem;
+                box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+                page-break-after: avoid;
+            }
+                        
+            /* Footer */
+            .footer {
+                margin-top: 3.5rem;
+                text-align: center;
+                font-size: 0.9rem;
+                color: #7f8c8d;
+                padding-top: 1rem;
+                border-top: 1px solid #ddd;
+            }
+            
+            /* Print-specific styles */
+            @media print {
+                body {
+                    padding: 0;
+                    background: white;
+                    font-size: 12pt;
+                    color: black;
+                }
+                
+                .change-box {
+                    break-inside: avoid;
+                    page-break-inside: avoid;
+                    margin-bottom: 20mm;
+                    border: 1px solid #ccc;
+                }
+                
+                .change-header {
+                    background-color: #3498db !important;
+                    color: white !important;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
+                
+                .header, 
+                .metadata, 
+                .summary-section, 
+                .practice-areas {
+                    page-break-inside: avoid;
+                }
+                
+                .report-section-title {
+                    page-break-after: avoid;
+                    background-color: #2c3e50 !important;
+                    color: white !important;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
+                
+                .action-items {
+                    page-break-inside: avoid;
+                    background-color: #fff3e0 !important;
+                    border-left: 4px solid #ff9800 !important;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
+                
+                a {
+                    text-decoration: underline;
+                    color: blue !important;
+                }
+                
+                .change-box ul li {
+                    list-style-type: disc !important;
+                }
+                
+                .change-box ul li::before {
+                    content: &#34;• &#34;;
+                    color: #3498db !important;
+                    font-weight: bold;
+                    display: inline-block; 
+                    width: 1em;
+                    margin-left: -1em;
+                }
+                
+                .section-list,
+                .practice-areas {
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
+            }
+        
+
+        /* Added style for digest-only entries */
+        .digest-only {
+            font-style: italic;
+            color: #666;
+            background-color: #f9f9f9;
+            padding: 0.75rem;
+            border-left: 3px solid #ccc;
+            display: block;
+            margin: 0.5rem 0;
+        }
+    </style>
+</head>
+<body data-date="April 08, 2025">
+    <!-- Report Header -->
+    <div class="header">
+        <h1 class="bill-title">Bill Analysis Report</h1>
+        <p><strong>Bill Number:</strong> AB190</p>
+        <p><strong>Chapter Number:</strong> </p>
+        <p><strong>Title:</strong> An act to amend Sections 17201, 69432.7, 70023, 79222, 79223, 79225, 79511, 87861, 87862, 87863, 87864, 87867, 88280, 89297.1, 94110, 94140, 94144, 94146, 94147, 94151, 94154, 94190, 94191, 94192, ...</p>
+        <p><strong>Date Approved:</strong> 2022-09-27 00:00:00</p>
+        <p><strong>Analysis by:</strong> GPT-o3-mini (January 2025)</p>
+    </div>
+
+    <!-- Executive Summary -->
+    <div class="summary-section">
+        <h2 class="summary-header">Executive Summary</h2>
+        <p><strong>Total Changes Identified:</strong> 9</p>
+        <p><strong>Practice Areas Affected:</strong>
+            
+                Facilities and Business, Governance, Labor and Employment, Municipal, Public Finance, Student
+            
+        </p>
+        <p><strong>Local Agencies Impacted:</strong>
+            
+            
+                
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                
+            
+                
+                    
+                        
+                    
+                
+            
+                
+                    
+                        
+                    
+                        
+                    
+                        
+                    
+                        
+                    
+                
+            
+                
+                    
+                        
+                    
+                
+            
+                
+                    
+                        
+                    
+                
+            
+                
+                    
+                        
+                    
+                
+            
+                
+                    
+                        
+                    
+                
+            
+                
+                    
+                        
+                    
+                
+            
+                
+            
+            
+                City, County, Special District, Community College, Joint Powers Authority
+            
+        </p>
+        <p><strong>Changes by Practice Group:</strong>
+            
+            
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                
+                    
+                
+            
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                
+            
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                
+            
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                
+            
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                
+            
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                
+            
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                
+                    
+                
+            
+                
+                    
+                        
+                            
+                        
+                    
+                
+                    
+                        
+                            
+                        
+                    
+                
+            
+                
+            
+            
+                
+                    Municipal: 1, 
+                
+                    Facilities and Business: 2, 
+                
+                    Labor and Employment: 2, 
+                
+                    Public Finance: 3, 
+                
+                    Governance: 2, 
+                
+                    Student: 3
+                
+            
+        </p>
+    </div>
+
+    <!-- Sections by Practice Group or No Local Impact -->
+    
+    <div class="report-section">
+        <h2 class="report-section-title">Practice Group: Municipal</h2>
+
+        <div class="change-boxes">
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SECTION 1.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary or digest-only summary -->
+                    <p><strong>Summary:</strong><br>
+                       
+                           This bill revises the Higher Education Student Housing Grant Program by modifying the submission requirements for student housing project applications, adding a new measure to the composite score used to rank applications, increasing appropriations by $6,000,000 for CSU Humboldt, and repealing a separate $3,893,000 appropriation. Although the program targets higher education institutions, the changes may indirectly affect local agencies involved in permitting, zoning, infrastructure planning, and service provision for new or renovated student housing developments.
+                       
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <ul class="agency-list">
+                        
+                            <li>City</li>
+                        
+                            <li>County</li>
+                        
+                            <li>Special District</li>
+                        
+                            <li>Community College</li>
+                        
+                            <li>Joint Powers Authority</li>
+                        
+                        </ul>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       City: Cities could see an increase or change in student housing projects prompting a review and potential update of local zoning laws and permitting processes. Local government planning departments may need to adapt to revised timelines or project criteria driven by the state’s updated grant application process.
+County: Counties may experience changes in infrastructure planning and regional permitting as new student housing projects emerge or existing projects are modified based on the revised application and funding guidelines.
+Special District: Special Districts that manage utilities and transit services may face shifts in demand if a surge in student housing construction affects local service usage, necessitating a review of capacity and coordination with municipal planning.
+Community College: Although community colleges typically serve commuter populations, changes in state policy regarding student housing could trigger future planning discussions or opportunities for off‐campus housing initiatives, requiring monitoring of state guidance.
+Joint Powers Authority: Joint Powers Authorities, formed for coordinated regional planning, may need to adjust inter-agency agreements and collaborative efforts if changes in the grant program alter the scope or timeline for student housing projects in the region.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+                    <div class="action-items">
+                        <h4>Key Action Items</h4>
+                        <ul class="action-list">
+                            
+                            <li>Monitor state-issued guidelines regarding revised application submission and composite scoring measures</li>
+                            
+                            <li>Review and update local zoning, permitting, and infrastructure planning procedures to align with anticipated changes in student housing projects</li>
+                            
+                            <li>Engage in regional coordination with Joint Powers Authorities and other local agencies to address potential shifts in service and regulatory requirements</li>
+                            
+                            <li>Assess potential financial impacts and adjust budgeting processes in light of the funding modifications</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+
+                    <!-- Additional Requirements -->
+                    
+                    <div class="action-items">
+                        <h4>Additional Requirements</h4>
+                        <ul class="requirements-list">
+                            
+                            <li>Local agencies should review updated state program guidelines to understand new application and ranking criteria</li>
+                            
+                            <li>Align local regulatory frameworks and permitting procedures with the revised state requirements</li>
+                            
+                            <li>Coordinate with inter-agency and regional planning bodies to prepare for potential increases in student housing developments</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+                    <div class="practice-areas">
+                        <h4>Relevant Practice Groups</h4>
+                        <ul class="practice-groups-list">
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Municipal (primary)
+                                </span>
+                                
+                                  - Cities, counties, and special districts that manage local permitting, zoning, and planning are likely to experience indirect impacts from changes in state student housing project processes.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Facilities and Business (primary)
+                                </span>
+                                
+                                  - Revisions to application submission and composite scoring can affect construction schedules and project viability, impacting local facility planning and business operations tied to development projects.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Public Finance (secondary)
+                                </span>
+                                
+                                  - Changes in appropriations — both the additional $6,000,000 and the repeal of an allocated sum — require financial analysis and adjustments by local agencies coordinating with or impacted by these projects.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Governance (secondary)
+                                </span>
+                                
+                                  - Local agency boards and elected officials will need to review and possibly revise their policies and oversight mechanisms to remain compliant with the state-level changes.
+                                
+                            </li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="report-section">
+        <h2 class="report-section-title">Practice Group: Labor and Employment</h2>
+
+        <div class="change-boxes">
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 16.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary or digest-only summary -->
+                    <p><strong>Summary:</strong><br>
+                       
+                           The bill amends Education Code Section 88280 governing the Classified Community College Employee Summer Assistance Program. It redefines &#39;month&#39; as 20 days or 4 weeks of 5 days each (including legal holidays), which impacts how participating community colleges calculate payroll deductions and summer benefit payouts. Community colleges must update their systems and policies to ensure compliance with this statutory change.
+                       
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <ul class="agency-list">
+                        
+                            <li>Community College</li>
+                        
+                        </ul>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       Community College: Participating community colleges must update payroll and HR systems to reflect the new definition of &#39;month&#39; (20 days or 4 weeks, including legal holidays). This change may affect the timing and amount of the payroll withholding credited toward summer disbursements, as well as employee eligibility assessments.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+                    <div class="action-items">
+                        <h4>Key Action Items</h4>
+                        <ul class="action-list">
+                            
+                            <li>Review and update payroll systems to incorporate the new &#39;month&#39; definition.</li>
+                            
+                            <li>Revise internal policies and HR guidelines regarding payroll deductions and benefit calculations.</li>
+                            
+                            <li>Provide targeted training for payroll and HR staff on the updated processes.</li>
+                            
+                            <li>Perform compliance audits to ensure proper calculation and disbursement under the program.</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+
+                    <!-- Additional Requirements -->
+                    
+                    <div class="action-items">
+                        <h4>Additional Requirements</h4>
+                        <ul class="requirements-list">
+                            
+                            <li>Modify payroll systems for recalculations based on 20-day/4-week cycles</li>
+                            
+                            <li>Update HR policy documentation to reflect the statutory change</li>
+                            
+                            <li>Implement staff training programs to ensure understanding of the new calculations</li>
+                            
+                            <li>Establish internal review protocols to verify compliance with the new month definition</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+                    <div class="practice-areas">
+                        <h4>Relevant Practice Groups</h4>
+                        <ul class="practice-groups-list">
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Labor and Employment (primary)
+                                </span>
+                                
+                                  - The change directly affects employee payroll deductions and benefits, which are core labor and employment issues.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Facilities and Business (secondary)
+                                </span>
+                                
+                                  - Updates to payroll systems and related business operations require coordination and system modifications, making this group relevant.
+                                
+                            </li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 10.</span>, 
+                            
+                                <span class="section-reference">SEC. 11.</span>, 
+                            
+                                <span class="section-reference">SEC. 12.</span>, 
+                            
+                                <span class="section-reference">SEC. 13.</span>, 
+                            
+                                <span class="section-reference">SEC. 14.</span>, 
+                            
+                                <span class="section-reference">SEC. 15.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary or digest-only summary -->
+                    <p><strong>Summary:</strong><br>
+                       
+                           The legislative change expands the Part-time Community College Faculty Health Insurance Program to include multidistrict part-time faculty. Community College districts must now extend their health insurance programs to cover faculty with teaching assignments across multiple districts, implement a reimbursement mechanism for individually purchased health insurance benefits, and meet new criteria to receive full funding apportionments from the Chancellor by June 15 annually.
+                       
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <ul class="agency-list">
+                        
+                            <li>Community College</li>
+                        
+                        </ul>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       Community College: Community College districts are now required to include multidistrict part-time faculty in their health insurance programs. They must establish and manage a reimbursement process for multidistrict faculty who purchase insurance individually. Additionally, districts must adjust their policies to offer the same benefits to part-time faculty as to full-time faculty and meet detailed criteria to receive additional funding apportionments from the Chancellor. (Deadline: June 15, 2024)
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+                    <div class="action-items">
+                        <h4>Key Action Items</h4>
+                        <ul class="action-list">
+                            
+                            <li>Review and update existing health insurance program policies to incorporate multidistrict part-time faculty.</li>
+                            
+                            <li>Develop and implement a reimbursement system for faculty who individually purchase insurance benefits.</li>
+                            
+                            <li>Adjust operational procedures to ensure parity in benefits between part-time and full-time faculty.</li>
+                            
+                            <li>Assess compliance with new funding criteria and coordinate with financial and HR departments to meet the Chancellor’s annual funding deadline.</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+                    <div class="action-items">
+                        <h4>Deadlines</h4>
+                        
+                            <!-- Use list format for just a few deadlines -->
+                            <ul class="deadline-list">
+                                
+                                <li>
+                                    <strong class="deadline">2024-06-15</strong>:
+                                    Deadline for the Chancellor to apportion funds to community college districts that have updated their health insurance programs to meet the new criteria.
+                                    
+                                    (Affected agencies: Community College)
+                                    
+                                </li>
+                                
+                            </ul>
+                        
+                    </div>
+                    
+
+                    <!-- Additional Requirements -->
+                    
+                    <div class="action-items">
+                        <h4>Additional Requirements</h4>
+                        <ul class="requirements-list">
+                            
+                            <li>Offer health insurance coverage to all part-time faculty and their dependents, including multidistrict part-time faculty.</li>
+                            
+                            <li>Provide the same level of health insurance benefits to part-time faculty as is provided to full-time faculty.</li>
+                            
+                            <li>Limit individual premium contributions from part-time faculty to the actual premium paid by full-time faculty.</li>
+                            
+                            <li>Implement a reimbursement mechanism for multidistrict part-time faculty who purchase insurance individually.</li>
+                            
+                            <li>Meet specific program criteria to secure full funding apportionments from the Chancellor.</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+                    <div class="practice-areas">
+                        <h4>Relevant Practice Groups</h4>
+                        <ul class="practice-groups-list">
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Labor and Employment (primary)
+                                </span>
+                                
+                                  - The change directly affects employee benefits by expanding eligibility and reimbursement procedures for faculty health insurance, which falls under employment law and labor relations.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Public Finance (primary)
+                                </span>
+                                
+                                  - The bill revises the funding apportionment process by requiring the Chancellor to distribute remaining funds based on new criteria, making financial compliance and funding management critical for affected community college districts.
+                                
+                            </li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="report-section">
+        <h2 class="report-section-title">Practice Group: Facilities and Business</h2>
+
+        <div class="change-boxes">
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 2.</span>, 
+                            
+                                <span class="section-reference">SEC. 18.</span>, 
+                            
+                                <span class="section-reference">SEC. 19.</span>, 
+                            
+                                <span class="section-reference">SEC. 20.</span>, 
+                            
+                                <span class="section-reference">SEC. 22.</span>, 
+                            
+                                <span class="section-reference">SEC. 23.</span>, 
+                            
+                                <span class="section-reference">SEC. 24.</span>, 
+                            
+                                <span class="section-reference">SEC. 25.</span>, 
+                            
+                                <span class="section-reference">SEC. 26.</span>, 
+                            
+                                <span class="section-reference">SEC. 27.</span>, 
+                            
+                                <span class="section-reference">SEC. 31.</span>, 
+                            
+                                <span class="section-reference">SEC. 21.</span>, 
+                            
+                                <span class="section-reference">SEC. 28.</span>, 
+                            
+                                <span class="section-reference">SEC. 29.</span>, 
+                            
+                                <span class="section-reference">SEC. 30.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary or digest-only summary -->
+                    <p><strong>Summary:</strong><br>
+                       
+                           The California Student Housing Revolving Loan Fund Act of 2022 creates a new state-level loan program providing zero‐interest financing for constructing affordable student housing and affordable faculty/staff housing at UC, CSU, and California Community Colleges. Directly, eligible Community Colleges can tap these funds, while indirectly cities, counties, and special districts may experience increased housing development activity needing adjustments in zoning, permitting, and service delivery. The act also requires a state report by March 15, 2025, to assess program performance.
+                       
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <ul class="agency-list">
+                        
+                            <li>Community College</li>
+                        
+                            <li>City</li>
+                        
+                            <li>County</li>
+                        
+                            <li>Special District</li>
+                        
+                        </ul>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       Community College: Eligible California Community Colleges can secure zero‐interest loans to finance construction or refinancing of affordable housing projects, requiring compliance with state eligibility criteria and project standards.
+City: Cities hosting higher education institutions may experience increased affordable housing developments, which could require adjustments to zoning codes and permitting processes to facilitate these projects.
+County: Counties in areas with major higher education institutions might see a surge in new affordable housing projects, leading to necessary updates in local planning and permitting frameworks.
+Special District: Special Districts responsible for services such as utilities and transit may need to assess their capacity and adjust service delivery to accommodate potential infrastructure demands from new housing projects.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+                    <div class="action-items">
+                        <h4>Key Action Items</h4>
+                        <ul class="action-list">
+                            
+                            <li>Community Colleges should review eligibility criteria and begin preparing documentation for loan applications.</li>
+                            
+                            <li>Cities, Counties, and Special Districts should assess current permitting and zoning processes and plan for potential updates to accommodate new housing projects.</li>
+                            
+                            <li>Stakeholders should monitor state reporting and funding developments to adjust local planning and compliance measures accordingly.</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+                    <div class="action-items">
+                        <h4>Deadlines</h4>
+                        
+                            <!-- Use list format for just a few deadlines -->
+                            <ul class="deadline-list">
+                                
+                                <li>
+                                    <strong class="deadline">2025-03-15</strong>:
+                                    Deadline for the California School Finance Authority and the California Educational Facilities Authority to submit a report on the performance of the new loan fund to the Department of Finance and legislative budget committees.
+                                    
+                                </li>
+                                
+                            </ul>
+                        
+                    </div>
+                    
+
+                    <!-- Additional Requirements -->
+                    
+                    <div class="action-items">
+                        <h4>Additional Requirements</h4>
+                        <ul class="requirements-list">
+                            
+                            <li>Meet state-defined eligibility criteria for accessing zero-interest loans.</li>
+                            
+                            <li>Ensure project plans are in accordance with established construction, safety, and environmental standards.</li>
+                            
+                            <li>Local agencies must update permitting and zoning practices to support anticipated housing developments.</li>
+                            
+                            <li>Submit all required reports and documentation by applicable deadlines.</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+                    <div class="practice-areas">
+                        <h4>Relevant Practice Groups</h4>
+                        <ul class="practice-groups-list">
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Facilities and Business (primary)
+                                </span>
+                                
+                                  - The act directly involves construction and management of new housing facilities, requiring guidance on project management, contracts, and facility operations.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Public Finance (primary)
+                                </span>
+                                
+                                  - The program’s reliance on appropriations, revenue bonds, and zero‐interest loan structures demands expert advice on financing and compliance with public funding regulations.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Municipal (secondary)
+                                </span>
+                                
+                                  - Local governments (cities, counties, special districts) will need to adapt zoning, permitting, and infrastructure planning to address the indirect impacts of increased housing development.
+                                
+                            </li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="report-section">
+        <h2 class="report-section-title">Practice Group: Governance</h2>
+
+        <div class="change-boxes">
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 3.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary or digest-only summary -->
+                    <p><strong>Summary:</strong><br>
+                       
+                           The bill amends Cal Grant eligibility rules by authorizing, for the 2023–24 academic year only, an appeal option for a qualifying institution that failed to meet the 3-year cohort default rate if the shortfall was caused by the acquisition of an out-of-state institution that closed between the 2019–20 and 2022–23 academic years. This change affects locally governed higher education providers by altering compliance requirements for maintaining grant eligibility.
+                       
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <ul class="agency-list">
+                        
+                            <li>Community College</li>
+                        
+                        </ul>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       Community College: Community Colleges that have expanded through the acquisition of an out-of-state institution may now file an appeal if the acquisition adversely impacted their 3-year cohort default rates, provided the acquired institution closed within the specified timeframe. Affected colleges must assess their performance metrics and compile documentation to support their appeal for the 2023–24 academic year.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+                    <div class="action-items">
+                        <h4>Key Action Items</h4>
+                        <ul class="action-list">
+                            
+                            <li>Review recent acquisitions and verify if any out-of-state institution acquired meets the closure criteria between 2019–20 and 2022–23.</li>
+                            
+                            <li>Compile detailed documentation to support the claim that such acquisitions negatively affected the 3-year cohort default rate.</li>
+                            
+                            <li>Prepare and file an appeal with the Student Aid Commission for the 2023–24 academic year if applicable.</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+                    <div class="action-items">
+                        <h4>Deadlines</h4>
+                        
+                            <!-- Use list format for just a few deadlines -->
+                            <ul class="deadline-list">
+                                
+                                <li>
+                                    <strong class="deadline">2023-07-01</strong>:
+                                    Start of the 2023–24 academic year during which appeals based on the acquisition impact must be filed.
+                                    
+                                    (Affected agencies: Community College)
+                                    
+                                </li>
+                                
+                            </ul>
+                        
+                    </div>
+                    
+
+                    <!-- Additional Requirements -->
+                    
+                    <div class="action-items">
+                        <h4>Additional Requirements</h4>
+                        <ul class="requirements-list">
+                            
+                            <li>Maintain comprehensive records of out-of-state institution acquisitions</li>
+                            
+                            <li>Provide verifiable evidence of the acquisition’s impact on default rate performance</li>
+                            
+                            <li>Ensure submission of the appeal documentation within the defined academic year</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+                    <div class="practice-areas">
+                        <h4>Relevant Practice Groups</h4>
+                        <ul class="practice-groups-list">
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Governance (primary)
+                                </span>
+                                
+                                  - Local governing bodies at Community Colleges must update their compliance and oversight processes to accommodate the new appeal provision and ensure that performance data is accurately reported.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Public Finance (primary)
+                                </span>
+                                
+                                  - The rule change directly affects the funding mechanisms by potentially preserving Cal Grant award eligibility, thereby impacting public financing and budgeting at Community Colleges.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Student (secondary)
+                                </span>
+                                
+                                  - Changes in grant eligibility criteria have downstream effects on student financial aid eligibility, necessitating guidance on how these modifications affect students.
+                                
+                            </li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 5.</span>, 
+                            
+                                <span class="section-reference">SEC. 6.</span>, 
+                            
+                                <span class="section-reference">SEC. 7.</span>, 
+                            
+                                <span class="section-reference">SEC. 8.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary or digest-only summary -->
+                    <p><strong>Summary:</strong><br>
+                       
+                           The bill revises the NextUp program eligibility for foster youth attending California Community Colleges by changing the age requirement to be assessed only at the student&#39;s initial enrollment academic year and by removing the income waiver condition. These adjustments require community colleges to update their enrollment and compliance processes, ensuring that foster youth who meet the defined criteria are accepted without additional hurdles.
+                       
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <ul class="agency-list">
+                        
+                            <li>Community College</li>
+                        
+                        </ul>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       Community College: Community Colleges will need to update their internal enrollment procedures to confirm that foster youth meet the age requirement only at the time of initial enrollment and remove any provisions that require waiving income criteria. This change affects how eligibility is determined and may require revisions to training, documentation, and coordination with the Board of Governors’ new regulations.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+                    <div class="action-items">
+                        <h4>Key Action Items</h4>
+                        <ul class="action-list">
+                            
+                            <li>Review and update enrollment procedures to assess the age requirement only during the first enrollment academic year.</li>
+                            
+                            <li>Remove existing protocols that rely on waiving income criteria as a condition for enrollment.</li>
+                            
+                            <li>Conduct training for program administrators and staff on the revised eligibility requirements and regulatory adjustments.</li>
+                            
+                            <li>Monitor the adoption of new regulations by the Board of Governors and adjust internal policies accordingly.</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+                    <div class="action-items">
+                        <h4>Deadlines</h4>
+                        
+                            <!-- Use list format for just a few deadlines -->
+                            <ul class="deadline-list">
+                                
+                                <li>
+                                    <strong class="deadline">N/A</strong>:
+                                    Community Colleges must update their internal processes and compliance measures once the Board of Governors finalizes and disseminates the new regulations.
+                                    
+                                    (Affected agencies: Community College)
+                                    
+                                </li>
+                                
+                            </ul>
+                        
+                    </div>
+                    
+
+                    <!-- Additional Requirements -->
+                    
+                    <div class="action-items">
+                        <h4>Additional Requirements</h4>
+                        <ul class="requirements-list">
+                            
+                            <li>Revise internal enrollment verification and documentation protocols.</li>
+                            
+                            <li>Align program administration practices with the new legislative requirements.</li>
+                            
+                            <li>Ensure staff receive updated training on eligibility and regulatory changes.</li>
+                            
+                            <li>Coordinate with the Board of Governors and State Department of Social Services for timely implementation of the new rules.</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+                    <div class="practice-areas">
+                        <h4>Relevant Practice Groups</h4>
+                        <ul class="practice-groups-list">
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Governance (primary)
+                                </span>
+                                
+                                  - The Board of Governors must adopt new regulations reflecting these changes, directly impacting the internal governance and regulatory compliance procedures at Community Colleges.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Student (primary)
+                                </span>
+                                
+                                  - The eligibility change directly affects foster youth by simplifying enrollment requirements, making it critical to address issues related to student rights and access to the program.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Public Finance (secondary)
+                                </span>
+                                
+                                  - Since the NextUp program allocates state funds to Community Colleges for services to foster youth, the changes in eligibility criteria could impact funding administration and allocation practices.
+                                
+                            </li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="report-section">
+        <h2 class="report-section-title">Practice Group: Student</h2>
+
+        <div class="change-boxes">
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 4.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary or digest-only summary -->
+                    <p><strong>Summary:</strong><br>
+                       
+                           The bill amends the Middle Class Scholarship Program by establishing a minimum annual scholarship award of $90 for all eligible full-time students, effective with the 2022–23 academic year. Although the primary institutions are state-level (University of California and California State University), community colleges offering baccalaureate programs are indirectly impacted. These local agencies must update their scholarship administration systems, compliance procedures, and student communications to accommodate the new minimum award requirement.
+                       
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <ul class="agency-list">
+                        
+                            <li>Community College</li>
+                        
+                        </ul>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       Community College: Community colleges that offer baccalaureate programs will need to modify their scholarship award processes to ensure that all eligible full-time students receive a minimum of $90. This change may require updates to financial systems, internal policies, and communications with students regarding scholarship eligibility and award amounts. (Deadline: September 01, 2022)
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+                    <div class="action-items">
+                        <h4>Key Action Items</h4>
+                        <ul class="action-list">
+                            
+                            <li>Review and update scholarship award procedures and financial aid systems</li>
+                            
+                            <li>Revise internal policies to reflect the $90 minimum scholarship requirement</li>
+                            
+                            <li>Communicate changes accurately to eligible students and provide staff training on new procedures</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+                    <div class="action-items">
+                        <h4>Deadlines</h4>
+                        
+                            <!-- Use list format for just a few deadlines -->
+                            <ul class="deadline-list">
+                                
+                                <li>
+                                    <strong class="deadline">2022-09-01</strong>:
+                                    Effective start date for the new scholarship award standard impacting community college baccalaureate programs
+                                    
+                                    (Affected agencies: Community College)
+                                    
+                                </li>
+                                
+                            </ul>
+                        
+                    </div>
+                    
+
+                    <!-- Additional Requirements -->
+                    
+                    <div class="action-items">
+                        <h4>Additional Requirements</h4>
+                        <ul class="requirements-list">
+                            
+                            <li>Local agencies must update administrative and financial systems to ensure compliance with the $90 minimum award requirement</li>
+                            
+                            <li>Establish clear documentation and communication protocols regarding the change in scholarship award calculations</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+                    <div class="practice-areas">
+                        <h4>Relevant Practice Groups</h4>
+                        <ul class="practice-groups-list">
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Student (primary)
+                                </span>
+                                
+                                  - The change directly affects community college students enrolled in baccalaureate programs by altering scholarship award levels, necessitating updated support and communication regarding financial aid.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Governance (secondary)
+                                </span>
+                                
+                                  - Boards and administrative leadership at community colleges will need to review and adjust policies and compliance frameworks to align with the new state-mandated scholarship requirements.
+                                
+                            </li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 9.</span>, 
+                            
+                                <span class="section-reference">SEC. 17.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary or digest-only summary -->
+                    <p><strong>Summary:</strong><br>
+                       
+                           The legislative change revises the administration of the AANHPI Student Achievement Program at California Community Colleges and California State University by shifting key responsibilities to the applicable statewide central office. In particular, the office now must develop new grant criteria and a process for funding, establish an AANHPI stakeholder process, and prepare annual reports. Although the law directly targets state-level offices and campuses in the two systems, Community Colleges—as local public agencies—will be indirectly impacted through changes to funding allocations and increased compliance and reporting obligations.
+                       
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <ul class="agency-list">
+                        
+                            <li>Community College</li>
+                        
+                        </ul>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       Community College: Community Colleges that qualify for the AANHPI Student Achievement Program must now adhere to new grant program criteria and processes developed by the statewide central office. They are also expected to support the new stakeholder process and ensure that data required for both an annual report (due on or before March 31 each year) and a final independent evaluator’s report (due March 31, 2026) is properly collected and submitted. These changes could affect their funding levels and administrative procedures. (Deadline: March 31, 2026)
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+                    <div class="action-items">
+                        <h4>Key Action Items</h4>
+                        <ul class="action-list">
+                            
+                            <li>Review upcoming grant program criteria and adjust internal funding application procedures accordingly.</li>
+                            
+                            <li>Upgrade or implement data collection and reporting systems to support both annual and independent evaluator reporting requirements.</li>
+                            
+                            <li>Prepare for active participation in the new AANHPI stakeholder process to ensure community college concerns are represented.</li>
+                            
+                            <li>Monitor communications from the statewide central office for further implementation guidance and detailed compliance requirements.</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+                    <div class="action-items">
+                        <h4>Deadlines</h4>
+                        
+                            <!-- Use list format for just a few deadlines -->
+                            <ul class="deadline-list">
+                                
+                                <li>
+                                    <strong class="deadline">2026-03-31</strong>:
+                                    Deadline for submission of the independent evaluation report that must include an assessment of the program’s impact.
+                                    
+                                    (Affected agencies: Community College)
+                                    
+                                </li>
+                                
+                                <li>
+                                    <strong class="deadline">N/A</strong>:
+                                    Recurring annual deadline (on or before March 31 each year) for the statewide central office&#39;s report based on data provided by local agencies.
+                                    
+                                    (Affected agencies: Community College)
+                                    
+                                </li>
+                                
+                            </ul>
+                        
+                    </div>
+                    
+
+                    <!-- Additional Requirements -->
+                    
+                    <div class="action-items">
+                        <h4>Additional Requirements</h4>
+                        <ul class="requirements-list">
+                            
+                            <li>Compliance with the new statewide grant program criteria and funding process.</li>
+                            
+                            <li>Timely collection and submission of program data for annual and independent evaluation reports.</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+                    <div class="practice-areas">
+                        <h4>Relevant Practice Groups</h4>
+                        <ul class="practice-groups-list">
+                            
+                            <li>
+                                <span class="practice-area primary-area">
+                                    Student (primary)
+                                </span>
+                                
+                                  - The changes directly impact programs designed to support community college students, particularly those from underserved AANHPI populations.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Public Finance (secondary)
+                                </span>
+                                
+                                  - New grant funding criteria and processes require attention to financing mechanisms and budget allocations for local agencies.
+                                
+                            </li>
+                            
+                            <li>
+                                <span class="practice-area ">
+                                    Governance (secondary)
+                                </span>
+                                
+                                  - The requirement to participate in a stakeholder process and adhere to enhanced reporting obligations necessitates stronger governance and oversight practices.
+                                
+                            </li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="report-section">
+        <h2 class="report-section-title">No Local Government Impacts</h2>
+
+        <div class="change-boxes">
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 32.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary or digest-only summary -->
+                    <p><strong>Summary:</strong><br>
+                       
+                           <em class="digest-only">This legislative change is an immediate-effect appropriations bill related to the Budget Bill. It primarily serves to appropriate state funds and does not create or modify any programs that impose new duties, funding formulas, or compliance requirements on local public agencies. Given the bill&#39;s designation as having &#34;Local Program: NO,&#34; there are no direct or clearly indirect impacts on local agencies at this time.</em>
+                       
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <p>No local agencies identified.</p>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       No direct impact on local agencies.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+                    <div class="action-items">
+                        <h4>Key Action Items</h4>
+                        <ul class="action-list">
+                            
+                            <li>Monitor state budget allocations for any potential secondary effects on local funding distributions.</li>
+                            
+                            <li>Advise local agencies to stay updated with further state guidance or changes in funding formulas if they arise in future budget cycles.</li>
+                            
+                        </ul>
+                    </div>
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+
+                    <!-- Additional Requirements -->
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+        </div>
+    </div>
+    
+
+    <div class="footer">
+        <p>Report generated on April 08, 2025</p>
+    </div>
+</body>
+</html>
