@@ -919,8 +919,8 @@ class EmbeddingsImpactAnalyzer:
                 self.logger.error(f"Error using Anthropic API: {str(e)}")
                 raise
         else:
-            # Using OpenAI API - unchanged
-            params = {
+            # Using OpenAI API - with improved error handling for o3-mini models
+            base_params = {
                 "model": self.llm_model,
                 "messages": [
                     {
@@ -941,15 +941,35 @@ class EmbeddingsImpactAnalyzer:
                 "response_format": {"type": "json_object"}
             }
 
-            # Add model-specific parameters for OpenAI models
-            if "o3-mini" in self.llm_model or "o1" in self.llm_model:  # Reasoning models
+            # Try different parameter combinations based on model type
+            if "o3-mini" in self.llm_model or "o1" in self.llm_model:
                 self.logger.info(f"Using OpenAI API with reasoning model {self.llm_model}")
-                params["reasoning_effort"] = "high"
-            else:  # gpt-4o and other models
-                self.logger.info(f"Using OpenAI API with model {self.llm_model}")
-                params["temperature"] = 0
 
-            response = await self.openai_client.chat.completions.create(**params)
+                # First try with reasoning_effort parameter
+                try:
+                    # Create a copy to avoid modifying the original
+                    params = base_params.copy()
+                    params["reasoning_effort"] = "high"
+                    self.logger.info("Attempting API call with reasoning_effort parameter")
+                    response = await self.openai_client.chat.completions.create(**params)
+                    self.logger.info("Successfully used reasoning_effort parameter")
+                except (TypeError, ValueError) as e:
+                    # If reasoning_effort fails, retry with temperature
+                    self.logger.warning(f"reasoning_effort parameter not supported: {str(e)}")
+                    # Create a new copy of parameters without reasoning_effort
+                    params = base_params.copy()
+                    params["temperature"] = 0.2
+                    params["seed"] = 42  # For reproducibility
+                    self.logger.info("Retrying with temperature parameter instead")
+                    response = await self.openai_client.chat.completions.create(**params)
+            else:
+                # For gpt-4o and other models
+                self.logger.info(f"Using OpenAI API with model {self.llm_model}")
+                params = base_params.copy()
+                params["temperature"] = 0
+                response = await self.openai_client.chat.completions.create(**params)
+
+            # Extract content from OpenAI response
             analysis_data = json.loads(response.choices[0].message.content)
 
         # If using Anthropic, we need to parse the JSON response here
@@ -959,10 +979,11 @@ class EmbeddingsImpactAnalyzer:
                 # Log the first 100 chars of the response for debugging
                 self.logger.info(f"Response content begins with: {response_content[:100]}...")
 
-                # Check if response starts with a JSON object
+                # Check if response is empty
                 if not response_content:
                     raise ValueError("Empty response from Anthropic API")
 
+                # If response doesn't start with a JSON object, try to extract it
                 if not response_content.strip().startswith('{'):
                     # Try to extract JSON content
                     json_start = response_content.find('{')

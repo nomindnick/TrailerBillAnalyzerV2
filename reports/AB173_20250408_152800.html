@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bill Analysis Report - AB173</title>
+    <style>
+        
+            /* Base styles */
+            @page {
+                margin: 2cm;
+                @bottom-center {
+                    content: &#34;Page &#34; counter(page) &#34; of &#34; counter(pages);
+                    font-size: 10pt;
+                    color: #666;
+                }
+            }
+            
+            body {
+                font-family: &#39;Segoe UI&#39;, Tahoma, Geneva, Verdana, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 20px;
+                background-color: #f9f9f9;
+            }
+            
+            /* Header styles */
+            .header {
+                text-align: center;
+                margin-bottom: 2rem;
+                padding-bottom: 1rem;
+                border-bottom: 2px solid #ddd;
+                page-break-after: avoid;
+            }
+            
+            .bill-title {
+                font-size: 2rem;
+                color: #2c3e50;
+                margin-bottom: 0.75rem;
+                line-height: 1.2;
+            }
+            
+            .subtitle {
+                font-size: 1.2rem;
+                color: #7f8c8d;
+                margin-bottom: 0.5rem;
+            }
+            
+            /* Summary section */
+            .metadata {
+                background-color: #f5f5f5;
+                padding: 1.25rem;
+                border-radius: 5px;
+                margin-bottom: 2rem;
+                border-left: 4px solid #3498db;
+                page-break-inside: avoid;
+            }
+            
+            .summary-section {
+                margin-bottom: 2rem;
+                background-color: #fff;
+                padding: 1.5rem;
+                border-radius: 5px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                page-break-inside: avoid;
+            }
+            
+            .summary-header {
+                margin-top: 0;
+                color: #2c3e50;
+                border-bottom: 2px solid #ecf0f1;
+                padding-bottom: 0.75rem;
+                font-size: 1.5rem;
+            }
+            
+            /* Change boxes */
+            .change-boxes {
+                display: flex;
+                flex-direction: column;
+                gap: 2.5rem;
+            }
+            
+            .change-box {
+                border: 1px solid #ddd;
+                border-radius: 5px;
+                overflow: hidden;
+                background-color: #fff;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                margin-bottom: 2rem;
+                page-break-inside: avoid;
+            }
+            
+            .change-header {
+                background-color: #3498db;
+                color: white;
+                padding: 0.75rem 1.25rem;
+                font-weight: bold;
+                font-size: 1.2rem;
+            }
+            
+            .change-content {
+                padding: 1rem;
+            }
+            
+            .change-box p {
+                margin: 0.75rem 0;
+            }
+            
+            .change-box h4 {
+                color: #2c3e50;
+                margin: 1.5rem 0 0.75rem 0;
+                font-size: 1.15rem;
+                border-bottom: 1px solid #eee;
+                padding-bottom: 0.4rem;
+            }
+            
+            /* Lists */
+            .change-box ul {
+                margin: 0.75rem 0;
+                padding-left: 2rem;
+            }
+            
+            .change-box ul li {
+                margin-bottom: 0.5rem;
+                position: relative;
+                list-style-type: disc;
+            }
+            
+            .change-box ul li::marker {
+                content: &#34;• &#34;;
+                color: #3498db;
+                font-weight: bold;
+            }
+            
+            /* Practice areas */
+            .practice-areas {
+                margin: 1.5rem 0;
+                background-color: #f8f9fa;
+                padding: 1.25rem;
+                border-radius: 5px;
+                border-left: 4px solid #2ecc71;
+            }
+            
+            .practice-area {
+                display: inline-block;
+                background-color: #e1f5fe;
+                padding: 0.4rem 0.7rem;
+                margin: 0.3rem;
+                border-radius: 3px;
+                font-size: 0.9rem;
+                color: #0288d1;
+            }
+            
+            .primary-area {
+                background-color: #b3e5fc;
+                color: #01579b;
+                font-weight: bold;
+            }
+            
+            /* Section information */
+            .section-list {
+                background-color: #f5f5f5;
+                padding: 1rem 1.25rem;
+                margin: 1rem 0;
+                border-radius: 5px;
+                font-size: 0.95rem;
+            }
+            
+            .section-reference {
+                font-weight: bold;
+                color: #e74c3c;
+            }
+            
+            .bill-text-section {
+                background-color: #f9f9f9;
+                border-left: 3px solid #ccc;
+                padding: 1.25rem;
+                margin: 1rem 0;
+                font-family: monospace;
+                font-size: 0.9rem;
+                overflow-x: auto;
+                white-space: pre-wrap;
+            }
+            
+            /* Action items */
+            .action-items {
+                background-color: #fff3e0;
+                padding: 1.25rem;
+                margin: 1.25rem 0;
+                border-radius: 5px;
+                border-left: 4px solid #ff9800;
+            }
+            
+            .deadline {
+                color: #d32f2f;
+                font-weight: bold;
+            }
+            
+            /* Section headers */
+            .report-section {
+                margin-bottom: 3.5rem;
+                page-break-before: auto;
+            }
+            
+            .report-section-title {
+                background-color: #2c3e50;
+                color: white;
+                padding: 1.25rem;
+                margin: 2.5rem 0 1.75rem 0;
+                border-radius: 5px;
+                font-size: 1.5rem;
+                box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+                page-break-after: avoid;
+            }
+                        
+            /* Footer */
+            .footer {
+                margin-top: 3.5rem;
+                text-align: center;
+                font-size: 0.9rem;
+                color: #7f8c8d;
+                padding-top: 1rem;
+                border-top: 1px solid #ddd;
+            }
+            
+            /* Print-specific styles */
+            @media print {
+                body {
+                    padding: 0;
+                    background: white;
+                    font-size: 12pt;
+                    color: black;
+                }
+                
+                .change-box {
+                    break-inside: avoid;
+                    page-break-inside: avoid;
+                    margin-bottom: 20mm;
+                    border: 1px solid #ccc;
+                }
+                
+                .change-header {
+                    background-color: #3498db !important;
+                    color: white !important;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
+                
+                .header, 
+                .metadata, 
+                .summary-section, 
+                .practice-areas {
+                    page-break-inside: avoid;
+                }
+                
+                .report-section-title {
+                    page-break-after: avoid;
+                    background-color: #2c3e50 !important;
+                    color: white !important;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
+                
+                .action-items {
+                    page-break-inside: avoid;
+                    background-color: #fff3e0 !important;
+                    border-left: 4px solid #ff9800 !important;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
+                
+                a {
+                    text-decoration: underline;
+                    color: blue !important;
+                }
+                
+                .change-box ul li {
+                    list-style-type: disc !important;
+                }
+                
+                .change-box ul li::before {
+                    content: &#34;• &#34;;
+                    color: #3498db !important;
+                    font-weight: bold;
+                    display: inline-block; 
+                    width: 1em;
+                    margin-left: -1em;
+                }
+                
+                .section-list,
+                .practice-areas {
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
+            }
+        
+
+        /* Added style for digest-only entries */
+        .digest-only {
+            font-style: italic;
+            color: #666;
+            background-color: #f9f9f9;
+            padding: 0.75rem;
+            border-left: 3px solid #ccc;
+            display: block;
+            margin: 0.5rem 0;
+        }
+    </style>
+</head>
+<body data-date="April 08, 2025">
+    <!-- Report Header -->
+    <div class="header">
+        <h1 class="bill-title">Bill Analysis Report</h1>
+        <p><strong>Bill Number:</strong> AB173</p>
+        <p><strong>Chapter Number:</strong> </p>
+        <p><strong>Title:</strong> An act to amend Sections 8594.14 and 13987 of, to add Sections 13986 and 14669.24 to, and to add and repeal Section 14108 of, the Government Code, to amend Section 75226 of the Public Resources Cod...</p>
+        <p><strong>Date Approved:</strong> 2024-07-02 00:00:00</p>
+        <p><strong>Analysis by:</strong> GPT-o3-mini (January 2025)</p>
+    </div>
+
+    <!-- Executive Summary -->
+    <div class="summary-section">
+        <h2 class="summary-header">Executive Summary</h2>
+        <p><strong>Total Changes Identified:</strong> 11</p>
+        <p><strong>Practice Areas Affected:</strong>
+            
+                None
+            
+        </p>
+        <p><strong>Local Agencies Impacted:</strong>
+            
+            
+                
+            
+                
+            
+                
+            
+                
+            
+                
+            
+                
+            
+                
+            
+                
+            
+                
+            
+                
+            
+                
+            
+            
+                None
+            
+        </p>
+        <p><strong>Changes by Practice Group:</strong>
+            
+            
+                
+            
+                
+            
+                
+            
+                
+            
+                
+            
+                
+            
+                
+            
+                
+            
+                
+            
+                
+            
+                
+            
+            
+                None
+            
+        </p>
+    </div>
+
+    <!-- Sections by Practice Group or No Local Impact -->
+    
+    <div class="report-section">
+        <h2 class="report-section-title">No Local Government Impacts</h2>
+
+        <div class="change-boxes">
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SECTION 1.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary or digest-only summary -->
+                    <p><strong>Summary:</strong><br>
+                       
+                           <em class="digest-only">(Legislative Counsel&#39;s Digest) Existing law authorizes a law enforcement agency to request the Department of the California Highway Patrol to activate an Ebony Alert, with respect to Black youth who are reported missing, as specified. Existing law requires, as a condition for requesting an Ebony Alert, that the agency determine that the alert would be an effective tool in the investigation of missing Black youth, and lists factors that the agency may consider in making that determination. If the department concurs with the agency’s determination, existing law authorizes the department to activate an Ebony Alert within the appropriate geographical area requested by the investigating law enforcement agency and to assist the agency by disseminating specified alert messages and signs.
+This bill would expand and revise the determinations a law enforcement agency must make to request an Ebony Alert. In this regard, the bill would require determinations that, among other things, the investigating law enforcement agency has used all available local resources and there is information available that, if disseminated to the public, could assist in the safe recovery of the missing person. If the department concurs with the agency’s determination, the bill would make the department’s activation of an Ebony Alert and assistance to the agency, as described above, required. The bill would require, on or before July 1, 2027, the department to create and submit a report to the Governor’s office and the Legislature, as specified.</em>
+                       
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <p>No local agencies identified.</p>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       No direct impact on local agencies identified.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+
+                    <!-- Additional Requirements -->
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 2.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary or digest-only summary -->
+                    <p><strong>Summary:</strong><br>
+                       
+                           <em class="digest-only">(Legislative Counsel&#39;s Digest) Existing law establishes the
+			 Transportation Agency, which has the power of general supervision over specified state entities, including the Department of Transportation and California Transportation Commission. Under existing law, the Transportation Agency is under the supervision of an executive officer known as the Secretary of Transportation. Existing law makes the department responsible for, among other things, the improvement and maintenance of the state highway system. Existing law requires the department to prepare and submit a proposed budget to the Governor that includes the portion to be funded from the State Highway Account. Existing law vests the commission with various powers and duties relative to the programming of transportation capital projects and the allocation of funds to those projects, pursuant to the state transportation improvement program and various other transportation funding programs.
+This bill would require the secretary to coordinate with the
+			 department and the commission to identify available funding in state transportation programs that may be used to support grade separation projects that were previously awarded funding under specified transportation programs but had that funding reverted pursuant to the Budget Act of 2024. The bill would require the Transportation Agency to prioritize, and would authorize the agency to directly allocate, the funding identified by that process, as available and appropriate, for those grade separation projects that are at risk of losing or failing to secure federal and local funding commitments, or that are at risk of approved project schedule delays, or both. The bill would require the secretary to report to the Legislature, on or before April 30, 2025, on any funding that the secretary identified for impacted grade separation projects.</em>
+                       
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <p>No local agencies identified.</p>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       No direct impact on local agencies identified.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+
+                    <!-- Additional Requirements -->
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 3.</span>, 
+                            
+                                <span class="section-reference">SEC. 6.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary or digest-only summary -->
+                    <p><strong>Summary:</strong><br>
+                       
+                           <em class="digest-only">(Legislative Counsel&#39;s Digest) Existing law requires the Transportation Agency, subject to specified appropriations by the Legislature, to develop and administer an accountability program to govern the distribution of funds to regional transportation planning agencies under the Zero-Emission Transit Capital Program and the component of the Transit and Intercity Rail Capital Program that is allocated pursuant to a specified formula. Existing law requires the Transportation Agency to adopt guidelines governing the distribution of these funding sources. Under the accountability program, existing law requires a regional transportation planning agency to submit a regional short-term financial plan to the Transportation Agency, except as specified, and transit operator data, in order to receive moneys from the funding sources governed by the accountability program during the 2023–24 and 2024–25 fiscal years, as provided.
+This bill would expand the requirements of the accountability program to the distribution of funds appropriated to the Transportation Agency in the Budget Act from the Greenhouse Gas Reduction Fund for purposes of the formula-based component of the Transit and Intercity Rail Capital Program. The bill would also require a regional transportation planning agency to submit an updated regional short-term financial plan and updated transit operator data to the Transportation Agency in order to receive moneys governed by the accountability program in the 2025–26 fiscal year, and to submit updated transit operator data to the Transportation Agency in order to receive moneys governed by the accountability program in the 2026–27 and 2027–28 fiscal years. The bill would authorize the Transportation Agency to modify the guidelines for the distribution of those funds for each of these 3 fiscal years by specified dates.</em>
+                       
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <p>No local agencies identified.</p>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       No direct impact on local agencies identified.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+
+                    <!-- Additional Requirements -->
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 4.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary or digest-only summary -->
+                    <p><strong>Summary:</strong><br>
+                       
+                           <em class="digest-only">(Legislative Counsel&#39;s Digest) The State Air Resources Board, pursuant to its authority to regulate motor vehicle emissions and emissions of greenhouse gases, has adopted the Advanced Clean Fleets Regulation, which imposes various requirements for transitioning local, state, and federal government fleets of medium- and heavy-duty trucks, other high-priority fleets of medium- and heavy-duty trucks, and drayage trucks to zero-emission vehicles.
+Existing law, except as provided, beginning December 31, 2025, requires at least 15% of newly purchased vehicles with a gross vehicle weight rating of 19,000 pounds or more purchased by the Department of General Services and other state entities for the state vehicle fleet to be zero-emission vehicles. Existing law, except as provided, requires the Department of General Services, beginning no later than the 2024–25 fiscal year, to ensure that at least 50% of the
+			 light-duty vehicles purchased for the state vehicle fleet each fiscal year are zero-emission vehicles.
+This bill would require the Department of Transportation to annually compile and report information to the Legislature on or before October 1 of each year, beginning in 2025, regarding the zero-emission vehicles that the department purchases, owns, or leases. In each annual report, the bill would also require the department to conduct an analysis of the duty performance of the zero-emission vehicles that it acquires and to include information on its zero-emission vehicle charging and refueling stations, as specified. The bill would repeal these provisions on January 1, 2036.</em>
+                       
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <p>No local agencies identified.</p>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       No direct impact on local agencies identified.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+
+                    <!-- Additional Requirements -->
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 5.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary or digest-only summary -->
+                    <p><strong>Summary:</strong><br>
+                       
+                           <em class="digest-only">(Legislative Counsel&#39;s Digest) Existing law generally authorizes the Director of General Services to hire,
+			 lease, lease-purchase, or lease with the option to purchase real property for the use of a state agency, but prohibits the director from entering into a lease-purchase agreement for office space without specific legislative authorization.
+This bill would authorize the Department of General Services, with the consent of the Department of Motor Vehicles, to enter into a lease-purchase agreement or lease with an option to purchase agreement for a build-to-suit office facility to replace the Department of Motor Vehicles field office in the City and County of San Francisco. The bill would authorize the project to be a mixed-use development that may include or integrate affordable housing. The bill would require the lease to be subject to approval by the Department of Finance, and subject to specified legislative notice requirements and the Property Acquisition Law.</em>
+                       
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <p>No local agencies identified.</p>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       No direct impact on local agencies identified.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+
+                    <!-- Additional Requirements -->
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 7.</span>, 
+                            
+                                <span class="section-reference">SEC. 8.</span>, 
+                            
+                                <span class="section-reference">SEC. 9.</span>, 
+                            
+                                <span class="section-reference">SEC. 10.</span>, 
+                            
+                                <span class="section-reference">SEC. 11.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary or digest-only summary -->
+                    <p><strong>Summary:</strong><br>
+                       
+                           <em class="digest-only">(Legislative Counsel&#39;s Digest) Existing law creates the High-Speed Rail Authority to develop and implement a high-speed rail system in the state, with specified powers and duties. Existing law authorizes the High-Speed Rail Authority to enter into contracts with private or public entities for the design, construction, and operation of high-speed trains. Existing law creates the High-Speed Rail Authority Office of the Inspector General and prohibits the office from being a subdivision of any other governmental entity. Existing law authorizes the High-Speed Rail Authority Inspector General to initiate audits and reviews related to the delivery of the high-speed rail project and the selection and oversight of contractors, as provided. Existing law imposes other duties and responsibilities on the inspector general relating to the oversight of the High-Speed Rail Authority, including conducting audits and investigations relating to delivery of the high-speed rail project. Existing law prohibits the inspector general from
+			 investigating personnel issues regarding employees of the High-Speed Rail Authority.
+This bill would also impose on the inspector general the duty and responsibility to review or investigate adherence to contract provisions of any public or private entity that receives high-speed rail project funds. The bill would define “personnel issues” for purposes of the above-described prohibition. The bill would extend certain whistleblower protections applicable to employees of the High-Speed Rail Authority to employees of a contractor of the authority. The bill would require the High-Speed Rail Authority to ensure that specified provisions granting the inspector general access to records and property in connection with the inspector general’s authorized duties are included in all contracts and contract amendments executed on or after July 1, 2024, in which high-speed rail project funds will be expended. The bill would also revise the circumstances under which the Department
+			 of Finance is required to notify the chairs of the budget committees of the Legislature regarding changes to the inspector general’s proposed budget.</em>
+                       
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <p>No local agencies identified.</p>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       No direct impact on local agencies identified.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+
+                    <!-- Additional Requirements -->
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 12.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary or digest-only summary -->
+                    <p><strong>Summary:</strong><br>
+                       
+                           <em class="digest-only">(Legislative Counsel&#39;s Digest) Existing law establishes the Reconnecting Communities: Highways to Boulevards Pilot Program under the administration of the Department of Transportation to provide funding, upon appropriation by the Legislature, for the purpose of awarding competitive grants to eligible entities, in partnership with the department, for planning or implementing the conversion or transformation of underutilized state highways into multimodal corridors that serve residents of underserved communities, as provided. Existing law requires the program to set aside 25% of available funding for planning and 75% for implementation.
+This bill would
+			 instead require up to 25% of available funding to be set aside for planning and the remainder for implementation.</em>
+                       
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <p>No local agencies identified.</p>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       No direct impact on local agencies identified.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+
+                    <!-- Additional Requirements -->
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 13.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary or digest-only summary -->
+                    <p><strong>Summary:</strong><br>
+                       
+                           <em class="digest-only">(Legislative Counsel&#39;s Digest) Existing law, pursuant to a program commonly known as the Port and Freight Infrastructure Program, requires the Transportation Agency, upon an appropriation for its purposes, to develop and administer contracts, grants, or other funding mechanisms to invest in port-specific high-priority projects that increase goods movement capacity on rail and roadways serving ports and at port terminals, as provided. Existing law requires funding under the program to be allocated to public agencies that administer or operate eligible projects and authorizes those public agencies to partner with private operators of projects to implement eligible projects under the program, as specified.
+This bill would authorize a lead applicant agency under the program to apply to the Secretary of Transportation for a letter of no prejudice that would allow an applicant to expend its own moneys on a project or any component of a project in the approved program of projects, subject to future reimbursement from program moneys for eligible expenditures if certain conditions are met. The bill would make these provisions inoperative on June 30, 2033, and would repeal them as of January 1, 2034.</em>
+                       
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <p>No local agencies identified.</p>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       No direct impact on local agencies identified.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+
+                    <!-- Additional Requirements -->
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 14.</span>, 
+                            
+                                <span class="section-reference">SEC. 15.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary or digest-only summary -->
+                    <p><strong>Summary:</strong><br>
+                       
+                           <em class="digest-only">(Legislative Counsel&#39;s Digest) Existing law, pursuant to the Safe, Reliable, High-Speed Passenger Train Bond Act for the 21st Century, authorizes $9,950,000,000 in general obligation bonds for high-speed rail development and other related purposes. The bond act requires the net proceeds received from the
+			 sale of $9,000,000,000 principal amount of those bonds to be used, upon appropriation by the Legislature in the Budget Act, for planning and engineering for the high-speed train system and capital costs, as specified. The bond act also requires not more than 2.5% of those proceeds to be used for administrative purposes, and authorizes the Legislature, by statute, to increase the percentage of those proceeds used for administrative purposes up to a limit of not more than 5%. The bond act requires the amount of bond proceeds available for administrative purposes to be appropriated in the Budget Act.
+This bill would increase the percentage of those bond proceeds available for administrative purposes by 2.5%, thereby raising the limit to not more than 5%.</em>
+                       
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <p>No local agencies identified.</p>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       No direct impact on local agencies identified.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+
+                    <!-- Additional Requirements -->
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 16.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary or digest-only summary -->
+                    <p><strong>Summary:</strong><br>
+                       
+                           <em class="digest-only">(Legislative Counsel&#39;s Digest) Existing law establishes the Active Transportation Program in the Department of Transportation for the purpose of encouraging increased use of active modes of transportation, such as biking and walking, with funds for the program to be appropriated to the department, for allocation by the California Transportation Commission. Under the program, existing law requires available funds to be awarded to eligible projects by the commission and metropolitan planning agencies.
+This bill would appropriate $100,000,000 from the General Fund to the department to support the Active Transportation Program with the funds to be allocated by the commission, as specified.</em>
+                       
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <p>No local agencies identified.</p>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       No direct impact on local agencies identified.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+
+                    <!-- Additional Requirements -->
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+            <div class="change-box">
+                <div class="change-header">
+                    Substantive Change
+                </div>
+                <div class="change-content">
+                    <!-- Bill Section References -->
+                    <div class="section-list">
+                        <strong>Trailer Bill Sections:</strong>
+                        
+                            
+                                <span class="section-reference">SEC. 17.</span>
+                            
+                        
+                    </div>
+
+                    <!-- AI-generated summary or digest-only summary -->
+                    <p><strong>Summary:</strong><br>
+                       
+                           <em class="digest-only">(Legislative Counsel&#39;s Digest) This
+			 bill would declare that it is to take effect immediately as a bill providing for appropriations related to the Budget Bill.
+Digest Key
+Vote:
+MAJORITY
+Appropriation:
+YES
+Fiscal Committee:
+YES
+Local Program:
+NO
+Bill Text</em>
+                       
+                    </p>
+
+                    <!-- Local agencies impacted -->
+                    <h4>Local Agencies Impacted</h4>
+                    
+                        <p>No local agencies identified.</p>
+                    
+
+                    <!-- Impact Description -->
+                    <p><strong>Impact Description:</strong><br>
+                       No direct impact on local agencies identified.
+                    </p>
+
+                    <!-- Key Action Items -->
+                    
+
+                    <!-- Deadlines - Now using a table for better PDF rendering -->
+                    
+
+                    <!-- Additional Requirements -->
+                    
+
+                    <!-- Relevant Practice Groups -->
+                    
+
+                    <!-- Bill text removed to reduce content length -->
+                </div>
+            </div>
+            
+        </div>
+    </div>
+    
+
+    <div class="footer">
+        <p>Report generated on April 08, 2025</p>
+    </div>
+</body>
+</html>
