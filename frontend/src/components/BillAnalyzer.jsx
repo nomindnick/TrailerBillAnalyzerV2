@@ -407,11 +407,16 @@ export default function BillAnalyzer() {
 
           {reportUrl && (
             <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-6 rounded-xl shadow-md animate-bounce-in">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="bg-green-100 dark:bg-green-800 rounded-full p-2">
-                  <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="bg-green-100 dark:bg-green-800 rounded-full p-2">
+                    <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-green-800 dark:text-green-400">Analysis Complete!</h3>
                 </div>
-                <h3 className="text-xl font-semibold text-green-800 dark:text-green-400">Analysis Complete!</h3>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  Completed in: {elapsedTime}
+                </div>
               </div>
 
               <p className="text-gray-700 dark:text-gray-300 mb-4">
