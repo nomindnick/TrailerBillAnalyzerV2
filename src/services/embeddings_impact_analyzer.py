@@ -941,29 +941,35 @@ class EmbeddingsImpactAnalyzer:
                 "response_format": {"type": "json_object"}
             }
 
-            # Try different parameter combinations based on model type
+            # For reasoning models (o3-mini, o1)
             if "o3-mini" in self.llm_model or "o1" in self.llm_model:
                 self.logger.info(f"Using OpenAI API with reasoning model {self.llm_model}")
 
-                # First try with reasoning_effort parameter
+                # Create a base parameters object without temperature
+                params = base_params.copy()
+
+                # For newer SDK versions, reasoning_effort is supported directly
                 try:
-                    # Create a copy to avoid modifying the original
-                    params = base_params.copy()
-                    params["reasoning_effort"] = "high"
-                    self.logger.info("Attempting API call with reasoning_effort parameter")
+                    # Add reasoning_effort parameter - this is what o3-mini and o1 models need
+                    params["reasoning_effort"] = "high"  # Can be "low", "medium", or "high"
+                    self.logger.info("Making API call with reasoning_effort parameter")
                     response = await self.openai_client.chat.completions.create(**params)
                     self.logger.info("Successfully used reasoning_effort parameter")
                 except (TypeError, ValueError) as e:
-                    # If reasoning_effort fails, retry with temperature
+                    # If reasoning_effort not supported, might be older SDK or different API
                     self.logger.warning(f"reasoning_effort parameter not supported: {str(e)}")
-                    # Create a new copy of parameters without reasoning_effort
-                    params = base_params.copy()
-                    params["temperature"] = 0.2
-                    params["seed"] = 42  # For reproducibility
-                    self.logger.info("Retrying with temperature parameter instead")
-                    response = await self.openai_client.chat.completions.create(**params)
+
+                    # Try with the base parameters only (no temperature, no reasoning_effort)
+                    clean_params = base_params.copy()
+                    # Remove any parameters that might cause issues
+                    for param in ['temperature', 'seed']:
+                        if param in clean_params:
+                            clean_params.pop(param)
+
+                    self.logger.info("Retrying with base parameters only")
+                    response = await self.openai_client.chat.completions.create(**clean_params)
             else:
-                # For gpt-4o and other models
+                # For gpt-4o and other non-reasoning models
                 self.logger.info(f"Using OpenAI API with model {self.llm_model}")
                 params = base_params.copy()
                 params["temperature"] = 0
