@@ -343,8 +343,8 @@ export default function BillAnalyzer() {
                 >
                   {modelOptions.map(option => (
                     <option key={option} value={option}>
-                      {option === 'o3-mini-2025-01-31' ? 'GPT-o3-mini (January 2025)' : 
-                       option === 'gpt-4o-2024-08-06' ? 'GPT-4o (August 2024)' : 
+                      {option === 'o4-mini-2025-04-16' ? 'GPT-o4-mini (April 2025)' : 
+                       option === 'gpt-4.1-2025-04-14' ? 'GPT-4.1 (April 2025)' : 
                        'Claude 3.7 Extended Reasoning'}
                     </option>
                   ))}

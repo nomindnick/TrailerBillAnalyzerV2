@@ -82,7 +82,7 @@ class EmbeddingsImpactAnalyzer:
         openai_client, 
         practice_groups_data: PracticeGroups,
         embedding_model="text-embedding-3-large", 
-        llm_model="gpt-4o-2024-08-06", 
+        llm_model="gpt-4.1-2025-04-14", 
         anthropic_client=None,
         max_concurrency=3,  # New parameter for controlling parallel requests
         max_retries=3       # New parameter for retry attempts
@@ -1050,7 +1050,7 @@ class EmbeddingsImpactAnalyzer:
             }
 
             # For reasoning models (o3-mini, o1)
-            if "o3-mini" in self.llm_model or "o1" in self.llm_model:
+            if "o4-mini" in self.llm_model:
                 self.logger.info(f"Using OpenAI API with reasoning model {self.llm_model}")
 
                 # Create a base parameters object without temperature

@@ -226,7 +226,7 @@ def analyze_bill():
 
     bill_number = data.get('billNumber')
     session_year = data.get('sessionYear', '2023-2024')
-    model = data.get('model', 'gpt-4o-2024-08-06')
+    model = data.get('model', 'gpt-4.1-2025-04-14')
     analysis_id = data.get('analysisId')  # Get the analysis ID
 
     # Get concurrency settings - default to 3 for balanced performance

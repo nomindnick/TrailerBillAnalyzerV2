@@ -422,11 +422,10 @@ class ReportGenerator:
     def _get_model_display_name(self, model_name: str) -> str:
         """Convert internal model name to a display-friendly version"""
         model_display_map = {
-            "gpt-4o-2024-08-06": "GPT-4o (August 2024)",
-            "gpt-4o-2024-05-13": "GPT-4o (May 2024)",
+            "gpt-4.1-2025-04-14": "GPT-4.1 (April 2025)",
             "gpt-4-turbo": "GPT-4 Turbo",
             "gpt-3.5-turbo": "GPT-3.5 Turbo",
-            "o3-mini-2025-01-31": "GPT-o3-mini (January 2025)",
+            "o4-mini-2025-04-16": "GPT-o4-mini (April 2025)",
             "claude-3-opus-20240229": "Claude 3 Opus",
             "claude-3-sonnet-20240229": "Claude 3 Sonnet",
             "claude-3-7-sonnet-20250219": "Claude 3.7 Sonnet (Deep Thinking)"
