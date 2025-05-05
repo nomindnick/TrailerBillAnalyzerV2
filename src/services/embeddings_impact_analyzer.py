@@ -1049,39 +1049,31 @@ class EmbeddingsImpactAnalyzer:
                 "response_format": {"type": "json_object"}
             }
 
-            # For reasoning models (o3-mini, o1)
+            # Create a copy of base parameters
+            params = base_params.copy()
+
+            # Set model-specific parameters
             if "o4-mini" in self.llm_model:
-                self.logger.info(f"Using OpenAI API with reasoning model {self.llm_model}")
-
-                # Create a base parameters object without temperature
-                params = base_params.copy()
-
-                # For newer SDK versions, reasoning_effort is supported directly
-                try:
-                    # Add reasoning_effort parameter - this is what o3-mini and o1 models need
-                    params["reasoning_effort"] = "high"  # Can be "low", "medium", or "high"
-                    self.logger.info("Making API call with reasoning_effort parameter")
-                    response = await self.openai_client.chat.completions.create(**params)
-                    self.logger.info("Successfully used reasoning_effort parameter")
-                except (TypeError, ValueError) as e:
-                    # If reasoning_effort not supported, might be older SDK or different API
-                    self.logger.warning(f"reasoning_effort parameter not supported: {str(e)}")
-
-                    # Try with the base parameters only (no temperature, no reasoning_effort)
-                    clean_params = base_params.copy()
-                    # Remove any parameters that might cause issues
-                    for param in ['temperature', 'seed']:
-                        if param in clean_params:
-                            clean_params.pop(param)
-
-                    self.logger.info("Retrying with base parameters only")
-                    response = await self.openai_client.chat.completions.create(**clean_params)
+                self.logger.info(f"Using OpenAI API with o4-mini model: {self.llm_model}")
+                params["temperature"] = 0.7  # Higher temperature for creative analysis
+                params["max_tokens"] = 4000  # Limit response length for efficiency
+            elif "gpt-4.1" in self.llm_model:
+                self.logger.info(f"Using OpenAI API with GPT-4.1: {self.llm_model}")
+                params["temperature"] = 0  # More precise responses
+                params["max_tokens"] = 8000  # Allow longer responses
             else:
-                # For gpt-4o and other non-reasoning models
-                self.logger.info(f"Using OpenAI API with model {self.llm_model}")
-                params = base_params.copy()
-                params["temperature"] = 0
+                # Default parameters for other models
+                self.logger.info(f"Using OpenAI API with default parameters for model: {self.llm_model}")
+                params["temperature"] = 0.3
+                params["max_tokens"] = 6000
+
+            # Make the API call
+            try:
                 response = await self.openai_client.chat.completions.create(**params)
+                self.logger.info(f"Successfully received response from model {self.llm_model}")
+            except Exception as e:
+                self.logger.error(f"Error calling OpenAI API with model {self.llm_model}: {str(e)}")
+                raise
 
             # Extract content from OpenAI response
             analysis_data = json.loads(response.choices[0].message.content)
