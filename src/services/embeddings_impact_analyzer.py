@@ -983,30 +983,50 @@ class EmbeddingsImpactAnalyzer:
 
                 # Add extended thinking for Claude 3.7
                 if is_claude_3_7:
-                    self.logger.info("Using Claude 3.7 with extended thinking")
+                    self.logger.info("Using Claude 3.7 with extended thinking and streaming")
                     
-                    # Create thinking parameter for non-streaming API
-                    thinking_params = params.copy()
-                    thinking_params["thinking"] = {
+                    # Create thinking parameter for streaming API
+                    stream_params = params.copy()
+                    stream_params["thinking"] = {
                         "type": "enabled",
                         "budget_tokens": 16000
                     }
                     
-                    # Use standard create method (non-streaming) for Claude 3.7 with extended thinking
-                    response = await self.anthropic_client.messages.create(**thinking_params)
-                    
-                    # Extract the content from the response
+                    # Use streaming with extended thinking
                     response_content = ""
-                    if hasattr(response, 'content'):
-                        if isinstance(response.content, list):
-                            for block in response.content:
-                                if hasattr(block, 'type') and block.type == "text":
-                                    response_content += block.text
+                    try:
+                        # Use with_streaming helper for Claude 3.7
+                        with_streaming = True
+                        
+                        if with_streaming:
+                            self.logger.info("Using streaming API with extended thinking")
+                            async with self.anthropic_client.messages.stream(**stream_params) as stream:
+                                async for text in stream.text_stream:
+                                    # Accumulate response
+                                    response_content += text
                         else:
-                            response_content = response.content
-
+                            # This is a fallback that shouldn't be used
+                            response = await self.anthropic_client.messages.create(**stream_params)
+                            
+                            # Extract text content
+                            if hasattr(response, 'content'):
+                                if isinstance(response.content, list):
+                                    for block in response.content:
+                                        if hasattr(block, 'type') and block.type == "text":
+                                            response_content += block.text
+                                else:
+                                    response_content = response.content
+                    
+                    except Exception as e:
+                        self.logger.error(f"Error with streaming/thinking: {str(e)}")
+                        # Try without thinking as a fallback
+                        self.logger.info("Fallback: Using standard streaming without extended thinking")
+                        async with self.anthropic_client.messages.stream(**params) as stream:
+                            async for text in stream.text_stream:
+                                response_content += text
+                    
                     # Log successful response
-                    self.logger.info(f"Successfully received response from Claude with extended thinking. Content length: {len(response_content)}")
+                    self.logger.info(f"Successfully received response from Claude with streaming. Content length: {len(response_content)}")
                 else:
                     # For non-Claude 3.7 models, just use standard messages API
                     response = await self.anthropic_client.messages.create(**params)
