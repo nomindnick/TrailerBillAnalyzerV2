@@ -16,25 +16,25 @@ def test_openai_connection():
         # Create client with default settings
         client = OpenAI()
 
-        # Test with a simple completion for gpt-4.1
+        # Test with a simple completion for gpt-4.1 (can use more parameters)
         logger.info("Testing GPT-4.1 model...")
         response1 = client.chat.completions.create(
             model="gpt-4.1-2025-04-14",
             messages=[
                 {"role": "user", "content": "Say hello"}
-            ]
-            # No max_tokens - allow model to determine output length
+            ],
+            temperature=0.1  # GPT-4.1 supports temperature
         )
         logger.info(f"GPT-4.1 Response: {response1.choices[0].message.content}")
 
-        # Test o4-mini model
+        # Test o4-mini model with absolute minimal parameters
         logger.info("Testing o4-mini model...")
         response2 = client.chat.completions.create(
             model="o4-mini-2025-04-16",
             messages=[
                 {"role": "user", "content": "Say hello"}
             ]
-            # No max_tokens - allow model to determine output length
+            # No additional parameters for maximum compatibility
         )
         logger.info(f"o4-mini Response: {response2.choices[0].message.content}")
 

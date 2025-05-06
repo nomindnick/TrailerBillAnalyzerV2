@@ -1052,25 +1052,23 @@ class EmbeddingsImpactAnalyzer:
             # Create a copy of base parameters
             params = base_params.copy()
 
-            # Set model-specific parameters
+            # Clean any potentially incompatible parameters
+            for param in ["max_tokens", "temperature", "reasoning_effort"]:
+                if param in params:
+                    del params[param]
+            
+            # Set only the absolutely necessary parameters for each model
             if "o4-mini" in self.llm_model:
-                self.logger.info(f"Using OpenAI API with o4-mini model: {self.llm_model}")
-                params["temperature"] = 0.7  # Higher temperature for creative analysis
-                # Note: reasoning_effort is only supported in synchronous API, not async
-                # Remove max_tokens - allow model to determine output length
-                if "max_tokens" in params:
-                    del params["max_tokens"]
+                self.logger.info(f"Using OpenAI API with minimal parameters for o4-mini: {self.llm_model}")
+                # For o4-mini, we keep only the model and messages parameters
+                # All other parameters are kept at defaults to avoid compatibility issues
             elif "gpt-4.1" in self.llm_model:
-                self.logger.info(f"Using OpenAI API with GPT-4.1: {self.llm_model}")
+                self.logger.info(f"Using OpenAI API with gpt-4.1: {self.llm_model}")
+                # For gpt-4.1, we can safely use temperature
                 params["temperature"] = 0.1  # More precise responses
-                # Remove max_tokens - allow model to determine output length
-                if "max_tokens" in params:
-                    del params["max_tokens"]
             else:
-                # Default parameters for other models
                 self.logger.info(f"Using OpenAI API with default parameters for model: {self.llm_model}")
-                params["temperature"] = 0.3
-                # Default models might still use max_tokens
+                params["temperature"] = 0.3  # Default temperature for other models
 
             # Make the API call
             try:
