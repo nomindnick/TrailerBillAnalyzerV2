@@ -27,15 +27,14 @@ def test_openai_connection():
         )
         logger.info(f"GPT-4.1 Response: {response1.choices[0].message.content}")
 
-        # Test o4-mini with reasoning_effort parameter
+        # Test o4-mini model (note: reasoning_effort parameter is not supported in async API)
         logger.info("Testing o4-mini model...")
         response2 = client.chat.completions.create(
             model="o4-mini-2025-04-16",
             messages=[
                 {"role": "user", "content": "Say hello"}
             ],
-            max_tokens=10,
-            reasoning_effort="medium"
+            max_tokens=10
         )
         logger.info(f"o4-mini Response: {response2.choices[0].message.content}")
 

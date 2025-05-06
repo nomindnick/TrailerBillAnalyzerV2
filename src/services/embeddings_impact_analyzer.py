@@ -1057,8 +1057,7 @@ class EmbeddingsImpactAnalyzer:
                 self.logger.info(f"Using OpenAI API with o4-mini model: {self.llm_model}")
                 params["temperature"] = 0.7  # Higher temperature for creative analysis
                 params["max_tokens"] = 4000  # Limit response length for efficiency
-                if "reasoning_effort" not in params:
-                    params["reasoning_effort"] = "medium"  # Add reasoning effort parameter for o4-mini
+                # Note: reasoning_effort is only supported in synchronous API, not async
             elif "gpt-4.1" in self.llm_model:
                 self.logger.info(f"Using OpenAI API with GPT-4.1: {self.llm_model}")
                 params["temperature"] = 0.1  # More precise responses
