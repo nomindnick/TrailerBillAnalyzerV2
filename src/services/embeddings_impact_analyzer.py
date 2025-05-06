@@ -983,22 +983,30 @@ class EmbeddingsImpactAnalyzer:
 
                 # Add extended thinking for Claude 3.7
                 if is_claude_3_7:
-                    params["thinking"] = {
+                    self.logger.info("Using Claude 3.7 with extended thinking")
+                    
+                    # Create thinking parameter for non-streaming API
+                    thinking_params = params.copy()
+                    thinking_params["thinking"] = {
                         "type": "enabled",
                         "budget_tokens": 16000
                     }
-                    self.logger.info("Using streaming with extended thinking for Claude 3.7")
-
-                    # Use streaming for Claude 3.7 with extended thinking
+                    
+                    # Use standard create method (non-streaming) for Claude 3.7 with extended thinking
+                    response = await self.anthropic_client.messages.create(**thinking_params)
+                    
+                    # Extract the content from the response
                     response_content = ""
-                    async with self.anthropic_client.messages.stream(**params) as stream:
-                        async for chunk in stream:
-                            if hasattr(chunk, 'type') and chunk.type == "content_block_delta":
-                                if chunk.delta.type == "text_delta" and hasattr(chunk.delta, 'text'):
-                                    response_content += chunk.delta.text
+                    if hasattr(response, 'content'):
+                        if isinstance(response.content, list):
+                            for block in response.content:
+                                if hasattr(block, 'type') and block.type == "text":
+                                    response_content += block.text
+                        else:
+                            response_content = response.content
 
                     # Log successful response
-                    self.logger.info(f"Successfully received streamed response from Claude. Content length: {len(response_content)}")
+                    self.logger.info(f"Successfully received response from Claude with extended thinking. Content length: {len(response_content)}")
                 else:
                     # For non-Claude 3.7 models, just use standard messages API
                     response = await self.anthropic_client.messages.create(**params)
